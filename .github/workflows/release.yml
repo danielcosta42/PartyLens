@@ -1,31 +1,75 @@
 name: Release
 
-# Dispara quando você cria uma tag (ex: v0.11.0).
-# O packager empacota o addon e publica no CurseForge (e cria um Release no GitHub).
+# Publicação automática ao integrar na main.
+#
+# Como funciona: a versão é a fonte única no arquivo `VERSION`. A cada push na
+# main, se a tag `vX.Y.Z` ainda NÃO existe, o workflow cria a tag e publica no
+# CurseForge (+ Release no GitHub). Se a tag já existe (versão não mudou), não
+# faz nada — então commits do dia a dia não geram releases duplicados.
+#
+# Para lançar uma nova versão: edite `VERSION` (e o CHANGELOG.md) e dê push/merge
+# na main. Só isso.
+#
+# Tudo é gateado pelo secret CF_API_KEY: enquanto ele não existir, nada é
+# publicado nem "queima" a versão (não cria tag), evitando releases prematuros.
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
+# Evita dois releases rodando ao mesmo tempo.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
     steps:
       - name: Clone do projeto
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # histórico completo -> changelog automático entre tags
+          fetch-tags: true # precisa das tags p/ saber se a versão já foi lançada
 
-      - name: Empacotar e publicar
+      - name: Aviso se faltar o token da CurseForge
+        if: ${{ env.CF_API_KEY == '' }}
+        run: |
+          echo "::warning::CF_API_KEY não configurado — nada será publicado. Adicione o secret em Settings → Secrets and variables → Actions e dê push de novo (ou rode este workflow manualmente)."
+
+      - name: Ler versão do arquivo VERSION
+        id: ver
+        if: ${{ env.CF_API_KEY != '' }}
+        run: |
+          VERSION="$(tr -d ' \t\r\n' < VERSION)"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Tag v$VERSION já existe — sem novo release."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Nova versão detectada: publicando v$VERSION."
+          fi
+
+      - name: Criar e enviar a tag da versão
+        if: ${{ env.CF_API_KEY != '' && steps.ver.outputs.exists == 'false' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.ver.outputs.version }}" -m "Release v${{ steps.ver.outputs.version }}"
+          git push origin "v${{ steps.ver.outputs.version }}"
+
+      - name: Empacotar e publicar (CurseForge + GitHub Release)
+        if: ${{ env.CF_API_KEY != '' && steps.ver.outputs.exists == 'false' }}
         uses: BigWigsMods/packager@v2
         env:
-          # Token da CurseForge (Settings > Secrets and variables > Actions > New repository secret)
-          CF_API_KEY: ${{ secrets.CF_API_KEY }}
-          # Cria o Release no GitHub e anexa o .zip — usa o token automático do Actions
+          # CF_API_KEY já vem do env do job. GITHUB_OAUTH usa o token automático.
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
-          # --- Outras plataformas (opcional, descomente quando tiver os tokens) ---
-          # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}   # WoWInterface
-          # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}   # Wago Addons
+          # --- Outras plataformas (opcional) ---
+          # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
+          # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
