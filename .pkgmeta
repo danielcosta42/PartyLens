@@ -1,0 +1,19 @@
+# Configuração do empacotador (BigWigsMods/packager)
+# https://github.com/BigWigsMods/packager
+
+# Nome da pasta dentro do .zip — precisa bater com o nome do addon no WoW.
+package-as: PartyLens
+
+# Não gerar versão "nolib" (não usamos libraries externas embutidas).
+enable-nolib-creation: no
+
+# Arquivos de desenvolvimento que NÃO devem ir no pacote publicado.
+ignore:
+  - .github
+  - .specify
+  - .gitignore
+  - .pkgmeta
+  - BRANDING.md
+  - DEPLOY.md
+  - icon-concept.svg
+  - PartyLens-logo-512.png

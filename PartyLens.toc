@@ -1,0 +1,29 @@
+## Interface: 20505
+## Title: PartyLens
+## Notes: A modern group radar for chat and the built-in group finder.
+## Author: Daniel + Codex
+## Version: @project-version@
+## SavedVariables: PartyLensDB
+## IconTexture: Interface\AddOns\PartyLens\Icon
+## X-Curse-Project-ID:
+## X-Website: https://github.com/danielcosta42/PartyLens
+## X-License: MIT
+
+Modules/Utils.lua
+Modules/Localization.lua
+Modules/LocalizedKeywords.lua
+Modules/Activity.lua
+Modules/Needs.lua
+Modules/Database.lua
+Modules/Entry.lua
+Modules/Chat.lua
+Modules/LFGTool.lua
+Modules/Messaging.lua
+Modules/Roster.lua
+Modules/Comm.lua
+Modules/Autopilot.lua
+Modules/UIElements.lua
+Modules/Search.lua
+Modules/Minimap.lua
+Modules/UIMain.lua
+Core.lua

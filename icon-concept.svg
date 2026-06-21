@@ -1,0 +1,50 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Dark glass tile gradient -->
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#14181F"/>
+      <stop offset="1" stop-color="#070809"/>
+    </linearGradient>
+    <!-- Teal radar sweep -->
+    <radialGradient id="sweep" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#26DBB8" stop-opacity="0.55"/>
+      <stop offset="0.55" stop-color="#26DBB8" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#26DBB8" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="round">
+      <rect x="40" y="40" width="432" height="432" rx="104"/>
+    </clipPath>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="40" y="40" width="432" height="432" rx="104" fill="url(#tile)"/>
+  <rect x="40" y="40" width="432" height="432" rx="104" fill="url(#sheen)"/>
+
+  <g clip-path="url(#round)">
+    <!-- Radar sweep wedge -->
+    <path d="M256 256 L256 70 A186 186 0 0 1 442 256 Z" fill="url(#sweep)"/>
+  </g>
+
+  <!-- Hairline teal edge -->
+  <rect x="40" y="40" width="432" height="432" rx="104" fill="none" stroke="#26DBB8" stroke-opacity="0.85" stroke-width="4"/>
+
+  <!-- Radar / lens rings -->
+  <circle cx="256" cy="256" r="150" fill="none" stroke="#26DBB8" stroke-opacity="0.30" stroke-width="6"/>
+  <circle cx="256" cy="256" r="104" fill="none" stroke="#26DBB8" stroke-opacity="0.55" stroke-width="8"/>
+  <circle cx="256" cy="256" r="58"  fill="none" stroke="#26DBB8" stroke-opacity="0.95" stroke-width="10"/>
+
+  <!-- Sweep line -->
+  <line x1="256" y1="256" x2="256" y2="92" stroke="#26DBB8" stroke-width="8" stroke-linecap="round"/>
+
+  <!-- Role-pip blips (tank / heal / dps) -->
+  <circle cx="200" cy="206" r="17" fill="#5C9EFF"/>
+  <circle cx="316" cy="232" r="17" fill="#76DE85"/>
+  <circle cx="262" cy="320" r="17" fill="#FF7870"/>
+
+  <!-- Center hub -->
+  <circle cx="256" cy="256" r="14" fill="#26DBB8"/>
+</svg>
