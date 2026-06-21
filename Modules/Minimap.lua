@@ -72,19 +72,20 @@ function MinimapButton.Create(partyLens)
     button:RegisterForDrag("LeftButton")
     button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
+    -- Addon logo (Icon.tga, round badge). No SetMask+SetTexCoord combo — mixing
+    -- the two rendered blank on this client.
     button.icon = button:CreateTexture(nil, "ARTWORK")
+    button.icon:SetSize(18, 18)
     button.icon:SetPoint("CENTER", 0, 0)
-    button.icon:SetSize(20, 20)
-    -- Use the addon's own logo (Icon.tga, 64x64). Deliberately NO SetMask +
-    -- SetTexCoord combo here: mixing the two broke the texture on this client
-    -- (it rendered blank). The logo art is already a round badge, so it sits
-    -- cleanly inside the tracking-border ring.
     button.icon:SetTexture("Interface\\AddOns\\PartyLens\\Icon")
 
+    -- Tracking-border ring positioned the LibDBIcon way: TOPLEFT-anchored on a
+    -- 31px button with a 53px ring, so the art's hole lands over the centered
+    -- icon. The old CENTER-ish -11,11 offset is what made it look misaligned.
     button.ring = button:CreateTexture(nil, "OVERLAY")
     button.ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
-    button.ring:SetSize(54, 54)
-    button.ring:SetPoint("TOPLEFT", -11, 11)
+    button.ring:SetSize(53, 53)
+    button.ring:SetPoint("TOPLEFT", 0, 0)
 
     button:SetScript("OnClick", function()
         partyLens:Toggle()

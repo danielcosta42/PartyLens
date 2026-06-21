@@ -146,55 +146,48 @@ function UIElements.CreateButton(parent, text, width, height, accent)
     button.left = button:CreateTexture(nil, "BORDER"); button.left:SetPoint("TOPLEFT"); button.left:SetPoint("BOTTOMLEFT"); button.left:SetWidth(1); TextureColor(button.left, PALETTE.stroke)
     button.right = button:CreateTexture(nil, "BORDER"); button.right:SetPoint("TOPRIGHT"); button.right:SetPoint("BOTTOMRIGHT"); button.right:SetWidth(1); TextureColor(button.right, PALETTE.stroke)
 
-    -- Selection accent bar (left): only shown when active/hovered.
-    button.bar = button:CreateTexture(nil, "ARTWORK")
-    button.bar:SetPoint("TOPLEFT", 0, 0)
-    button.bar:SetPoint("BOTTOMLEFT", 0, 0)
-    button.bar:SetWidth(2)
-    TextureColor(button.bar, button.accent)
-    button.bar:Hide()
-
     button.label = UIElements.CreateLabel(button, text, 11, PALETTE.text)
     button.label:SetPoint("CENTER")
     button.label:SetJustifyH("CENTER")
 
     button.isActive = false
+    -- Hover/selection accent is ALWAYS teal (the brand) and SYMMETRIC (the whole
+    -- hairline border warms) — never a one-sided bar nor a category-colored frame.
     button:SetScript("OnEnter", function(self)
-        TextureColor(self.bg, self.hoverColor)
-        UIElements.SetPanelBorder(self, self.accent)
-        self.bar:Show()
+        if not self.isActive then
+            TextureColor(self.bg, self.hoverColor)
+        end
+        UIElements.SetPanelBorder(self, PALETTE.strokeHot)
     end)
     button:SetScript("OnLeave", function(self)
         if self.isActive then
-            TextureColor(self.bg, self.hoverColor)
-            UIElements.SetPanelBorder(self, self.accent)
+            TextureColor(self.bg, PALETTE.panelHover)
+            UIElements.SetPanelBorder(self, PALETTE.strokeHot)
         else
             TextureColor(self.bg, self.normalColor)
             UIElements.SetPanelBorder(self, PALETTE.stroke)
-            self.bar:Hide()
         end
     end)
     button:SetScript("OnMouseDown", function(self)
         TextureColor(self.bg, self.downColor)
     end)
     button:SetScript("OnMouseUp", function(self)
-        TextureColor(self.bg, self.hoverColor)
+        TextureColor(self.bg, self.isActive and PALETTE.panelHover or self.hoverColor)
     end)
     button.SetText = function(self, value)
         self.label:SetText(value)
     end
-    -- Persistent "selected" state (filled glass + teal border + accent bar).
+    -- Persistent selected state: panelHover fill + soft teal border, full opacity
+    -- (others in the group dim to 0.6). No colored frames, no one-sided bars.
     button.SetActive = function(self, value)
         self.isActive = value and true or false
         if self.isActive then
-            TextureColor(self.bg, self.hoverColor)
-            UIElements.SetPanelBorder(self, self.accent)
-            self.bar:Show()
+            TextureColor(self.bg, PALETTE.panelHover)
+            UIElements.SetPanelBorder(self, PALETTE.strokeHot)
             self:SetAlpha(1)
         else
             TextureColor(self.bg, self.normalColor)
             UIElements.SetPanelBorder(self, PALETTE.stroke)
-            self.bar:Hide()
             self:SetAlpha(0.6)
         end
     end
@@ -202,10 +195,6 @@ function UIElements.CreateButton(parent, text, width, height, accent)
         self.accent = color
         self.hoverColor = { color[1] * 0.22, color[2] * 0.22, color[3] * 0.22, 0.85 }
         self.downColor = { color[1] * 0.38, color[2] * 0.38, color[3] * 0.38, 0.95 }
-        TextureColor(self.bar, color)
-        if self.isActive then
-            UIElements.SetPanelBorder(self, color)
-        end
     end
     return button
 end
@@ -647,6 +636,9 @@ function UIElements.CreateDropdown(parent, width, height, accent)
             local row = self.rows[i]
             if not row then
                 row = UIElements.CreateButton(self.content, "", 10, rowH, self.accent)
+                -- List rows are borderless (a per-row frame would look like a
+                -- grid); selection/hover is carried by the background fill.
+                row.top:Hide(); row.bottom:Hide(); row.left:Hide(); row.right:Hide()
                 self.rows[i] = row
             end
             row:ClearAllPoints()
@@ -662,13 +654,11 @@ function UIElements.CreateDropdown(parent, width, height, accent)
                 row:EnableMouse(false)
                 row:SetScript("OnClick", nil)
                 TextureColor(row.bg, { 0.045, 0.055, 0.072, 0.92 })
-                TextureColor(row.bar, self.accent)
                 row.label:SetPoint("LEFT", 8, 0)
                 row.label:SetTextColor(self.accent[1], self.accent[2], self.accent[3], 0.95)
             else
                 row:EnableMouse(true)
                 TextureColor(row.bg, row.normalColor)
-                TextureColor(row.bar, self.accent)
                 row.label:SetPoint("LEFT", opt.indent and 22 or 10, 0)
                 row.label:SetTextColor(PALETTE.text[1], PALETTE.text[2], PALETTE.text[3], 1)
                 local optValue = opt.value
