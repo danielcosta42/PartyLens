@@ -70,6 +70,13 @@ jobs:
         env:
           # CF_API_KEY já vem do env do job. GITHUB_OAUTH usa o token automático.
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          # Rodamos no push da main, mas a tag acabou de ser criada acima neste
+          # commit. O packager só faz um RELEASE quando o build vem de uma tag;
+          # num build de branch ele recusa ("future tag"). Então apontamos o ref
+          # para a tag recém-criada para forçar o build de release.
+          GITHUB_REF: refs/tags/v${{ steps.ver.outputs.version }}
+          GITHUB_REF_NAME: v${{ steps.ver.outputs.version }}
+          GITHUB_REF_TYPE: tag
           # --- Outras plataformas (opcional) ---
           # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
           # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}
