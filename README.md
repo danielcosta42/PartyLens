@@ -42,8 +42,9 @@ PartyLens uses a **modular component-based architecture** with:
 - **UIElements** - Reusable UI components
 - **UIMain** - Main interface
 - **Search** - Filtering and scoring
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) and [LOCALIZATION.md](LOCALIZATION.md) for detailed documentation.
+- **Roster** - Party composition tracking
+- **Comm** - PartyLens-to-PartyLens mesh (hidden addon messages)
+- **Autopilot** - Auto-recruit / auto-join + summon coordination
 
 ## Version
 

@@ -14,3 +14,9 @@ desktop.ini
 
 # Backups do WoW
 *.bak
+
+# Docs internos (gerados por IA) — ficam locais, fora do repo público
+ARCHITECTURE.md
+BRANDING.md
+LOCALIZATION.md
+DEPLOY.md
