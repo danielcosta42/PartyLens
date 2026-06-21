@@ -9,7 +9,11 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 - **Reformulação visual**: navegação por menu lateral (rótulos claros no lugar
   dos ícones), grade consistente com seções tituladas e divisórias, Browse com
-  mais respiro e o Autopilot reorganizado em blocos legíveis.
+  mais respiro e o Autopilot reorganizado em blocos legíveis (counts e toggles
+  em linhas separadas).
+- **Composição automática**: ao escolher a masmorra/raide, o Autopilot já
+  preenche uma comp confortável pro tamanho do grupo (5→1/1/3, 10→2/3/5,
+  25→2/6/17, 40→4/9/27) — totalmente editável depois.
 - **PartyLens mesh**: usuários do addon se detectam e se priorizam via mensagens
   de addon ocultas no canal LookingForGroup — convite instantâneo, selo "PL" nos
   cards e contador de usuários por perto. Novo módulo `Comm`.

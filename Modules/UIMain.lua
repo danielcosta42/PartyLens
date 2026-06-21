@@ -580,6 +580,31 @@ local function SaveAutopilotNumber(editBox, key, partyLens, minValue)
     partyLens.db.autopilot[key] = math.max(minValue or 0, n)
 end
 
+-- A comfortable role split for a given group size; the player can still tweak it.
+local function ComfortableComp(maxPlayers)
+    local m = tonumber(maxPlayers) or 5
+    if m <= 5 then return 1, 1, 3 end
+    if m <= 10 then return 2, 3, 5 end
+    if m <= 25 then return 2, 6, 17 end
+    if m <= 40 then return 4, 9, 27 end
+    local tanks = math.max(1, math.floor(m / 12))
+    local heals = math.max(1, math.floor(m / 5))
+    return tanks, heals, math.max(0, m - tanks - heals)
+end
+
+-- Writes a composition into the config + the comp boxes (build mode).
+local function ApplyComp(partyLens, t, h, d)
+    local cfg = partyLens.db.autopilot
+    cfg.needTank, cfg.needHeal, cfg.needDps = t, h, d
+    local ap = partyLens.ap
+    if ap then
+        if ap.needT then ap.needT:SetText(tostring(t)) end
+        if ap.needH then ap.needH:SetText(tostring(h)) end
+        if ap.needD then ap.needD:SetText(tostring(d)) end
+    end
+    if UIMain.RefreshAutopilot then UIMain.RefreshAutopilot(partyLens) end
+end
+
 local function CreateAutopilotPanel(partyLens, host)
     local P = UIElements.PALETTE
     local panel = CreateFrame("Frame", "PartyLensAutopilotPanel", host)
@@ -636,6 +661,14 @@ local function CreateAutopilotPanel(partyLens, host)
             partyLens.db.autopilot.activityType = key
             UpdateAutopilotContent(partyLens)
             UIMain.RefreshAutopilotActivities(partyLens, true)
+            -- Auto-fill a comfortable comp for the content type (build only).
+            if partyLens.db.autopilot.role == "build" then
+                if key == "dungeon" then
+                    ApplyComp(partyLens, ComfortableComp(5))
+                elseif key == "raid" then
+                    ApplyComp(partyLens, ComfortableComp(25))
+                end
+            end
         end)
         ap.contentBtns[c.key] = btn
         prevContent = btn
@@ -657,11 +690,19 @@ local function CreateAutopilotPanel(partyLens, host)
             return
         end
         partyLens.db.autopilot.activityID = tonumber(value)
-        local label
+        local label, maxp
         for _, opt in ipairs(activityDropdown.options) do
-            if opt.value == value then label = opt.label break end
+            if opt.value == value then
+                label = opt.label
+                maxp = opt.maxPlayers
+                break
+            end
         end
         partyLens.db.autopilot.activityFilter = label or ""
+        -- Match the comp to the picked activity's size (build only).
+        if maxp and partyLens.db.autopilot.role == "build" then
+            ApplyComp(partyLens, ComfortableComp(maxp))
+        end
     end
 
     -- Role-specific section (composition for build / role for find).
@@ -672,8 +713,9 @@ local function CreateAutopilotPanel(partyLens, host)
     ap.buildBox = buildBox
     buildBox:SetPoint("TOPLEFT", PAD, -162)
     buildBox:SetPoint("TOPRIGHT", -PAD, -162)
-    buildBox:SetHeight(48)
+    buildBox:SetHeight(66)
 
+    -- Row 1: role counts + invite keyword.
     local function CompBox(name, key, x, role)
         local pip = UIElements.CreateRolePip(buildBox, 18)
         pip:SetRole(role)
@@ -689,24 +731,25 @@ local function CreateAutopilotPanel(partyLens, host)
     ap.needD = CompBox("PartyLensAPNeedDps", "needDps", 124, "dps")
 
     local kwLabel = UIElements.CreateLabel(buildBox, L("AP_INVITE_KEYWORD_LABEL"), 9, P.muted)
-    kwLabel:SetPoint("TOPLEFT", 196, 2)
-    local kwBox, kwShell = UIElements.CreateEditBox(buildBox, "PartyLensAPKeyword", 84, 24)
-    kwShell:SetPoint("TOPLEFT", 196, -14)
+    kwLabel:SetPoint("TOPLEFT", 212, 3)
+    local kwBox, kwShell = UIElements.CreateEditBox(buildBox, "PartyLensAPKeyword", 90, 26)
+    kwShell:SetPoint("TOPLEFT", 210, -13)
     kwBox:SetText(partyLens.db.autopilot.inviteKeyword or "inv")
     kwBox:SetScript("OnTextChanged", function(editBox)
         partyLens.db.autopilot.inviteKeyword = Utils.Trim(editBox:GetText())
     end)
 
-    ap.autoInviteToggle = UIElements.CreateToggle(buildBox, L("AP_AUTO_INVITE"), 116)
-    ap.autoInviteToggle:SetPoint("TOPLEFT", 296, -2)
+    -- Row 2: automation toggles (off the counts row so nothing crowds).
+    ap.autoInviteToggle = UIElements.CreateToggle(buildBox, L("AP_AUTO_INVITE"), 150)
+    ap.autoInviteToggle:SetPoint("TOPLEFT", 0, -38)
     ap.autoInviteToggle:SetChecked(partyLens.db.autopilot.autoInvite)
     ap.autoInviteToggle:SetScript("OnClick", function(check)
         check:SetChecked(not check:GetChecked())
         partyLens.db.autopilot.autoInvite = check:GetChecked()
     end)
 
-    ap.autoAnnounceToggle = UIElements.CreateToggle(buildBox, L("AP_AUTO_ANNOUNCE"), 160)
-    ap.autoAnnounceToggle:SetPoint("TOPLEFT", 420, -2)
+    ap.autoAnnounceToggle = UIElements.CreateToggle(buildBox, L("AP_AUTO_ANNOUNCE"), 190)
+    ap.autoAnnounceToggle:SetPoint("LEFT", ap.autoInviteToggle, "RIGHT", 12, 0)
     ap.autoAnnounceToggle:SetChecked(partyLens.db.autopilot.autoAnnounce)
     ap.autoAnnounceToggle:SetScript("OnClick", function(check)
         check:SetChecked(not check:GetChecked())
@@ -718,7 +761,7 @@ local function CreateAutopilotPanel(partyLens, host)
     ap.findBox = findBox
     findBox:SetPoint("TOPLEFT", PAD, -162)
     findBox:SetPoint("TOPRIGHT", -PAD, -162)
-    findBox:SetHeight(48)
+    findBox:SetHeight(66)
 
     ap.myRoleBtns = {}
     local roleOrder = {
@@ -744,7 +787,7 @@ local function CreateAutopilotPanel(partyLens, host)
     end
 
     ap.autoWhisperToggle = UIElements.CreateToggle(findBox, L("AP_AUTO_WHISPER"), 140)
-    ap.autoWhisperToggle:SetPoint("TOPLEFT", 256, -2)
+    ap.autoWhisperToggle:SetPoint("TOPLEFT", 0, -38)
     ap.autoWhisperToggle:SetChecked(partyLens.db.autopilot.autoWhisper)
     ap.autoWhisperToggle:SetScript("OnClick", function(check)
         check:SetChecked(not check:GetChecked())
@@ -752,7 +795,7 @@ local function CreateAutopilotPanel(partyLens, host)
     end)
 
     -- Automation tier.
-    Section(panel, L("AP_TIER_LABEL"), PAD, -222)
+    Section(panel, L("AP_TIER_LABEL"), PAD, -236, 340)
     ap.tierBtns = {}
     local tierOrder = {
         { key = "advisor", labelKey = "AP_TIER_ADVISOR", color = P.blue },
@@ -765,7 +808,7 @@ local function CreateAutopilotPanel(partyLens, host)
         if prevTier then
             btn:SetPoint("LEFT", prevTier, "RIGHT", 6, 0)
         else
-            btn:SetPoint("TOPLEFT", PAD, -244)
+            btn:SetPoint("TOPLEFT", PAD, -258)
         end
         local key = t.key
         btn:SetScript("OnClick", function()
@@ -778,22 +821,22 @@ local function CreateAutopilotPanel(partyLens, host)
 
     -- Safety (cooldown + ilvl), inline at the right of the tier row.
     local cdLabel = UIElements.CreateLabel(panel, L("AP_COOLDOWN_LABEL"), 9, P.muted)
-    cdLabel:SetPoint("TOPLEFT", PAD + 372, -232)
+    cdLabel:SetPoint("TOPLEFT", PAD + 372, -248)
     local cdBox, cdShell = UIElements.CreateEditBox(panel, "PartyLensAPCooldown", 46, 26)
-    cdShell:SetPoint("TOPLEFT", PAD + 372, -246)
+    cdShell:SetPoint("TOPLEFT", PAD + 372, -262)
     cdBox:SetText(tostring(partyLens.db.autopilot.whisperCooldown or 20))
     cdBox:SetScript("OnTextChanged", function(editBox) SaveAutopilotNumber(editBox, "whisperCooldown", partyLens, 5) end)
 
     local ilvlLabel = UIElements.CreateLabel(panel, L("LISTING_ILVL_LABEL"), 9, P.muted)
-    ilvlLabel:SetPoint("TOPLEFT", PAD + 470, -232)
+    ilvlLabel:SetPoint("TOPLEFT", PAD + 470, -248)
     local ilvlBox, ilvlShell = UIElements.CreateEditBox(panel, "PartyLensAPIlvl", 46, 26)
-    ilvlShell:SetPoint("TOPLEFT", PAD + 470, -246)
+    ilvlShell:SetPoint("TOPLEFT", PAD + 470, -262)
     ilvlBox:SetText(tostring(partyLens.db.autopilot.minIlvl or 0))
     ilvlBox:SetScript("OnTextChanged", function(editBox) SaveAutopilotNumber(editBox, "minIlvl", partyLens, 0) end)
 
     -- Arm / GO / status.
     ap.armBtn = UIElements.CreateButton(panel, L("AP_ARM"), 220, 34, P.teal)
-    ap.armBtn:SetPoint("TOPLEFT", PAD, -288)
+    ap.armBtn:SetPoint("TOPLEFT", PAD, -300)
     ap.armBtn:SetScript("OnClick", function()
         Autopilot.Toggle(partyLens)
         UIMain.RefreshAutopilot(partyLens)
@@ -811,26 +854,26 @@ local function CreateAutopilotPanel(partyLens, host)
 
     -- Ready to summon.
     ap.announceBtn = UIElements.CreateButton(panel, L("AP_ANNOUNCE_BTN"), 104, 26, P.gold)
-    ap.announceBtn:SetPoint("TOPRIGHT", -PAD, -334)
+    ap.announceBtn:SetPoint("TOPRIGHT", -PAD, -346)
     ap.announceBtn:SetScript("OnClick", function() Autopilot.AnnounceReady(partyLens) end)
 
-    Section(panel, L("AP_SUMMON_SECTION"), PAD, -340, 380)
+    Section(panel, L("AP_SUMMON_SECTION"), PAD, -352, 380)
     ap.rosterLabel = UIElements.CreateLabel(panel, "", 11, P.text)
-    ap.rosterLabel:SetPoint("TOPLEFT", PAD, -360)
+    ap.rosterLabel:SetPoint("TOPLEFT", PAD, -372)
     ap.rosterLabel:SetPoint("RIGHT", -PAD, 0)
     ap.rosterLabel:SetJustifyH("LEFT")
 
     ap.needLabel = UIElements.CreateLabel(panel, "", 11, P.gold)
-    ap.needLabel:SetPoint("TOPLEFT", PAD, -380)
+    ap.needLabel:SetPoint("TOPLEFT", PAD, -392)
     ap.needLabel:SetPoint("RIGHT", -PAD, 0)
     ap.needLabel:SetJustifyH("LEFT")
 
     -- Activity log.
-    Section(panel, L("AP_LOG_TITLE"), PAD, -406)
+    Section(panel, L("AP_LOG_TITLE"), PAD, -416)
     ap.logLines = {}
     for i = 1, 6 do
         local line = UIElements.CreateLabel(panel, "", 10, P.faint)
-        line:SetPoint("TOPLEFT", PAD, -426 - (i - 1) * 14)
+        line:SetPoint("TOPLEFT", PAD, -436 - (i - 1) * 14)
         line:SetPoint("RIGHT", -PAD, 0)
         line:SetJustifyH("LEFT")
         line:Hide()
@@ -933,7 +976,7 @@ function UIMain.RefreshAutopilotActivities(partyLens, allowRequest)
         end)
         options[#options + 1] = { value = "__header__", label = g.label, header = true }
         for _, item in ipairs(g.items) do
-            options[#options + 1] = { value = item.value, label = item.label, indent = true }
+            options[#options + 1] = { value = item.value, label = item.label, indent = true, maxPlayers = item.maxPlayers }
         end
     end
 
