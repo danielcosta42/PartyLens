@@ -97,11 +97,12 @@ end
 local function ShowFrame(frame) if frame then frame:Show() end end
 local function HideFrame(frame) if frame then frame:Hide() end end
 
--- Section heading: small teal title + a hairline underline. Returns the label so
--- callers can relabel it later. width nil => stretch to panel right edge.
+-- Section heading: a muted title + a hairline underline (teal is reserved for
+-- brand/selection/focus). Returns the label so callers can relabel it later.
+-- width nil => stretch to panel right edge.
 local function Section(parent, text, x, y, width)
     local P = UIElements.PALETTE
-    local label = UIElements.CreateLabel(parent, text, 11, P.teal)
+    local label = UIElements.CreateLabel(parent, text, 12, P.muted)
     label:SetPoint("TOPLEFT", x, y)
     local line = parent:CreateTexture(nil, "BORDER")
     line:SetHeight(1)
@@ -194,12 +195,6 @@ function UIMain.CreateResultRow(partyLens, index)
     local row = UIElements.CreatePanel(partyLens.content, "PartyLensResultRow" .. index, P.panel2, P.stroke)
     row:SetSize(UIMain.ROW_WIDTH, cardHeight)
     row:EnableMouse(true)
-
-    row.accent = row:CreateTexture(nil, "ARTWORK")
-    row.accent:SetPoint("TOPLEFT", 0, 0)
-    row.accent:SetPoint("BOTTOMLEFT", 0, 0)
-    row.accent:SetWidth(3)
-    UIElements.SetTextureColor(row.accent, P.teal)
 
     row.tag = UIElements.CreateChip(row, 86, 20)
     row.tag:EnableDot()

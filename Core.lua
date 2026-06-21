@@ -68,16 +68,6 @@ function PartyLens:Refresh()
             local intentColor = intent == "player" and P.gold or P.teal
             local hasLeader = entry.leader ~= nil and entry.leader ~= ""
 
-            -- Accent stripe color.
-            local accent = intentColor
-            if entry.source == "tool" and intent == "group" then
-                accent = P.blue
-            end
-            if not entry.open then
-                accent = P.coral
-            end
-            UIElements.SetTextureColor(row.accent, accent)
-
             -- Content tag + intent badge.
             local tagLabel, tagColor = UIMain.ContentTagInfo(entry)
             row.tag:SetLabel(tagLabel)

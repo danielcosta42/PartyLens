@@ -19,10 +19,10 @@ UIElements.PALETTE = {
     muted = { 0.560, 0.620, 0.680, 1.00 },
     faint = { 0.420, 0.470, 0.530, 1.00 },
     teal = { 0.150, 0.860, 0.720, 1.00 },
-    gold = { 0.980, 0.740, 0.300, 1.00 },
+    gold = { 0.980, 0.741, 0.302, 1.00 },
     coral = { 1.000, 0.420, 0.380, 1.00 },
     blue = { 0.360, 0.660, 1.000, 1.00 },
-    purple = { 0.700, 0.560, 1.000, 1.00 },
+    purple = { 0.702, 0.561, 1.000, 1.00 },
     -- Role accents
     roleTank = { 0.360, 0.620, 1.000, 1.00 },
     roleHeal = { 0.460, 0.870, 0.520, 1.00 },
@@ -115,14 +115,17 @@ function UIElements.CreateLabel(parent, text, size, color)
     return label
 end
 
--- Glass button: translucent base, accent stripe on the left, hover glow.
+-- Glass button: translucent base with a COMPLETE hairline border (all four
+-- sides, like a panel — no one-sided edges). The teal/accent only appears on
+-- hover and on the persistent selected state ("calm by default, accent on
+-- purpose"): a left accent bar + warmed border, shown only then.
 function UIElements.CreateButton(parent, text, width, height, accent)
     local button = CreateFrame("Button", nil, parent)
     button:SetSize(width or 96, height or 28)
     button.accent = accent or PALETTE.teal
-    button.normalColor = { 0.090, 0.105, 0.130, 0.65 }
-    button.hoverColor = { button.accent[1] * 0.26, button.accent[2] * 0.26, button.accent[3] * 0.26, 0.85 }
-    button.downColor = { button.accent[1] * 0.40, button.accent[2] * 0.40, button.accent[3] * 0.40, 0.95 }
+    button.normalColor = { 0.090, 0.105, 0.130, 0.62 }
+    button.hoverColor = { button.accent[1] * 0.22, button.accent[2] * 0.22, button.accent[3] * 0.22, 0.85 }
+    button.downColor = { button.accent[1] * 0.38, button.accent[2] * 0.38, button.accent[3] * 0.38, 0.95 }
     button.bg = UIElements.AddTexture(button, "BACKGROUND", button.normalColor)
 
     button.sheen = button:CreateTexture(nil, "BORDER")
@@ -131,17 +134,25 @@ function UIElements.CreateButton(parent, text, width, height, accent)
     button.sheen:SetHeight(math.max(6, (height or 28) * 0.45))
     TextureColor(button.sheen, PALETTE.sheen)
 
+    button.gloss = button:CreateTexture(nil, "BORDER")
+    button.gloss:SetPoint("TOPLEFT", 1, -1)
+    button.gloss:SetPoint("TOPRIGHT", -1, -1)
+    button.gloss:SetHeight(1)
+    TextureColor(button.gloss, PALETTE.gloss)
+
+    -- Full hairline border (recolored via SetPanelBorder for hover/selected).
+    button.top = button:CreateTexture(nil, "BORDER"); button.top:SetPoint("TOPLEFT"); button.top:SetPoint("TOPRIGHT"); button.top:SetHeight(1); TextureColor(button.top, PALETTE.stroke)
+    button.bottom = button:CreateTexture(nil, "BORDER"); button.bottom:SetPoint("BOTTOMLEFT"); button.bottom:SetPoint("BOTTOMRIGHT"); button.bottom:SetHeight(1); TextureColor(button.bottom, PALETTE.stroke)
+    button.left = button:CreateTexture(nil, "BORDER"); button.left:SetPoint("TOPLEFT"); button.left:SetPoint("BOTTOMLEFT"); button.left:SetWidth(1); TextureColor(button.left, PALETTE.stroke)
+    button.right = button:CreateTexture(nil, "BORDER"); button.right:SetPoint("TOPRIGHT"); button.right:SetPoint("BOTTOMRIGHT"); button.right:SetWidth(1); TextureColor(button.right, PALETTE.stroke)
+
+    -- Selection accent bar (left): only shown when active/hovered.
     button.bar = button:CreateTexture(nil, "ARTWORK")
     button.bar:SetPoint("TOPLEFT", 0, 0)
     button.bar:SetPoint("BOTTOMLEFT", 0, 0)
     button.bar:SetWidth(2)
     TextureColor(button.bar, button.accent)
-
-    button.edge = button:CreateTexture(nil, "BORDER")
-    button.edge:SetPoint("TOPLEFT")
-    button.edge:SetPoint("TOPRIGHT")
-    button.edge:SetHeight(1)
-    TextureColor(button.edge, PALETTE.gloss)
+    button.bar:Hide()
 
     button.label = UIElements.CreateLabel(button, text, 11, PALETTE.text)
     button.label:SetPoint("CENTER")
@@ -150,10 +161,18 @@ function UIElements.CreateButton(parent, text, width, height, accent)
     button.isActive = false
     button:SetScript("OnEnter", function(self)
         TextureColor(self.bg, self.hoverColor)
-        TextureColor(self.bar, self.accent)
+        UIElements.SetPanelBorder(self, self.accent)
+        self.bar:Show()
     end)
     button:SetScript("OnLeave", function(self)
-        TextureColor(self.bg, self.isActive and self.hoverColor or self.normalColor)
+        if self.isActive then
+            TextureColor(self.bg, self.hoverColor)
+            UIElements.SetPanelBorder(self, self.accent)
+        else
+            TextureColor(self.bg, self.normalColor)
+            UIElements.SetPanelBorder(self, PALETTE.stroke)
+            self.bar:Hide()
+        end
     end)
     button:SetScript("OnMouseDown", function(self)
         TextureColor(self.bg, self.downColor)
@@ -164,17 +183,29 @@ function UIElements.CreateButton(parent, text, width, height, accent)
     button.SetText = function(self, value)
         self.label:SetText(value)
     end
-    -- Persistent "selected" state (filled glass + full opacity) for tabs/filters.
+    -- Persistent "selected" state (filled glass + teal border + accent bar).
     button.SetActive = function(self, value)
         self.isActive = value and true or false
-        TextureColor(self.bg, self.isActive and self.hoverColor or self.normalColor)
-        self:SetAlpha(self.isActive and 1 or 0.6)
+        if self.isActive then
+            TextureColor(self.bg, self.hoverColor)
+            UIElements.SetPanelBorder(self, self.accent)
+            self.bar:Show()
+            self:SetAlpha(1)
+        else
+            TextureColor(self.bg, self.normalColor)
+            UIElements.SetPanelBorder(self, PALETTE.stroke)
+            self.bar:Hide()
+            self:SetAlpha(0.6)
+        end
     end
     button.SetAccent = function(self, color)
         self.accent = color
-        self.hoverColor = { color[1] * 0.26, color[2] * 0.26, color[3] * 0.26, 0.85 }
-        self.downColor = { color[1] * 0.40, color[2] * 0.40, color[3] * 0.40, 0.95 }
+        self.hoverColor = { color[1] * 0.22, color[2] * 0.22, color[3] * 0.22, 0.85 }
+        self.downColor = { color[1] * 0.38, color[2] * 0.38, color[3] * 0.38, 0.95 }
         TextureColor(self.bar, color)
+        if self.isActive then
+            UIElements.SetPanelBorder(self, color)
+        end
     end
     return button
 end
