@@ -73,13 +73,13 @@ function MinimapButton.Create(partyLens)
     button:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight")
 
     button.icon = button:CreateTexture(nil, "ARTWORK")
-    button.icon:SetPoint("CENTER")
+    button.icon:SetPoint("CENTER", 0, 0)
     button.icon:SetSize(20, 20)
-    button.icon:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_02")
-    button.icon:SetTexCoord(0.12, 0.88, 0.12, 0.88)
-    if button.icon.SetMask then
-        button.icon:SetMask("Interface\\CharacterFrame\\TempPortraitAlphaMask")
-    end
+    -- Use the addon's own logo (Icon.tga, 64x64). Deliberately NO SetMask +
+    -- SetTexCoord combo here: mixing the two broke the texture on this client
+    -- (it rendered blank). The logo art is already a round badge, so it sits
+    -- cleanly inside the tracking-border ring.
+    button.icon:SetTexture("Interface\\AddOns\\PartyLens\\Icon")
 
     button.ring = button:CreateTexture(nil, "OVERLAY")
     button.ring:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder")
