@@ -1,29 +1,16 @@
 name: Release
 
-# Publicação automática ao integrar na main.
-#
-# Como funciona: a versão é a fonte única no arquivo `VERSION`. A cada push na
-# main, se a tag `vX.Y.Z` ainda NÃO existe, o workflow cria a tag e publica no
-# CurseForge (+ Release no GitHub). Se a tag já existe (versão não mudou), não
-# faz nada — então commits do dia a dia não geram releases duplicados.
-#
-# Para lançar uma nova versão: edite `VERSION` (e o CHANGELOG.md) e dê push/merge
-# na main. Só isso.
-#
-# Tudo é gateado pelo secret CF_API_KEY: enquanto ele não existir, nada é
-# publicado nem "queima" a versão (não cria tag), evitando releases prematuros.
+# Publica quando uma tag vX.Y.Z chega. Quem cria a tag é o workflow
+# "Auto-tag on main" (a partir do arquivo VERSION) — você não precisa taggear
+# à mão. Rodar a partir da TAG é o que faz o packager gerar um release de
+# verdade (num build de branch ele recusa com "future tag").
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
-
-# Evita dois releases rodando ao mesmo tempo.
-concurrency:
-  group: release
-  cancel-in-progress: false
 
 jobs:
   release:
@@ -35,48 +22,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0 # histórico completo -> changelog automático entre tags
-          fetch-tags: true # precisa das tags p/ saber se a versão já foi lançada
 
       - name: Aviso se faltar o token da CurseForge
         if: ${{ env.CF_API_KEY == '' }}
-        run: |
-          echo "::warning::CF_API_KEY não configurado — nada será publicado. Adicione o secret em Settings → Secrets and variables → Actions e dê push de novo (ou rode este workflow manualmente)."
-
-      - name: Ler versão do arquivo VERSION
-        id: ver
-        if: ${{ env.CF_API_KEY != '' }}
-        run: |
-          VERSION="$(tr -d ' \t\r\n' < VERSION)"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Tag v$VERSION já existe — sem novo release."
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Nova versão detectada: publicando v$VERSION."
-          fi
-
-      - name: Criar e enviar a tag da versão
-        if: ${{ env.CF_API_KEY != '' && steps.ver.outputs.exists == 'false' }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ steps.ver.outputs.version }}" -m "Release v${{ steps.ver.outputs.version }}"
-          git push origin "v${{ steps.ver.outputs.version }}"
+        run: echo "::warning::CF_API_KEY não configurado — pulando publicação. Adicione o secret em Settings → Secrets and variables → Actions."
 
       - name: Empacotar e publicar (CurseForge + GitHub Release)
-        if: ${{ env.CF_API_KEY != '' && steps.ver.outputs.exists == 'false' }}
+        if: ${{ env.CF_API_KEY != '' }}
         uses: BigWigsMods/packager@v2
         env:
-          # CF_API_KEY já vem do env do job. GITHUB_OAUTH usa o token automático.
+          # CF_API_KEY vem do env do job. GITHUB_OAUTH usa o token automático.
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
-          # Rodamos no push da main, mas a tag acabou de ser criada acima neste
-          # commit. O packager só faz um RELEASE quando o build vem de uma tag;
-          # num build de branch ele recusa ("future tag"). Então apontamos o ref
-          # para a tag recém-criada para forçar o build de release.
-          GITHUB_REF: refs/tags/v${{ steps.ver.outputs.version }}
-          GITHUB_REF_NAME: v${{ steps.ver.outputs.version }}
-          GITHUB_REF_TYPE: tag
           # --- Outras plataformas (opcional) ---
           # WOWI_API_TOKEN: ${{ secrets.WOWI_API_TOKEN }}
           # WAGO_API_TOKEN: ${{ secrets.WAGO_API_TOKEN }}

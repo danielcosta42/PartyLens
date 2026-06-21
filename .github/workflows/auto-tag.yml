@@ -1,0 +1,54 @@
+name: Auto-tag on main
+
+# A cada push/merge na main, lê a versão do arquivo VERSION e, se a tag vX.Y.Z
+# ainda NÃO existe, cria e envia a tag — o que dispara o workflow "Release".
+# Assim, lançar = editar VERSION (e o CHANGELOG) e dar push na main.
+#
+# A tag é enviada com um PAT (RELEASE_PAT) DE PROPÓSITO: tags criadas pelo token
+# automático do Actions (GITHUB_TOKEN) NÃO disparam outros workflows. Sem o PAT,
+# o "Release" nunca rodaria. Crie um Personal Access Token (fine-grained, com
+# permissão Contents: Read and write neste repositório) e salve como o secret
+# RELEASE_PAT.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: auto-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+    steps:
+      - name: Aviso se faltar o PAT
+        if: ${{ env.RELEASE_PAT == '' }}
+        run: echo "::warning::RELEASE_PAT não configurado — a auto-tag não dispara o Release. Crie o secret e dê push de novo (ou rode este workflow manualmente)."
+
+      - name: Clone do projeto
+        if: ${{ env.RELEASE_PAT != '' }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.RELEASE_PAT }} # precisa ser o PAT p/ a tag disparar o Release
+
+      - name: Criar e enviar a tag da versão
+        if: ${{ env.RELEASE_PAT != '' }}
+        run: |
+          VERSION="$(tr -d ' \t\r\n' < VERSION)"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::notice::Tag v$VERSION já existe — nada a publicar."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+          echo "::notice::Tag v$VERSION criada — o workflow Release vai publicar."
