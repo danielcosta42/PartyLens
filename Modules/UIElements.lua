@@ -471,6 +471,60 @@ function UIElements.CreateRoleToggle(parent, role, size)
     return pip
 end
 
+-- Joined "role counter": a single pill with a colored role cap (T/H/D) flush
+-- against a numeric input — reads as one control instead of a loose pip + box.
+-- Returns (editBox, shell); use editBox:GetText()/SetText() for the count.
+function UIElements.CreateRoleCounter(parent, name, role, width, height)
+    local ROLE = {
+        tank = { PALETTE.roleTank, "T" },
+        heal = { PALETTE.roleHeal, "H" },
+        dps = { PALETTE.roleDps, "D" },
+    }
+    local m = ROLE[role] or ROLE.dps
+    local color = m[1]
+    width = width or 62
+    height = height or 28
+    local capW = 24
+
+    local shell = UIElements.CreatePanel(parent, name and (name .. "Shell") or nil, PALETTE.field, PALETTE.stroke)
+    shell:SetSize(width, height)
+
+    local cap = shell:CreateTexture(nil, "ARTWORK")
+    cap:SetPoint("TOPLEFT", 1, -1)
+    cap:SetPoint("BOTTOMLEFT", 1, 1)
+    cap:SetWidth(capW)
+    TextureColor(cap, { color[1] * 0.30, color[2] * 0.30, color[3] * 0.30, 0.95 })
+
+    local divider = shell:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("TOPLEFT", cap, "TOPRIGHT", 0, 0)
+    divider:SetPoint("BOTTOMLEFT", cap, "BOTTOMRIGHT", 0, 0)
+    divider:SetWidth(1)
+    TextureColor(divider, { color[1], color[2], color[3], 0.55 })
+
+    local letter = UIElements.CreateLabel(shell, m[2], math.max(11, math.floor(height * 0.5)), color)
+    letter:SetPoint("LEFT", 1, 0)
+    letter:SetWidth(capW)
+    letter:SetJustifyH("CENTER")
+
+    local editBox = CreateFrame("EditBox", name, shell)
+    editBox.shell = shell
+    editBox:SetPoint("LEFT", cap, "RIGHT", 2, 0)
+    editBox:SetPoint("RIGHT", -4, 0)
+    editBox:SetHeight(height - 4)
+    editBox:SetAutoFocus(false)
+    editBox:SetNumeric(true)
+    editBox:SetMaxLetters(2)
+    editBox:SetFont(STANDARD_TEXT_FONT, 13, "")
+    editBox:SetJustifyH("CENTER")
+    editBox:SetTextColor(PALETTE.text[1], PALETTE.text[2], PALETTE.text[3], 1)
+    editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    editBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    editBox:SetScript("OnEditFocusGained", function(self) UIElements.SetPanelBorder(self.shell, PALETTE.strokeHot) end)
+    editBox:SetScript("OnEditFocusLost", function(self) UIElements.SetPanelBorder(self.shell, PALETTE.stroke) end)
+
+    return editBox, shell
+end
+
 -- Custom glass dropdown (no Blizzard widget). Use :SetOptions({{value=,label=}}, value)
 -- and assign .onSelect(value). Opens a popup list; closes on pick or outside click.
 function UIElements.CreateDropdown(parent, width, height, accent)
