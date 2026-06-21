@@ -5,16 +5,20 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.10.0]
+
+- **PartyLens mesh**: usuários do addon se detectam e se priorizam via mensagens
+  de addon ocultas no canal LookingForGroup — convite instantâneo, selo "PL" nos
+  cards e contador de usuários por perto. Novo módulo `Comm`.
 - Ícone próprio (radar teal sobre vidro escuro) e identidade visual.
 - Pipeline de release automático para o CurseForge via GitHub Actions.
 
-## [0.10.0]
-
-- Módulos de Roster, Comm e Autopilot.
-
 ## [0.9.0]
 
-- Polimento geral da interface "dark glass".
+- **Autopilot**: monta grupo (anuncia "LFM" no canal + auto-convida quem responde
+  por whisper) ou busca grupo (auto-whisper nos líderes), com coordenação do
+  summon na pedra. Novos módulos `Roster` e `Autopilot`. Respeita os limites do
+  TBC — não cria listagem nativa (função protegida pelo cliente).
 
 ## [0.8.0]
 
@@ -25,6 +29,11 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 - Filtragem simplificada: Create/Settings viraram ícones no header, Browse como padrão.
 - Categoria única em dropdown; filtro de role por pips T/H/D.
+
+## [0.6.0]
+
+- Reestruturação da navegação: 3 modos (Browse · Create · Settings) e uma
+  categoria de conteúdo unificada.
 
 ## [0.5.0]
 

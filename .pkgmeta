@@ -17,3 +17,6 @@ ignore:
   - DEPLOY.md
   - icon-concept.svg
   - PartyLens-logo-512.png
+  - CURSEFORGE-DESCRIPTION.md
+  - ARCHITECTURE.md
+  - LOCALIZATION.md

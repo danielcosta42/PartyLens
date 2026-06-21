@@ -5,7 +5,7 @@
 ## Version: @project-version@
 ## SavedVariables: PartyLensDB
 ## IconTexture: Interface\AddOns\PartyLens\Icon
-## X-Curse-Project-ID:
+## X-Curse-Project-ID: 1582736
 ## X-Website: https://github.com/danielcosta42/PartyLens
 ## X-License: MIT
 
