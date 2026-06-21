@@ -7,6 +7,9 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [0.10.0]
 
+- **Reformulação visual**: navegação por menu lateral (rótulos claros no lugar
+  dos ícones), grade consistente com seções tituladas e divisórias, Browse com
+  mais respiro e o Autopilot reorganizado em blocos legíveis.
 - **PartyLens mesh**: usuários do addon se detectam e se priorizam via mensagens
   de addon ocultas no canal LookingForGroup — convite instantâneo, selo "PL" nos
   cards e contador de usuários por perto. Novo módulo `Comm`.
