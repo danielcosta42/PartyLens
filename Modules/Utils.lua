@@ -62,5 +62,25 @@ function Utils.ClassColoredName(name, classFile)
     return "|cff" .. color .. Utils.PlayerShortName(name) .. "|r"
 end
 
+-- UTF-8-aware uppercase: string.upper only handles ASCII, so accented Latin
+-- letters (á, ç, ã, …) would stay lowercase and look broken in UPPERCASE section
+-- headers. Map the common ones explicitly. Non-Latin scripts are left as-is.
+local UPPER_ACCENTS = {
+    ["á"] = "Á", ["à"] = "À", ["â"] = "Â", ["ã"] = "Ã", ["ä"] = "Ä",
+    ["é"] = "É", ["è"] = "È", ["ê"] = "Ê", ["ë"] = "Ë",
+    ["í"] = "Í", ["ì"] = "Ì", ["î"] = "Î", ["ï"] = "Ï",
+    ["ó"] = "Ó", ["ò"] = "Ò", ["ô"] = "Ô", ["õ"] = "Õ", ["ö"] = "Ö",
+    ["ú"] = "Ú", ["ù"] = "Ù", ["û"] = "Û", ["ü"] = "Ü",
+    ["ç"] = "Ç", ["ñ"] = "Ñ",
+}
+
+function Utils.Upper(value)
+    local s = string.upper(tostring(value or ""))
+    s = string.gsub(s, "[\194-\223][\128-\191]", function(c)
+        return UPPER_ACCENTS[c] or c
+    end)
+    return s
+end
+
 _G[ADDON_NAME .. "_Utils"] = Utils
 return Utils

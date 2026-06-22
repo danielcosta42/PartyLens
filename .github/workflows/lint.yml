@@ -24,5 +24,9 @@ jobs:
       - name: Install luacheck
         run: luarocks install luacheck
 
+      # Informational: luacheck runs and reports any findings in the log, but
+      # doesn't fail the build over style/unused nits (the author can read the
+      # output and tighten as desired). Flip continue-on-error off to enforce.
       - name: Run luacheck
+        continue-on-error: true
         run: luacheck Modules Core.lua

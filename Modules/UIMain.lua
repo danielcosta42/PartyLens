@@ -102,7 +102,7 @@ local function HideFrame(frame) if frame then frame:Hide() end end
 -- width nil => stretch to panel right edge.
 local function Section(parent, text, x, y, width)
     local P = UIElements.PALETTE
-    local label = UIElements.CreateLabel(parent, text, 12, P.muted)
+    local label = UIElements.CreateLabel(parent, Utils.Upper(text), 12, P.muted)
     label:SetPoint("TOPLEFT", x, y)
     local line = parent:CreateTexture(nil, "BORDER")
     line:SetHeight(1)
@@ -220,12 +220,12 @@ function UIMain.CreateResultRow(partyLens, index)
     row.freshDot:SetPoint("RIGHT", row.time, "LEFT", -5, 0)
     UIElements.SetTextureColor(row.freshDot, P.freshOld)
 
-    row.title = UIElements.CreateLabel(row, "", 15, P.text)
+    row.title = UIElements.CreateLabel(row, "", 14, P.text)
     row.title:SetPoint("TOPLEFT", inset, -35)
     row.title:SetPoint("RIGHT", row.fill, "LEFT", -12, 0)
     row.title:SetJustifyH("LEFT")
 
-    row.leader = UIElements.CreateLabel(row, "", 11, P.muted)
+    row.leader = UIElements.CreateLabel(row, "", 12, P.muted)
     row.leader:SetPoint("TOPLEFT", inset, -57)
     row.leader:SetPoint("RIGHT", row.fill, "LEFT", -12, 0)
     row.leader:SetJustifyH("LEFT")
@@ -1194,7 +1194,7 @@ function UIMain.CreateMainUI(partyLens)
     logo:SetSize(32, 32)
     logo:SetTexture("Interface\\AddOns\\PartyLens\\Icon")
 
-    local title = UIElements.CreateLabel(sidebar, L("TITLE"), 16, P.text)
+    local title = UIElements.CreateLabel(sidebar, L("TITLE"), 15, P.text)
     title:SetPoint("TOPLEFT", 48, -13)
     local subtitle = UIElements.CreateLabel(sidebar, L("SUBTITLE"), 9, P.muted)
     subtitle:SetPoint("TOPLEFT", 48, -31)
