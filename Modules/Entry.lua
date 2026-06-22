@@ -13,6 +13,33 @@ Entry.ADDON_TTL_SECONDS = 3 * 60
 
 Entry.DEDUP_WINDOW_SECONDS = 10 * 60
 
+-- Optional audible ping when a NEW open group in the selected category shows up
+-- while the window is closed (you're not already watching). Opt-in + debounced.
+function Entry.MaybeAlert(partyLens, entry)
+    local db = partyLens.db
+    if not db or not db.alertOnMatch or not entry.open then
+        return
+    end
+    if partyLens.frame and partyLens.frame:IsShown() then
+        return
+    end
+    local cf = db.contentFilter or "all"
+    if cf ~= "all" then
+        local at = entry.activityType or (entry.isRaid and "raid" or "dungeon")
+        if at ~= cf then
+            return
+        end
+    end
+    local now = time()
+    if partyLens._lastAlert and (now - partyLens._lastAlert) < 8 then
+        return
+    end
+    partyLens._lastAlert = now
+    if PlaySound then
+        pcall(PlaySound, (SOUNDKIT and SOUNDKIT.READY_CHECK) or 8960, "Master")
+    end
+end
+
 local function NormalizedLeader(entry)
     return string.lower(entry.leaderDisplay or entry.leader or "")
 end
@@ -101,6 +128,7 @@ function Entry.AddOrUpdateEntry(partyLens, entry)
         else
             table.insert(partyLens.entries, entry)
             partyLens.entriesById[entry.id] = entry
+            Entry.MaybeAlert(partyLens, entry)
         end
     end
 

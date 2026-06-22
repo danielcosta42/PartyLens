@@ -31,6 +31,10 @@ local LocalizedKeywords = LoadModule("LocalizedKeywords")
 local PartyLens = CreateFrame("Frame", "PartyLens_EventFrame")
 _G.PartyLens = PartyLens
 
+-- Key Bindings UI labels (the binding action itself lives in Bindings.xml).
+_G.BINDING_HEADER_PARTYLENS = "PartyLens"
+_G.BINDING_NAME_PARTYLENS_TOGGLE = Localization.L("BINDING_TOGGLE")
+
 
 function PartyLens:Refresh()
     if not self.frame or not self.frame:IsShown() then

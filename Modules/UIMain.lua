@@ -1100,6 +1100,14 @@ local function CreateSettingsPanel(partyLens, host)
         end
     end)
 
+    local alert = UIElements.CreateToggle(panel, L("ALERT_TOGGLE"), 84)
+    partyLens.alertCheck = alert
+    alert:SetPoint("LEFT", minimap, "RIGHT", 8, 0)
+    alert:SetChecked(partyLens.db.alertOnMatch)
+    alert:SetScript("OnClick", function(check)
+        ToggleDB(check, "alertOnMatch", partyLens, false)
+    end)
+
     Section(panel, L("PROFILE_AND_WHISPER"), PAD, -90)
 
     local specLabel = UIElements.CreateLabel(panel, L("SPEC_LABEL"), 10, P.muted)

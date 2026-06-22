@@ -37,6 +37,9 @@ function Database.EnsureDB(partyLens)
         onlyOpen = true,
         minimap = true,
         minimapAngle = 225,
+        -- Audible ping when a new open group in the selected category appears
+        -- while the window is closed (opt-in).
+        alertOnMatch = false,
         -- Autopilot: persisted CONFIG only. The armed/running state is runtime
         -- (partyLens.autopilot) so a reload never resumes acting silently.
         autopilot = {
