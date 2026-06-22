@@ -174,7 +174,7 @@ function LFGTool.SearchTool(partyLens, categoryID, keepExisting)
         Entry.RemoveBySource(partyLens, "tool")
     end
 
-    local ok, err = pcall(function()
+    local ok = pcall(function()
         partyLens.lastSearchCategoryID = categoryID
         C_LFGList.Search(categoryID, 0, nil, languages, false, nil, nil)
     end)

@@ -1,5 +1,4 @@
 local ADDON_NAME = ...
-local Utils = _G[ADDON_NAME .. "_Utils"]
 
 local Entry = {}
 

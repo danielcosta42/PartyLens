@@ -26,7 +26,10 @@ ignore = {
     "143", -- accessing an undefined field of a global
     "212", -- unused argument (event/callback signatures often ignore some)
     "213", -- unused loop variable
+    "311", -- value assigned to a local is never used (intentional in spots)
+    "4..", -- shadowing / redefining locals (this code reuses key/name/label/btn)
     "542", -- empty if branch
+    "6..", -- whitespace / formatting nits
 }
 
 exclude_files = {

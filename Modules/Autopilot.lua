@@ -1,6 +1,5 @@
 local ADDON_NAME = ...
 local Utils = _G[ADDON_NAME .. "_Utils"]
-local Entry = _G[ADDON_NAME .. "_Entry"]
 local Roster = _G[ADDON_NAME .. "_Roster"]
 local Messaging = _G[ADDON_NAME .. "_Messaging"]
 local LFGTool = _G[ADDON_NAME .. "_LFGTool"]
@@ -22,6 +21,13 @@ Autopilot.SEARCH_INTERVAL = 15
 -- How often build mode re-spams its "LFM" line in the LookingForGroup channel.
 Autopilot.ANNOUNCE_INTERVAL = 60
 Autopilot.LOG_MAX = 24
+-- Anti-spam: never send more than this many whispers/invites per rolling minute.
+Autopilot.MAX_PER_MINUTE = 8
+-- Per-name attempt cap before a session blacklist (don't pester the same person).
+Autopilot.MAX_CONTACTS = 2
+-- Safety: auto-disarm if it has been armed this long without finishing (no
+-- runaway that spams all day if the player walks away).
+Autopilot.MAX_RUNTIME = 45 * 60
 
 -- ---------------------------------------------------------------------------
 -- Runtime state (NOT persisted): the autopilot always boots disarmed after a
@@ -33,6 +39,9 @@ local function RT(partyLens)
             armed = false,
             state = "idle", -- idle | searching | assembling | ready
             contacts = {}, -- [lowerShortName] = lastContactTime
+            contactCount = {}, -- [lowerShortName] = attempts (session blacklist)
+            actionTimes = {}, -- timestamps of recent whispers/invites (rate cap)
+            armedAt = 0,
             log = {},
             lastSearch = 0,
             lastAnnounce = 0,
@@ -79,16 +88,40 @@ local function Cooldown(partyLens)
     return math.max(5, cd)
 end
 
+-- True only if we may contact this name: under the per-name attempt cap (a
+-- session blacklist after MAX_CONTACTS so we don't pester anyone) and past its
+-- cooldown.
 function Autopilot.CanContact(partyLens, name)
     local rt = RT(partyLens)
     local key = Utils.SafeLower(Short(name))
+    if (rt.contactCount[key] or 0) >= Autopilot.MAX_CONTACTS then
+        return false
+    end
     local last = rt.contacts[key]
     return not last or (time() - last) >= Cooldown(partyLens)
 end
 
 function Autopilot.RecordContact(partyLens, name)
     local rt = RT(partyLens)
-    rt.contacts[Utils.SafeLower(Short(name))] = time()
+    local key = Utils.SafeLower(Short(name))
+    rt.contacts[key] = time()
+    rt.contactCount[key] = (rt.contactCount[key] or 0) + 1
+    rt.actionTimes[#rt.actionTimes + 1] = time()
+end
+
+-- Global throttle: cap whispers/invites per rolling minute so we never trip the
+-- client's chat spam filter. Prunes the window as a side effect.
+function Autopilot.WithinRate(partyLens)
+    local rt = RT(partyLens)
+    local now = time()
+    local kept = {}
+    for _, t in ipairs(rt.actionTimes or {}) do
+        if now - t < 60 then
+            kept[#kept + 1] = t
+        end
+    end
+    rt.actionTimes = kept
+    return #kept < Autopilot.MAX_PER_MINUTE
 end
 
 -- ---------------------------------------------------------------------------
@@ -266,7 +299,7 @@ function Autopilot.Engage(partyLens, entry)
         if tier == "advisor" then
             rt.pendingAction = { kind = "invite", name = entry.leader }
             Autopilot.Log(partyLens, L("AP_LOG_SUGGEST_INVITE", Short(entry.leader)))
-        else
+        elseif Autopilot.WithinRate(partyLens) then
             Autopilot.DoInvite(entry.leader)
             Autopilot.RecordContact(partyLens, entry.leader)
             Autopilot.Log(partyLens, L(entry.isAddonUser and "AP_LOG_PL_INVITED" or "AP_LOG_INVITED", Short(entry.leader)))
@@ -283,7 +316,7 @@ function Autopilot.Engage(partyLens, entry)
     if tier == "advisor" then
         rt.pendingAction = { kind = "whisper", name = entry.leader, message = message }
         Autopilot.Log(partyLens, L("AP_LOG_SUGGEST_WHISPER", Short(entry.leader)))
-    else
+    elseif Autopilot.WithinRate(partyLens) then
         SendChatMessage(message, "WHISPER", nil, entry.leader)
         Autopilot.RecordContact(partyLens, entry.leader)
         Autopilot.Log(partyLens, L(entry.isAddonUser and "AP_LOG_PL_WHISPERED" or "AP_LOG_WHISPERED", Short(entry.leader)))
@@ -340,6 +373,10 @@ function Autopilot.HandleWhisper(partyLens, message, sender)
         return
     end
     if Roster.IsInGroup(sender) then
+        return
+    end
+    -- Respect the per-name blacklist and the per-minute cap even for replies.
+    if not Autopilot.CanContact(partyLens, sender) or not Autopilot.WithinRate(partyLens) then
         return
     end
     Autopilot.DoInvite(sender)
@@ -465,6 +502,12 @@ function Autopilot.Tick(partyLens)
     if not rt.armed then
         return
     end
+    -- Safety net: stop after a long run so it never spams unattended all day.
+    if rt.armedAt and rt.armedAt > 0 and (time() - rt.armedAt) >= Autopilot.MAX_RUNTIME then
+        Autopilot.Log(partyLens, L("AP_LOG_TIMEOUT"))
+        Autopilot.Disarm(partyLens)
+        return
+    end
     if InCombatLockdown and InCombatLockdown() then
         return
     end
@@ -551,6 +594,10 @@ function Autopilot.Arm(partyLens)
     rt.lastAnnounce = 0
     rt.pendingAction = nil
     rt.state = "searching"
+    -- Fresh session: reset the blacklist + rate window + runtime clock.
+    rt.armedAt = time()
+    rt.contactCount = {}
+    rt.actionTimes = {}
 
     local roleLabel = (cfg.role == "build") and L("AP_ROLE_BUILD") or L("AP_ROLE_FIND")
     Autopilot.Log(partyLens, L("AP_LOG_ARMED", roleLabel))
