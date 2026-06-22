@@ -638,7 +638,7 @@ end
 -- related controls read as one block instead of floating loose.
 local function Card(parent, titleText, y, h)
     local P = UIElements.PALETTE
-    local card = UIElements.CreatePanel(parent, nil, { 0.082, 0.096, 0.120, 0.55 }, P.stroke)
+    local card = UIElements.CreatePanel(parent, nil, { 0.082, 0.096, 0.120, 0.55 }, P.stroke, true)
     card:SetPoint("TOPLEFT", PAD, y)
     card:SetPoint("TOPRIGHT", -PAD, y)
     card:SetHeight(h)
@@ -1364,8 +1364,13 @@ end
 local function NavButton(parent, text, y, accent, onClick)
     local b = UIElements.CreateButton(parent, text, SIDEBAR_W - 20, 32, accent)
     b:SetPoint("TOPLEFT", 10, y)
+    -- A small accent dot gives the sidebar colour identity without clutter.
+    b.dot = b:CreateTexture(nil, "OVERLAY")
+    b.dot:SetSize(6, 6)
+    b.dot:SetPoint("LEFT", 11, 0)
+    UIElements.SetTextureColor(b.dot, accent)
     b.label:ClearAllPoints()
-    b.label:SetPoint("LEFT", 12, 0)
+    b.label:SetPoint("LEFT", 24, 0)
     b.label:SetJustifyH("LEFT")
     b:SetScript("OnClick", onClick)
     return b
@@ -1382,7 +1387,7 @@ function UIMain.CreateMainUI(partyLens)
         partyLens.mode = "browse"
     end
 
-    local frame = UIElements.CreatePanel(UIParent, "PartyLensFrame", P.shell, P.strokeHot)
+    local frame = UIElements.CreatePanel(UIParent, "PartyLensFrame", P.shell, P.strokeHot, true)
     partyLens.frame = frame
     frame:SetSize(UIMain.UI_WIDTH, UIMain.UI_HEIGHT)
     frame:SetPoint("CENTER")
@@ -1392,11 +1397,17 @@ function UIMain.CreateMainUI(partyLens)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    frame:SetScript("OnHide", function()
+        if partyLens._summonTicker then
+            partyLens._summonTicker:Cancel()
+            partyLens._summonTicker = nil
+        end
+    end)
     frame:Hide()
     tinsert(UISpecialFrames, "PartyLensFrame")
 
     -- Sidebar (brand + nav).
-    local sidebar = UIElements.CreatePanel(frame, "PartyLensSidebar", { 0.055, 0.065, 0.082, 0.72 }, P.stroke)
+    local sidebar = UIElements.CreatePanel(frame, "PartyLensSidebar", { 0.055, 0.065, 0.082, 0.72 }, P.stroke, true)
     sidebar:SetPoint("TOPLEFT", 8, -8)
     sidebar:SetPoint("BOTTOMLEFT", 8, 8)
     sidebar:SetWidth(SIDEBAR_W)
@@ -1454,11 +1465,25 @@ function UIMain.CreateMainUI(partyLens)
     partyLens.countPill = countPill
     partyLens.countLabel = countPill.text
 
+    -- Brand accent line under the header.
+    local headAccent = chead:CreateTexture(nil, "OVERLAY")
+    headAccent:SetHeight(2)
+    headAccent:SetPoint("BOTTOMLEFT", chead, "BOTTOMLEFT", 2, -3)
+    headAccent:SetPoint("BOTTOMRIGHT", chead, "BOTTOMRIGHT", -2, -3)
+    UIElements.SetTextureColor(headAccent, { P.teal[1], P.teal[2], P.teal[3], 0.45 })
+
     -- Content host (the four panels fill this).
-    local hostPanel = UIElements.CreatePanel(frame, "PartyLensHost", { 0.040, 0.050, 0.065, 0.45 }, P.stroke)
+    local hostPanel = UIElements.CreatePanel(frame, "PartyLensHost", { 0.040, 0.050, 0.065, 0.45 }, P.stroke, true)
     hostPanel:SetPoint("TOPLEFT", chead, "BOTTOMLEFT", 0, -6)
     hostPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -8, 8)
     partyLens.host = hostPanel
+
+    -- Faint radar-logo watermark for brand presence behind the content.
+    local watermark = hostPanel:CreateTexture(nil, "ARTWORK")
+    watermark:SetTexture("Interface\\AddOns\\PartyLens\\Icon")
+    watermark:SetSize(170, 170)
+    watermark:SetPoint("BOTTOMRIGHT", -6, 8)
+    watermark:SetAlpha(0.05)
 
     CreateResultsPanel(partyLens, hostPanel)
     CreateCreatePanel(partyLens, hostPanel)

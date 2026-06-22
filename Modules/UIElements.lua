@@ -54,17 +54,52 @@ function UIElements.AddTexture(parent, layer, color)
     return texture
 end
 
+local function Lighten(c, amt)
+    return { math.min(1, c[1] + amt), math.min(1, c[2] + amt), math.min(1, c[3] + amt), c[4] }
+end
+
+-- Subtle vertical gradient (top lighter -> bottom base) for depth. Feature-
+-- detects the modern and legacy gradient APIs and falls back to a flat fill, so
+-- a panel can never render broken on any client.
+function UIElements.SetGradient(tex, topColor, bottomColor)
+    if tex.SetColorTexture then
+        tex:SetColorTexture(1, 1, 1, 1)
+    end
+    local ok = false
+    if tex.SetGradient and CreateColor then
+        ok = pcall(tex.SetGradient, tex, "VERTICAL",
+            CreateColor(bottomColor[1], bottomColor[2], bottomColor[3], bottomColor[4] or 1),
+            CreateColor(topColor[1], topColor[2], topColor[3], topColor[4] or 1))
+    end
+    if not ok and tex.SetGradientAlpha then
+        ok = pcall(tex.SetGradientAlpha, tex, "VERTICAL",
+            bottomColor[1], bottomColor[2], bottomColor[3], bottomColor[4] or 1,
+            topColor[1], topColor[2], topColor[3], topColor[4] or 1)
+    end
+    if not ok then
+        TextureColor(tex, topColor)
+    end
+end
+
 -- A translucent "glass" panel: base fill + faint top sheen + bright top gloss
 -- line + hairline borders. Border textures are exposed (top/bottom/left/right)
--- so callers can recolor them for focus/accent states.
-function UIElements.CreatePanel(parent, name, color, borderColor)
+-- so callers can recolor them for focus/accent states. Pass gradient=true on big
+-- static surfaces (frame/sidebar/host/cards) for depth.
+function UIElements.CreatePanel(parent, name, color, borderColor, gradient)
     local frame = CreateFrame("Frame", name, parent)
-    frame.bg = UIElements.AddTexture(frame, "BACKGROUND", color or PALETTE.panel)
+    color = color or PALETTE.panel
+    frame.bg = frame:CreateTexture(nil, "BACKGROUND")
+    frame.bg:SetAllPoints(frame)
+    if gradient then
+        UIElements.SetGradient(frame.bg, Lighten(color, 0.035), color)
+    else
+        TextureColor(frame.bg, color)
+    end
 
     frame.sheen = frame:CreateTexture(nil, "BORDER")
     frame.sheen:SetPoint("TOPLEFT", 1, -1)
     frame.sheen:SetPoint("TOPRIGHT", -1, -1)
-    frame.sheen:SetHeight(14)
+    frame.sheen:SetHeight(16)
     TextureColor(frame.sheen, PALETTE.sheen)
 
     frame.gloss = frame:CreateTexture(nil, "BORDER")
