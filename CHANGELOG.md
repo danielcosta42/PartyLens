@@ -5,6 +5,14 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.11.1]
+
+- **Profundidade visual**: gradiente sutil nos painéis (janela, sidebar, host e
+  cards), marca d'água do radar atrás do conteúdo, acento teal sob o cabeçalho e
+  uma bolinha colorida por item da navegação — menos "genérico".
+- **Correção**: o atualizador ao vivo da tela de Summon não era cancelado ao
+  fechar a janela (ficava rodando em segundo plano).
+
 ## [0.11.0]
 
 - **Coordenação de summon**: tela dedicada para a "pedra" — roster ao vivo (quem
