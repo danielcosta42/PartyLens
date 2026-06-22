@@ -219,6 +219,10 @@ function PartyLens:OnAddonLoaded(name)
             UIMain.CreateMainUI(self)
             self.frame:Show()
             UIMain.SetMode(self, "autopilot")
+        elseif msg == Localization.L("SLASH_SUMMON") or msg == "summon" then
+            UIMain.CreateMainUI(self)
+            self.frame:Show()
+            UIMain.SetMode(self, "summon")
         elseif msg == "arm" then
             Autopilot.Arm(self)
         elseif msg == "disarm" then
@@ -259,6 +263,9 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
         Autopilot.HandleWhisper(self, ...)
     elseif event == "GROUP_ROSTER_UPDATE" then
         Autopilot.OnRosterUpdate(self)
+        if UIMain.RefreshSummon then
+            UIMain.RefreshSummon(self)
+        end
     elseif event == "CHAT_MSG_ADDON" then
         -- args: prefix, text, channel, sender
         Comm.OnMessage(self, ...)

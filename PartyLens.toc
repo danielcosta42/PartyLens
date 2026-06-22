@@ -21,6 +21,7 @@ Modules/Chat.lua
 Modules/LFGTool.lua
 Modules/Messaging.lua
 Modules/Roster.lua
+Modules/Summon.lua
 Modules/Comm.lua
 Modules/Autopilot.lua
 Modules/UIElements.lua

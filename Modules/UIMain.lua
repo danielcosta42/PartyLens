@@ -8,6 +8,7 @@ local LFGTool = _G[ADDON_NAME .. "_LFGTool"]
 local MinimapButton = _G[ADDON_NAME .. "_Minimap"]
 local Autopilot = _G[ADDON_NAME .. "_Autopilot"]
 local Roster = _G[ADDON_NAME .. "_Roster"]
+local Summon = _G[ADDON_NAME .. "_Summon"]
 
 local L = Localization.L
 local UIMain = {}
@@ -71,7 +72,7 @@ function UIMain.RefreshActivityList(partyLens, allowRequest)
 end
 
 -- Top-level navigation modes.
-local MODES = { browse = true, create = true, settings = true, autopilot = true }
+local MODES = { browse = true, create = true, settings = true, autopilot = true, summon = true }
 
 local CONTENT_CATEGORIES = {
     { key = "all", labelKey = "FILTER_ALL" },
@@ -144,6 +145,7 @@ end
 local MODE_TITLE = {
     browse = "MODE_BROWSE",
     autopilot = "AP_TITLE",
+    summon = "SUMMON_TITLE",
     create = "LISTING_SECTION_TITLE",
     settings = "SETTINGS_TITLE",
 }
@@ -165,10 +167,17 @@ function UIMain.SetMode(partyLens, mode)
         partyLens.headerTitle:SetText(L(MODE_TITLE[mode] or "MODE_BROWSE"))
     end
 
+    -- A live refresh timer runs only while the Summon screen is up.
+    if partyLens._summonTicker then
+        partyLens._summonTicker:Cancel()
+        partyLens._summonTicker = nil
+    end
+
     HideFrame(partyLens.resultsPanel)
     HideFrame(partyLens.createPanel)
     HideFrame(partyLens.settingsPanel)
     HideFrame(partyLens.autopilotPanel)
+    HideFrame(partyLens.summonPanel)
     HideFrame(partyLens.countPill)
 
     if mode == "create" then
@@ -183,6 +192,14 @@ function UIMain.SetMode(partyLens, mode)
         ShowFrame(partyLens.autopilotPanel)
         UIMain.RefreshAutopilotActivities(partyLens, true)
         UIMain.RefreshAutopilot(partyLens)
+    elseif mode == "summon" then
+        ShowFrame(partyLens.summonPanel)
+        UIMain.RefreshSummon(partyLens)
+        if C_Timer and C_Timer.NewTicker then
+            partyLens._summonTicker = C_Timer.NewTicker(1.5, function()
+                UIMain.RefreshSummon(partyLens)
+            end)
+        end
     else
         ShowFrame(partyLens.resultsPanel)
         ShowFrame(partyLens.countPill)
@@ -1192,6 +1209,158 @@ end
 -- ===========================================================================
 -- Sidebar nav button
 -- ===========================================================================
+-- ===========================================================================
+-- Summon coordination panel
+-- ===========================================================================
+local function CreateSummonRow(parent)
+    local P = UIElements.PALETTE
+    local row = CreateFrame("Button", nil, parent)
+    row:SetHeight(24)
+    row.bg = UIElements.AddTexture(row, "BACKGROUND", { 0, 0, 0, 0 })
+    row.dot = row:CreateTexture(nil, "ARTWORK")
+    row.dot:SetSize(9, 9)
+    row.dot:SetPoint("LEFT", 6, 0)
+    row.name = UIElements.CreateLabel(row, "", 12, P.text)
+    row.name:SetPoint("LEFT", 22, 0)
+    row.status = UIElements.CreateLabel(row, "", 11, P.muted)
+    row.status:SetPoint("RIGHT", -10, 0)
+    row.status:SetJustifyH("RIGHT")
+    row:SetScript("OnEnter", function(self) UIElements.SetTextureColor(self.bg, P.panelHover) end)
+    row:SetScript("OnLeave", function(self) UIElements.SetTextureColor(self.bg, { 0, 0, 0, 0 }) end)
+    row:Hide()
+    return row
+end
+
+local function CreateSummonPanel(partyLens, host)
+    local P = UIElements.PALETTE
+    local panel = CreateFrame("Frame", "PartyLensSummonPanel", host)
+    partyLens.summonPanel = panel
+    panel:SetAllPoints(host)
+
+    local s = {}
+    partyLens.summon = s
+    partyLens.summonMarked = partyLens.summonMarked or {}
+
+    local hint = UIElements.CreateLabel(panel, L("SUMMON_HINT"), 10, P.muted)
+    hint:SetPoint("TOPLEFT", PAD, -PAD)
+    hint:SetPoint("RIGHT", -PAD, 0)
+    hint:SetJustifyH("LEFT")
+
+    s.warlock = UIElements.CreateLabel(panel, "", 11, P.purple)
+    s.warlock:SetPoint("TOPLEFT", PAD, -48)
+    s.warlock:SetPoint("RIGHT", -PAD, 0)
+    s.warlock:SetJustifyH("LEFT")
+
+    Section(panel, L("SUMMON_PARTY"), PAD, -76)
+
+    s.rows = {}
+    for i = 1, 14 do
+        local row = CreateSummonRow(panel)
+        row:SetPoint("TOPLEFT", PAD, -96 - (i - 1) * 26)
+        row:SetPoint("RIGHT", panel, "RIGHT", -PAD, 0)
+        row:SetScript("OnClick", function(self)
+            if self.memberName then
+                local key = Utils.SafeLower(self.memberName)
+                partyLens.summonMarked[key] = (not partyLens.summonMarked[key]) or nil
+                UIMain.RefreshSummon(partyLens)
+            end
+        end)
+        s.rows[i] = row
+    end
+
+    s.empty = UIElements.CreateLabel(panel, L("SUMMON_EMPTY"), 12, P.faint)
+    s.empty:SetPoint("TOP", panel, "TOP", 0, -160)
+    s.empty:SetJustifyH("CENTER")
+    s.empty:Hide()
+
+    s.announceBtn = UIElements.CreateButton(panel, L("SUMMON_NEEDED_BTN"), 160, 30, P.gold)
+    s.announceBtn:SetPoint("BOTTOMLEFT", PAD, PAD)
+    s.announceBtn:SetScript("OnClick", function()
+        Summon.AnnounceNeeded(partyLens, partyLens.summonMarked)
+    end)
+
+    s.nextBtn = UIElements.CreateButton(panel, L("SUMMON_NEXT_BTN"), 140, 30, P.teal)
+    s.nextBtn:SetPoint("LEFT", s.announceBtn, "RIGHT", 8, 0)
+    s.nextBtn:SetScript("OnClick", function()
+        Summon.AnnounceNext(partyLens, partyLens.summonMarked)
+    end)
+
+    s.resetBtn = UIElements.CreateButton(panel, L("SUMMON_RESET_BTN"), 90, 30, P.coral)
+    s.resetBtn:SetPoint("LEFT", s.nextBtn, "RIGHT", 8, 0)
+    s.resetBtn:SetScript("OnClick", function()
+        partyLens.summonMarked = {}
+        UIMain.RefreshSummon(partyLens)
+    end)
+end
+
+-- Repaints the summon roster (live: in-range status changes as people arrive).
+function UIMain.RefreshSummon(partyLens)
+    local s = partyLens.summon
+    if not s then
+        return
+    end
+    local P = UIElements.PALETTE
+    local marked = partyLens.summonMarked or {}
+    local list = Summon.Snapshot(marked)
+
+    local locks = Summon.Warlocks()
+    if #locks > 0 then
+        s.warlock:SetText(L("SUMMON_WARLOCK", table.concat(locks, ", ")))
+        s.warlock:Show()
+    else
+        s.warlock:Hide()
+    end
+
+    if #list <= 1 then
+        s.empty:Show()
+        for _, row in ipairs(s.rows) do row:Hide() end
+        UIElements.SetButtonEnabled(s.announceBtn, false)
+        UIElements.SetButtonEnabled(s.nextBtn, false)
+        UIElements.SetButtonEnabled(s.resetBtn, false)
+        return
+    end
+    s.empty:Hide()
+    UIElements.SetButtonEnabled(s.announceBtn, true)
+    UIElements.SetButtonEnabled(s.nextBtn, true)
+    UIElements.SetButtonEnabled(s.resetBtn, true)
+
+    -- Needs-summon first, then here, then already summoned.
+    local function rank(m)
+        if m.summoned then return 3 end
+        if not m.inRange and not m.isPlayer then return 1 end
+        return 2
+    end
+    table.sort(list, function(a, b)
+        local ra, rb = rank(a), rank(b)
+        if ra ~= rb then return ra < rb end
+        return (a.name or "") < (b.name or "")
+    end)
+
+    for i, row in ipairs(s.rows) do
+        local m = list[i]
+        if m then
+            row.memberName = m.name
+            row.name:SetText(Utils.ClassColoredName(m.name or "", m.classFile))
+            local statusKey, color
+            if m.summoned then
+                statusKey, color = "SUMMON_STATUS_DONE", P.teal
+            elseif not m.inRange and not m.isPlayer then
+                statusKey, color = "SUMMON_STATUS_NEEDS", P.gold
+            else
+                statusKey, color = "SUMMON_STATUS_HERE", P.freshNew
+            end
+            row.status:SetText(L(statusKey))
+            row.status:SetTextColor(color[1], color[2], color[3], 1)
+            UIElements.SetTextureColor(row.dot, color)
+            row:SetAlpha(m.summoned and 0.55 or 1)
+            row:Show()
+        else
+            row.memberName = nil
+            row:Hide()
+        end
+    end
+end
+
 local function NavButton(parent, text, y, accent, onClick)
     local b = UIElements.CreateButton(parent, text, SIDEBAR_W - 20, 32, accent)
     b:SetPoint("TOPLEFT", 10, y)
@@ -1252,6 +1421,7 @@ function UIMain.CreateMainUI(partyLens)
     local navOrder = {
         { key = "browse", labelKey = "MODE_BROWSE", accent = P.teal },
         { key = "autopilot", labelKey = "AP_TITLE", accent = P.blue },
+        { key = "summon", labelKey = "SUMMON_TITLE", accent = P.purple },
         { key = "create", labelKey = "TAB_CREATE", accent = P.gold },
         { key = "settings", labelKey = "TAB_SETTINGS", accent = P.coral },
     }
@@ -1294,6 +1464,7 @@ function UIMain.CreateMainUI(partyLens)
     CreateCreatePanel(partyLens, hostPanel)
     CreateSettingsPanel(partyLens, hostPanel)
     CreateAutopilotPanel(partyLens, hostPanel)
+    CreateSummonPanel(partyLens, hostPanel)
 
     UIMain.SetMode(partyLens, partyLens.mode)
 end
