@@ -176,6 +176,9 @@ function UIMain.SetMode(partyLens, mode)
         UIMain.RefreshActivityList(partyLens, true)
     elseif mode == "settings" then
         ShowFrame(partyLens.settingsPanel)
+        if partyLens.UpdateClearBlock then
+            partyLens.UpdateClearBlock()
+        end
     elseif mode == "autopilot" then
         ShowFrame(partyLens.autopilotPanel)
         UIMain.RefreshAutopilotActivities(partyLens, true)
@@ -243,24 +246,24 @@ function UIMain.CreateResultRow(partyLens, index)
 
     row.message = UIElements.CreateLabel(row, "", 11, P.faint)
     row.message:SetPoint("TOPLEFT", inset, -96)
-    row.message:SetPoint("RIGHT", row, "RIGHT", -16, 0)
+    row.message:SetPoint("RIGHT", row, "RIGHT", -82, 0)
     row.message:SetHeight(14)
     row.message:SetJustifyH("LEFT")
 
-    row.whisper = UIElements.CreateButton(row, L("SEND_WHISPER"), 60, 20, P.teal)
-    row.whisper:SetPoint("TOPRIGHT", -14, -12)
+    row.whisper = UIElements.CreateButton(row, L("SEND_WHISPER"), 60, 18, P.teal)
+    row.whisper:SetPoint("TOPRIGHT", -14, -11)
     row.whisper:SetScript("OnClick", function(button)
         Messaging.SendWhisper(partyLens, button:GetParent().entry)
     end)
 
-    row.open = UIElements.CreateButton(row, L("EDIT_WHISPER"), 60, 20, P.blue)
-    row.open:SetPoint("TOP", row.whisper, "BOTTOM", 0, -6)
+    row.open = UIElements.CreateButton(row, L("EDIT_WHISPER"), 60, 18, P.blue)
+    row.open:SetPoint("TOP", row.whisper, "BOTTOM", 0, -5)
     row.open:SetScript("OnClick", function(button)
         Messaging.OpenWhisper(partyLens, button:GetParent().entry)
     end)
 
-    row.who = UIElements.CreateButton(row, L("WHO_CHECK"), 60, 20, P.gold)
-    row.who:SetPoint("TOP", row.open, "BOTTOM", 0, -6)
+    row.who = UIElements.CreateButton(row, L("WHO_CHECK"), 60, 18, P.gold)
+    row.who:SetPoint("TOP", row.open, "BOTTOM", 0, -5)
     row.who:SetScript("OnClick", function(button)
         local entry = button:GetParent().entry
         if entry and entry.leader then
@@ -271,6 +274,20 @@ function UIMain.CreateResultRow(partyLens, index)
             elseif SendWho then
                 SendWho('n-"' .. name .. '"')
             end
+        end
+    end)
+
+    row.block = UIElements.CreateButton(row, L("BLOCK_LEADER"), 60, 18, P.coral)
+    row.block:SetPoint("TOP", row.who, "BOTTOM", 0, -5)
+    row.block:SetScript("OnClick", function(button)
+        local entry = button:GetParent().entry
+        if entry and entry.leader then
+            local key = Utils.SafeLower(Utils.PlayerShortName(entry.leader))
+            partyLens.db.blacklist = partyLens.db.blacklist or {}
+            partyLens.db.blacklist[key] = true
+            Utils.Print(Localization.L("BLOCKED_MSG", Utils.PlayerShortName(entry.leader)))
+            if partyLens.UpdateClearBlock then partyLens.UpdateClearBlock() end
+            partyLens:Refresh()
         end
     end)
 
@@ -1100,52 +1117,74 @@ local function CreateSettingsPanel(partyLens, host)
         end
     end)
 
+    -- Row 2: spam + alert + blacklist management.
+    local hideSpam = UIElements.CreateToggle(panel, L("HIDE_SPAM_TOGGLE"), 116)
+    partyLens.hideSpamCheck = hideSpam
+    hideSpam:SetPoint("TOPLEFT", PAD, -72)
+    hideSpam:SetChecked(partyLens.db.hideSpam)
+    hideSpam:SetScript("OnClick", function(check) ToggleDB(check, "hideSpam", partyLens, true) end)
+
     local alert = UIElements.CreateToggle(panel, L("ALERT_TOGGLE"), 84)
     partyLens.alertCheck = alert
-    alert:SetPoint("LEFT", minimap, "RIGHT", 8, 0)
+    alert:SetPoint("LEFT", hideSpam, "RIGHT", 8, 0)
     alert:SetChecked(partyLens.db.alertOnMatch)
-    alert:SetScript("OnClick", function(check)
-        ToggleDB(check, "alertOnMatch", partyLens, false)
-    end)
+    alert:SetScript("OnClick", function(check) ToggleDB(check, "alertOnMatch", partyLens, false) end)
 
-    Section(panel, L("PROFILE_AND_WHISPER"), PAD, -90)
+    local clearBlock = UIElements.CreateButton(panel, "", 168, 26, P.coral)
+    partyLens.clearBlockBtn = clearBlock
+    clearBlock:SetPoint("LEFT", alert, "RIGHT", 14, 0)
+    local function updateClearBlock()
+        local n = 0
+        for _ in pairs(partyLens.db.blacklist or {}) do n = n + 1 end
+        clearBlock:SetText(L("BLACKLIST_CLEAR", n))
+        UIElements.SetButtonEnabled(clearBlock, n > 0)
+    end
+    partyLens.UpdateClearBlock = updateClearBlock
+    clearBlock:SetScript("OnClick", function()
+        partyLens.db.blacklist = {}
+        updateClearBlock()
+        partyLens:Refresh()
+    end)
+    updateClearBlock()
+
+    Section(panel, L("PROFILE_AND_WHISPER"), PAD, -116)
 
     local specLabel = UIElements.CreateLabel(panel, L("SPEC_LABEL"), 10, P.muted)
-    specLabel:SetPoint("TOPLEFT", PAD, -114)
+    specLabel:SetPoint("TOPLEFT", PAD, -140)
     local spec, specShell = UIElements.CreateEditBox(panel, "PartyLensSpecEditBox", 130, 30)
     partyLens.specBox = spec
-    specShell:SetPoint("TOPLEFT", PAD, -130)
+    specShell:SetPoint("TOPLEFT", PAD, -156)
     spec:SetText(partyLens.db.spec or "")
     spec:SetScript("OnTextChanged", function(editBox) SaveEditBox(editBox, "spec", partyLens) end)
 
     local roleLabel = UIElements.CreateLabel(panel, L("ROLE_LABEL"), 10, P.muted)
-    roleLabel:SetPoint("TOPLEFT", PAD + 146, -114)
+    roleLabel:SetPoint("TOPLEFT", PAD + 146, -140)
     local role, roleShell = UIElements.CreateEditBox(panel, "PartyLensRoleEditBox", 100, 30)
     partyLens.roleBox = role
-    roleShell:SetPoint("TOPLEFT", PAD + 146, -130)
+    roleShell:SetPoint("TOPLEFT", PAD + 146, -156)
     role:SetText(partyLens.db.role or "")
     role:SetScript("OnTextChanged", function(editBox) SaveEditBox(editBox, "role", partyLens) end)
 
     local commentLabel = UIElements.CreateLabel(panel, L("COMMENT_LABEL"), 10, P.muted)
-    commentLabel:SetPoint("TOPLEFT", PAD + 262, -114)
+    commentLabel:SetPoint("TOPLEFT", PAD + 262, -140)
     local comment, commentShell = UIElements.CreateEditBox(panel, "PartyLensCommentEditBox", 100, 30)
     partyLens.commentBox = comment
-    commentShell:SetPoint("TOPLEFT", PAD + 262, -130)
+    commentShell:SetPoint("TOPLEFT", PAD + 262, -156)
     commentShell:SetPoint("RIGHT", -PAD, 0)
     comment:SetText(partyLens.db.comment or "")
     comment:SetScript("OnTextChanged", function(editBox) SaveEditBox(editBox, "comment", partyLens) end)
 
     local templateLabel = UIElements.CreateLabel(panel, L("TEMPLATE_LABEL"), 10, P.muted)
-    templateLabel:SetPoint("TOPLEFT", PAD, -172)
+    templateLabel:SetPoint("TOPLEFT", PAD, -198)
     local template, templateShell = UIElements.CreateEditBox(panel, "PartyLensTemplateEditBox", 100, 32)
     partyLens.templateBox = template
-    templateShell:SetPoint("TOPLEFT", PAD, -188)
+    templateShell:SetPoint("TOPLEFT", PAD, -214)
     templateShell:SetPoint("RIGHT", -PAD, 0)
     template:SetText(partyLens.db.template or "")
     template:SetScript("OnTextChanged", function(editBox) SaveEditBox(editBox, "template", partyLens) end)
 
     local hint = UIElements.CreateLabel(panel, L("TEMPLATE_HINT"), 10, P.faint)
-    hint:SetPoint("TOPLEFT", PAD, -232)
+    hint:SetPoint("TOPLEFT", PAD, -258)
     hint:SetPoint("RIGHT", -PAD, 0)
     hint:SetJustifyH("LEFT")
 end

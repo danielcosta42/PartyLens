@@ -62,6 +62,15 @@ function Search.GetFilteredEntries(partyLens)
             include = false
         end
 
+        -- Spam + per-player blacklist.
+        if entry.isSpam and partyLens.db.hideSpam then
+            include = false
+        end
+        if include and partyLens.db.blacklist and entry.leader
+            and partyLens.db.blacklist[Utils.SafeLower(Utils.PlayerShortName(entry.leader))] then
+            include = false
+        end
+
         -- Open-only.
         if partyLens.db.onlyOpen and not entry.open then
             include = false

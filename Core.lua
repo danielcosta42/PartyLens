@@ -141,6 +141,7 @@ function PartyLens:Refresh()
             UIElements.SetButtonEnabled(row.whisper, hasLeader)
             UIElements.SetButtonEnabled(row.open, hasLeader)
             UIElements.SetButtonEnabled(row.who, hasLeader)
+            UIElements.SetButtonEnabled(row.block, hasLeader)
             row:Show()
         else
             row.entry = nil

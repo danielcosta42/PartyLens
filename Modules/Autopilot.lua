@@ -209,6 +209,13 @@ function Autopilot.RankCandidates(partyLens)
         if ok and Utils.SafeLower(Short(entry.leader)) == meShort then
             ok = false
         end
+        -- Never engage spam or blacklisted leaders.
+        if ok and entry.isSpam then
+            ok = false
+        end
+        if ok and partyLens.db.blacklist and partyLens.db.blacklist[Utils.SafeLower(Short(entry.leader))] then
+            ok = false
+        end
         if ok and not MatchesContent(partyLens, entry) then
             ok = false
         end

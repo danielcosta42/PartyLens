@@ -40,6 +40,10 @@ function Database.EnsureDB(partyLens)
         -- Audible ping when a new open group in the selected category appears
         -- while the window is closed (opt-in).
         alertOnMatch = false,
+        -- Hide gold/boost/RMT spam from the LFG channel scan.
+        hideSpam = true,
+        -- Per-player blacklist: [lowerShortName] = true.
+        blacklist = {},
         -- Autopilot: persisted CONFIG only. The armed/running state is runtime
         -- (partyLens.autopilot) so a reload never resumes acting silently.
         autopilot = {

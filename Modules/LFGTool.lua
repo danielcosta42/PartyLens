@@ -3,6 +3,7 @@ local Utils = _G[ADDON_NAME .. "_Utils"]
 local Entry = _G[ADDON_NAME .. "_Entry"]
 local Activity = _G[ADDON_NAME .. "_Activity"]
 local Localization = _G[ADDON_NAME .. "_Localization"]
+local Spam = _G[ADDON_NAME .. "_Spam"]
 
 local LFGTool = {}
 
@@ -152,6 +153,7 @@ function LFGTool.CaptureToolResults(partyLens)
                 maxMembers = maxMembers,
                 isDelisted = result.isDelisted,
                 isRaid = isRaid,
+                isSpam = Spam and Spam.IsSpam((message or "") .. " " .. (activity or "")) or false,
             })
         end
     end

@@ -16,6 +16,7 @@ Modules/Activity.lua
 Modules/Needs.lua
 Modules/Database.lua
 Modules/Entry.lua
+Modules/Spam.lua
 Modules/Chat.lua
 Modules/LFGTool.lua
 Modules/Messaging.lua

@@ -4,6 +4,7 @@ local Activity = _G[ADDON_NAME .. "_Activity"]
 local Needs = _G[ADDON_NAME .. "_Needs"]
 local Entry = _G[ADDON_NAME .. "_Entry"]
 local LocalizedKeywords = _G[ADDON_NAME .. "_LocalizedKeywords"]
+local Spam = _G[ADDON_NAME .. "_Spam"]
 
 local Chat = {}
 
@@ -195,6 +196,7 @@ function Chat.HandleChatMessage(partyLens, msg, sender, _, channelName, _, _, _,
         timestamp = time(),
         open = true,
         needs = table.concat(needs, ", "),
+        isSpam = Spam and Spam.IsSpam(msg) or false,
     })
 end
 
