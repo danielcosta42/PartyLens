@@ -27,4 +27,3 @@ Modules/Search.lua
 Modules/Minimap.lua
 Modules/UIMain.lua
 Core.lua
-Bindings.xml
