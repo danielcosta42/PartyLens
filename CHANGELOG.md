@@ -5,6 +5,24 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.11.0]
+
+- **Coordenação de summon**: tela dedicada para a "pedra" — roster ao vivo (quem
+  está fora de alcance precisa de summon), detecção de warlock (Ritual de
+  Invocação), anúncios ordenados no /p e checklist clicável. Novo módulo `Summon`.
+- **Filtro anti-spam + blacklist**: esconde WTS/boost/gold/links do canal LFG
+  (toggle, GDKP não é marcado) e bloqueia líderes específicos com um clique.
+  Novo módulo `Spam`.
+- **Autopilot mais seguro**: teto de whispers/convites por minuto, blacklist por
+  nome após N tentativas, auto-desarme de segurança após muito tempo armado.
+- **Alerta** (opt-in) quando surge um grupo da categoria com a janela fechada, e
+  **keybind** para abrir/fechar a janela.
+- **Polimento visual**: bordas completas e simétricas (fim das "bordas de um lado
+  só"), seleção teal uniforme, headers de seção em maiúsculas, logo próprio no
+  minimapa, na janela e na lista de addons.
+- **Engenharia**: lint com luacheck a cada push (informativo); `.gitattributes`
+  normaliza as quebras de linha.
+
 ## [0.10.0]
 
 - **Reformulação visual**: navegação por menu lateral (rótulos claros no lugar
