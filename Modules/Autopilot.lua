@@ -22,7 +22,9 @@ Autopilot.SEARCH_INTERVAL = 15
 Autopilot.ANNOUNCE_INTERVAL = 60
 Autopilot.LOG_MAX = 24
 -- Anti-spam: never send more than this many whispers/invites per rolling minute.
-Autopilot.MAX_PER_MINUTE = 8
+-- Deliberately low — better to contact a few on-target groups than blanket the
+-- channel. Combined with strict role/class matching this keeps contact rare.
+Autopilot.MAX_PER_MINUTE = 4
 -- Per-name attempt cap before a session blacklist (don't pester the same person).
 Autopilot.MAX_CONTACTS = 2
 -- Safety: auto-disarm if it has been armed this long without finishing (no
@@ -161,6 +163,79 @@ function Autopilot.GuessPlayerRole(entry)
 end
 
 -- ---------------------------------------------------------------------------
+-- What a recruiting group is asking for (find mode)
+-- ---------------------------------------------------------------------------
+-- Curated, low-ambiguity class words (EN + pt-BR + common abbrevs); the client's
+-- localized class name is appended at runtime. Matched whole-word so "mage" never
+-- hits "damage" and "lock" never hits "block".
+local CLASS_WORDS = {
+    WARRIOR = { "warrior", "warr", "guerreiro" },
+    PALADIN = { "paladin", "pala", "pally", "paladino" },
+    HUNTER  = { "hunter", "cacador", "caçador" },
+    ROGUE   = { "rogue", "ladino" },
+    PRIEST  = { "priest", "sacerdote" },
+    SHAMAN  = { "shaman", "shammy", "xama", "xamã" },
+    MAGE    = { "mage", "mago" },
+    WARLOCK = { "warlock", "lock", "bruxo" },
+    DRUID   = { "druid", "boomkin", "moonkin", "druida" },
+}
+
+local function ClassWordsFor(classFile)
+    if not classFile then
+        return {}
+    end
+    local words = {}
+    for _, w in ipairs(CLASS_WORDS[classFile] or {}) do
+        words[#words + 1] = w
+    end
+    local male = LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[classFile]
+    if male then
+        words[#words + 1] = Utils.SafeLower(male)
+    end
+    local female = LOCALIZED_CLASS_NAMES_FEMALE and LOCALIZED_CLASS_NAMES_FEMALE[classFile]
+    if female and female ~= male then
+        words[#words + 1] = Utils.SafeLower(female)
+    end
+    return words
+end
+
+-- Decide whether to answer a recruiting group, from what its description asks
+-- for. The order matters: a specific call for our class/role always wins; a call
+-- for a DIFFERENT class/role (and not ours) is a hard skip; a listing that names
+-- nothing role-specific is "open" and only contacted when not strict.
+function Autopilot.FindMatch(entry, myRole, myClass, strict)
+    local text = Utils.SafeLower(
+        (entry.message or "") .. " " .. (entry.activity or "") .. " " .. (entry.needs or ""))
+    local roles = LocalizedKeywords.GetRoleKeywords()
+
+    -- Explicit call for our class or role -> always engage.
+    if myClass and Utils.ContainsAnyWord(text, ClassWordsFor(myClass)) then
+        return true
+    end
+    if Utils.ContainsAny(text, roles[myRole] or {}) then
+        return true
+    end
+
+    -- Explicit call for some OTHER role/class but not ours -> never engage.
+    for role, words in pairs(roles) do
+        if role ~= myRole and Utils.ContainsAny(text, words) then
+            return false
+        end
+    end
+    if myClass then
+        for classFile, words in pairs(CLASS_WORDS) do
+            if classFile ~= myClass and Utils.ContainsAnyWord(text, words) then
+                return false
+            end
+        end
+    end
+
+    -- Nothing role/class-specific: an open ("LFM more") listing. Only contact
+    -- these when the player has allowed broad contact.
+    return not strict
+end
+
+-- ---------------------------------------------------------------------------
 -- Candidate matching / ranking
 -- ---------------------------------------------------------------------------
 local function MatchesContent(partyLens, entry)
@@ -195,6 +270,8 @@ function Autopilot.RankCandidates(partyLens)
     local cfg = CFG(partyLens)
     local results = {}
     local meShort = Utils.SafeLower(Short(UnitName("player")))
+    local _, myClass = UnitClass("player")
+    local findStrict = cfg.findStrict ~= false
 
     local need
     if cfg.role == "build" then
@@ -235,18 +312,14 @@ function Autopilot.RankCandidates(partyLens)
                 entry._apRole = Autopilot.GuessPlayerRole(entry)
             end
         elseif ok and cfg.role == "find" then
-            -- We answer groups recruiting our role.
+            -- We answer groups recruiting our role/class. FindMatch reads what
+            -- the listing actually asks for, so we never whisper a group that
+            -- only needs other roles (the old logic treated unparsed needs as
+            -- "matches anyone" and spammed everyone).
             if entry.intent ~= "group" then
                 ok = false
-            else
-                local needs = entry.needs or ""
-                local myRole = cfg.myRole or "dps"
-                local matches = needs == ""
-                    or string.find(needs, "any", 1, true)
-                    or string.find(needs, myRole, 1, true)
-                if not matches then
-                    ok = false
-                end
+            elseif not Autopilot.FindMatch(entry, cfg.myRole or "dps", myClass, findStrict) then
+                ok = false
             end
         end
 

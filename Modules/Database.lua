@@ -64,6 +64,10 @@ function Database.EnsureDB(partyLens)
             -- Find mode.
             myRole = "dps",
             autoWhisper = true,
+            -- Only whisper groups whose description explicitly asks for our role
+            -- or class; skip vague/unspecified listings. Far fewer, on-target
+            -- contacts. Turn off to also answer open ("LFM more") groups.
+            findStrict = true,
             -- Shared.
             minIlvl = 0,
             -- Safety.

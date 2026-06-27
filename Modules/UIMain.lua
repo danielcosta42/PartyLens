@@ -836,6 +836,15 @@ local function CreateAutopilotPanel(partyLens, host)
         partyLens.db.autopilot.autoWhisper = check:GetChecked()
     end)
 
+    -- Strict role/class matching: only whisper groups that actually ask for us.
+    ap.findStrictToggle = UIElements.CreateToggle(findBox, L("AP_FIND_STRICT"), 220)
+    ap.findStrictToggle:SetPoint("LEFT", ap.autoWhisperToggle, "RIGHT", 24, 0)
+    ap.findStrictToggle:SetChecked(partyLens.db.autopilot.findStrict ~= false)
+    ap.findStrictToggle:SetScript("OnClick", function(check)
+        check:SetChecked(not check:GetChecked())
+        partyLens.db.autopilot.findStrict = check:GetChecked()
+    end)
+
     -- ---- Automation card (tier + safety) ----------------------------------
     local autoCard = Card(panel, L("AP_TIER_LABEL"), -254, 64)
     ap.tierBtns = {}

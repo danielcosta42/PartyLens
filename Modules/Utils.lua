@@ -35,6 +35,28 @@ function Utils.ContainsAny(text, words)
     return false
 end
 
+-- Whole-word match for an ASCII word so e.g. "mage" doesn't match "damage" and
+-- "lock" doesn't match "block". Non-ASCII words (CJK class names) have no letter
+-- boundaries, so they fall back to a plain substring match.
+function Utils.ContainsWord(text, word)
+    if not word or word == "" then
+        return false
+    end
+    if string.find(word, "^[%w]+$") then
+        return string.find(text, "%f[%w]" .. word .. "%f[%W]") ~= nil
+    end
+    return string.find(text, word, 1, true) ~= nil
+end
+
+function Utils.ContainsAnyWord(text, words)
+    for _, word in ipairs(words or {}) do
+        if Utils.ContainsWord(text, word) then
+            return true
+        end
+    end
+    return false
+end
+
 function Utils.SecondsAgo(timestamp)
     local age = math.max(0, time() - (timestamp or time()))
     if age < 60 then

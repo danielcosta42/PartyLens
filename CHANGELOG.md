@@ -5,6 +5,19 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.12.0]
+
+- **Autopilot "buscar grupo" mais inteligente**: agora lê o que o grupo realmente
+  pede na descrição e só sussurra quem precisa da sua **role/classe**. Pula quem
+  pede só outras roles (ex.: "need tank" e você é dps) ou outra classe específica
+  (ex.: "need warlock" e você é mago). O **modo estrito** (padrão) ignora também
+  anúncios vagos sem role; desligue no toggle "Só grupos que precisam de mim"
+  para também responder grupos abertos ("LFM more").
+- **Menos mensagens por período**: teto de whispers/convites por minuto reduzido
+  de 8 para 4 — contato raro e certeiro em vez de varrer o canal.
+- Casamento de classe por palavra inteira ("mage" não casa com "da**mage**",
+  "lock" não casa com "b**lock**").
+
 ## [0.11.1]
 
 - **Profundidade visual**: gradiente sutil nos painéis (janela, sidebar, host e
