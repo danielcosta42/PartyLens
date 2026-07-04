@@ -5,6 +5,43 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.13.0]
+
+- **Composição por classe/spec** (aba **Autopilot** → Construir): botão
+  **Composição** abre um editor com uma linha por classe e os chips de spec
+  (clique cicla 1→2→3→0). Ele **define quantos T/H/D** você quer (a conta sai das
+  specs) e a **classe vira o filtro de quem o Autopilot convida**. A spec é sua
+  "lista de desejos" (molda o plano e a conta de roles) — ela não é verificável
+  em estranhos neste cliente, então não barra convite; a **classe** sim.
+- **Filtro por classe e nível na Buscar**: fileira de toggles de classe (ícone) +
+  campo de **nível mínimo** para filtrar a lista. A **classe** é filtro rígido
+  (quase sempre conhecida); o **nível mínimo** só esconde quem está
+  comprovadamente abaixo (e também vale nos convites do Autopilot).
+- **Nível real via /who (sob clique)**: o `/who` é uma função restrita a evento
+  de hardware neste cliente — só pode ser disparado por um clique real. Então o
+  botão **Who** de cada card agora resolve nível + classe e mostra na linha; o
+  addon **não** faz varredura automática (evita o erro de "função protegida" e
+  spam). Nível de quem usa PartyLens vem de graça pela malha.
+- **Malha PartyLens agora carrega classe + nível**: usuários do addon são
+  reconhecidos na hora, sem gastar /who (retrocompatível com versões antigas).
+- Nível do líder aparece no card do resultado quando conhecido.
+- **Assinatura nas mensagens**: tudo que o addon envia por chat (whispers,
+  anúncios no canal/grupo/raid) agora vai prefixado com `[PartyLens]: ` — num
+  único ponto (`Utils.SendChat`). As mensagens ocultas da malha **não** são
+  assinadas (protocolo próprio).
+- **Seletores de atividade mais fáceis** (Criar e Autopilot): campo de **busca**
+  no topo do dropdown (digite pra filtrar), **faixa de nível** de cada atividade
+  à direita (ex.: `60-62`, `70`) e um **filtro de nível máximo** (`≤Nv`) pra
+  esconder conteúdo acima do nível que você quer. Enter escolhe o primeiro
+  resultado.
+- **Spec define as roles (multi-spec)**: em Configurações → Perfil e no Autopilot
+  → **Procurar**, o seletor de spec agora é **multi**. Em **Auto** ele detecta sua
+  spec pela árvore de talentos com mais pontos (e atualiza no respec); ou marque
+  manualmente **uma ou mais** specs da sua classe. As **roles saem das specs** (ex.:
+  Restauração + Equilíbrio → *heal / dps*), então o "procurar grupo" casa com quem
+  precisa de **qualquer** uma delas, e os whispers/malha anunciam todas. `{spec}` e
+  `{role}` nos templates vêm daí.
+
 ## [0.12.0]
 
 - **Autopilot "buscar grupo" mais inteligente**: agora lê o que o grupo realmente

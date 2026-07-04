@@ -30,9 +30,13 @@ function Comm.Init()
 end
 
 -- Builds the wire payload from the current autopilot intent:
---   "1|<lfg|lfm>|<role(s)>|<dungeon|raid|any>|<activity label>|<ilvl>"
+--   "1|<lfg|lfm>|<role(s)>|<dungeon|raid|any>|<activity label>|<ilvl>|<class>|<level>"
 -- For lfg, role is the player's own role; for lfm it's the still-needed roles
--- joined by "+" (so the receiver knows which slots are open).
+-- joined by "+" (so the receiver knows which slots are open). The trailing
+-- class + level fields are APPEND-ONLY (protocol stays "1"): older clients
+-- simply ignore the extra fields, and we tolerate their absence when parsing —
+-- so the mesh stays cross-version compatible while newer clients get accurate,
+-- lookup-free class/level for every fellow PartyLens user.
 function Comm.BuildPayload(partyLens)
     local cfg = partyLens.db.autopilot
     local intent, role
@@ -47,7 +51,16 @@ function Comm.BuildPayload(partyLens)
         role = (#parts > 0) and table.concat(parts, "+") or "any"
     else
         intent = "lfg"
-        role = cfg.myRole or "dps"
+        -- The player's roles are derived from their spec(s) — broadcast all of
+        -- them ("heal+dps") so recruiters know every slot we can fill.
+        local mr = partyLens.db.myRoles
+        local parts = {}
+        if mr then
+            if mr.tank then parts[#parts + 1] = "tank" end
+            if mr.heal then parts[#parts + 1] = "heal" end
+            if mr.dps then parts[#parts + 1] = "dps" end
+        end
+        role = (#parts > 0) and table.concat(parts, "+") or (cfg.myRole or "dps")
     end
 
     local label = Utils.Trim(cfg.activityFilter or "")
@@ -57,6 +70,9 @@ function Comm.BuildPayload(partyLens)
     -- Strip any pipe just in case an activity name ever contained one.
     label = string.gsub(label, "|", " ")
 
+    local _, classFile = UnitClass("player")
+    local level = (UnitLevel and UnitLevel("player")) or 0
+
     return table.concat({
         Comm.PROTOCOL,
         intent,
@@ -64,6 +80,8 @@ function Comm.BuildPayload(partyLens)
         cfg.activityType or "any",
         label,
         tostring(cfg.minIlvl or 0),
+        classFile or "",
+        tostring(level or 0),
     }, "|")
 end
 
@@ -106,7 +124,7 @@ local function ParsePayload(text)
     if type(text) ~= "string" then
         return nil
     end
-    local protocol, intent, role, activityType, label, ilvl = strsplit("|", text)
+    local protocol, intent, role, activityType, label, ilvl, classFile, level = strsplit("|", text)
     if protocol ~= Comm.PROTOCOL then
         return nil
     end
@@ -116,6 +134,9 @@ local function ParsePayload(text)
         activityType = activityType or "any",
         label = label or "",
         ilvl = tonumber(ilvl) or 0,
+        -- Trailing fields are absent from older-client broadcasts; nil is fine.
+        classFile = (classFile ~= nil and classFile ~= "") and classFile or nil,
+        level = tonumber(level),
     }
 end
 
@@ -151,6 +172,9 @@ function Comm.OnMessage(partyLens, prefix, text, _, sender)
         isAddonUser = true,
         leader = sender,
         leaderDisplay = Utils.PlayerShortName(sender),
+        -- Trusted class + level straight from the mesh (no /who needed).
+        classFile = data.classFile,
+        level = data.level,
         intent = isLFM and "group" or "player",
         activity = activityName or (activityType == "raid" and "Raid" or "Dungeon"),
         activityType = activityType,

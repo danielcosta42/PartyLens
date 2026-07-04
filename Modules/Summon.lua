@@ -79,23 +79,23 @@ end
 function Summon.AnnounceNeeded(partyLens, marked)
     local needs = Summon.Needed(marked)
     if #needs == 0 then
-        SendChatMessage(Localization.L("SUMMON_ALL_HERE"), Channel())
+        Utils.SendChat(Localization.L("SUMMON_ALL_HERE"), Channel())
         return
     end
     local names = {}
     for _, n in ipairs(needs) do
         names[#names + 1] = Utils.PlayerShortName(n)
     end
-    SendChatMessage(Localization.L("SUMMON_NEEDED_MSG", table.concat(names, ", ")), Channel())
+    Utils.SendChat(Localization.L("SUMMON_NEEDED_MSG", table.concat(names, ", ")), Channel())
 end
 
 -- Announce just the next person to summon (sequential summoning).
 function Summon.AnnounceNext(partyLens, marked)
     local needs = Summon.Needed(marked)
     if needs[1] then
-        SendChatMessage(Localization.L("SUMMON_NEXT_MSG", Utils.PlayerShortName(needs[1])), Channel())
+        Utils.SendChat(Localization.L("SUMMON_NEXT_MSG", Utils.PlayerShortName(needs[1])), Channel())
     else
-        SendChatMessage(Localization.L("SUMMON_ALL_HERE"), Channel())
+        Utils.SendChat(Localization.L("SUMMON_ALL_HERE"), Channel())
     end
 end
 

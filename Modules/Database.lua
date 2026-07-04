@@ -12,8 +12,14 @@ function Database.EnsureDB(partyLens)
     local previousSchemaVersion = PartyLensDB.schemaVersion or 0
     local defaults = {
         className = className,
-        schemaVersion = 6,
+        schemaVersion = 7,
         spec = "",
+        -- Spec picker: specAuto detects the active spec from talents; otherwise
+        -- specKeys is the set of specs the player pinned. Roles are DERIVED from
+        -- the chosen specs into myRoles (find matching + mesh + whisper {role}).
+        specAuto = true,
+        specKeys = {},
+        myRoles = { dps = true },
         role = "dps",
         comment = "",
         template = "Oi! {class} {spec} {role} aqui. {comment}",
@@ -25,6 +31,12 @@ function Database.EnsureDB(partyLens)
         contentFilter = "all",
         -- roleFilter: when any are true, only show groups needing that role.
         roleFilter = { tank = false, heal = false, dps = false },
+        -- classFilter: [classFile] = true for each allowed class. Empty = all
+        -- classes. Applies to the Browse list AND who Autopilot invites.
+        classFilter = {},
+        -- minLevel: 0 = off; otherwise hide/skip players known to be below it.
+        -- Level is only knowable via the mesh or a /who lookup on this client.
+        minLevel = 0,
         listingCategory = "dungeons",
         listingActivityID = "",
         listingTitle = "",
@@ -52,9 +64,15 @@ function Database.EnsureDB(partyLens)
             activityType = "dungeon", -- "dungeon" | "raid" | "any"
             activityFilter = "", -- optional substring, e.g. "kara" / "heroic"
             -- Desired composition for build mode (totals, including yourself).
+            -- These are DERIVED from `comp` when it has picks; otherwise they act
+            -- as a plain size/role target.
             needTank = 1,
             needHeal = 1,
             needDps = 3,
+            -- Class/spec composition: comp[classFile][specKey] = wanted count.
+            -- Drives the role totals above, the class gate for auto-invite, and
+            -- is the player's recruiting wishlist. Empty = recruit by size only.
+            comp = {},
             inviteKeyword = "inv",
             autoInvite = true,
             -- Auto-spam an "LFM" line in the LookingForGroup channel. The native
@@ -120,6 +138,23 @@ function Database.EnsureDB(partyLens)
             PartyLensDB.autopilot.myRole = classRole
         end
         PartyLensDB.schemaVersion = 6
+    end
+
+    -- v7: the free-text spec/role boxes became a spec picker that DERIVES roles.
+    -- Preserve any custom text the player typed (move it into the still-editable
+    -- comment) instead of overwriting it, and start the picker in Auto mode so the
+    -- first detection fills the canonical spec.
+    if previousSchemaVersion < 7 then
+        if PartyLensDB.spec and PartyLensDB.spec ~= "" then
+            if not PartyLensDB.comment or PartyLensDB.comment == "" then
+                PartyLensDB.comment = PartyLensDB.spec
+            end
+        end
+        PartyLensDB.spec = ""
+        PartyLensDB.specKey = nil -- from the short-lived single-spec build
+        PartyLensDB.specAuto = true
+        PartyLensDB.specKeys = {}
+        PartyLensDB.schemaVersion = 7
     end
 
     -- Always backfill autopilot sub-keys so new options (added across versions)

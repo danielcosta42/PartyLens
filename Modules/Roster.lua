@@ -88,7 +88,10 @@ end
 -- the autopilot to recruit past the intended group size.
 function Roster.Needed(partyLens)
     local cfg = (partyLens.db and partyLens.db.autopilot) or {}
-    local snap = Roster.Snapshot(cfg.myRole)
+    -- The player's own role in the forming group comes from their spec-derived
+    -- primary role (db.role), falling back to the legacy autopilot myRole.
+    local playerRole = (partyLens.db and partyLens.db.role) or cfg.myRole
+    local snap = Roster.Snapshot(playerRole)
     local targetSize = math.max(1, (cfg.needTank or 0) + (cfg.needHeal or 0) + (cfg.needDps or 0))
     local need = {
         tank = math.max(0, (cfg.needTank or 0) - snap.tank),

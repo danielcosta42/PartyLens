@@ -4,11 +4,27 @@ local Localization = _G[ADDON_NAME .. "_Localization"]
 
 local Messaging = {}
 
+-- Readable role token(s) for {role}: all roles the player offers (derived from
+-- their specs), e.g. "heal/dps". Falls back to the single db.role.
+local function RoleText(db)
+    local mr = db.myRoles
+    if mr then
+        local parts = {}
+        if mr.tank then parts[#parts + 1] = "tank" end
+        if mr.heal then parts[#parts + 1] = "heal" end
+        if mr.dps then parts[#parts + 1] = "dps" end
+        if #parts > 0 then
+            return table.concat(parts, "/")
+        end
+    end
+    return db.role or ""
+end
+
 function Messaging.BuildMessageForLeader(db, leader, activity)
     local _, classFile = UnitClass("player")
     local className = db.className or select(1, UnitClass("player")) or ""
     local spec = db.spec or ""
-    local role = db.role or ""
+    local role = RoleText(db)
     local comment = db.comment or ""
     local msg = db.template or Localization.L("TEMPLATE_LABEL")
 
@@ -28,7 +44,7 @@ end
 function Messaging.BuildAutopilotFind(db, activity)
     local ap = db.autopilot or {}
     local className = db.className or select(1, UnitClass("player")) or ""
-    local role = ap.myRole or db.role or ""
+    local role = RoleText(db)
     local spec = db.spec or ""
     local template = ap.findTemplate or Localization.L("AP_WHISPER_FIND")
 
@@ -53,7 +69,7 @@ function Messaging.SendWhisper(partyLens, entry)
         return
     end
 
-    SendChatMessage(message, "WHISPER", nil, entry.leader)
+    Utils.SendChat(message, "WHISPER", nil, entry.leader)
     Utils.Print(Localization.L("WHISPER_SENT", Utils.PlayerShortName(entry.leader), message))
 end
 
@@ -62,7 +78,8 @@ function Messaging.OpenWhisper(partyLens, entry)
         return
     end
 
-    ChatFrame_OpenChat("/w " .. entry.leader .. " " .. Messaging.BuildMessageForLeader(partyLens.db, entry.leader, entry.activity))
+    ChatFrame_OpenChat("/w " .. entry.leader .. " " .. Utils.CHAT_SIGN
+        .. Messaging.BuildMessageForLeader(partyLens.db, entry.leader, entry.activity))
 end
 
 function Messaging.JoinLookingForGroup()

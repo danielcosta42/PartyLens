@@ -6,6 +6,7 @@ local LFGTool = _G[ADDON_NAME .. "_LFGTool"]
 local Localization = _G[ADDON_NAME .. "_Localization"]
 local LocalizedKeywords = _G[ADDON_NAME .. "_LocalizedKeywords"]
 local Comm = _G[ADDON_NAME .. "_Comm"]
+local Who = _G[ADDON_NAME .. "_Who"]
 
 local L = Localization.L
 
@@ -60,6 +61,77 @@ end
 
 local function Short(name)
     return Utils.PlayerShortName(name or "")
+end
+
+-- ---------------------------------------------------------------------------
+-- Class / level recruit filter (shared with the Browse list). Both the whisper
+-- auto-invite and active recruiting honor db.classFilter + db.minLevel so
+-- "filter by class and level" applies to every invite, not just the visible list.
+-- ---------------------------------------------------------------------------
+-- The set of classes the player is recruiting, derived from the class/spec
+-- composition (any class with a spec count > 0). Empty table => no class gate.
+local function CompClassSet(cfg)
+    local set, active = {}, false
+    local comp = cfg and cfg.comp
+    if comp then
+        for classFile, specs in pairs(comp) do
+            for _, n in pairs(specs) do
+                if (tonumber(n) or 0) > 0 then
+                    set[classFile] = true
+                    active = true
+                    break
+                end
+            end
+        end
+    end
+    return set, active
+end
+
+-- Returns "pass" | "fail" for the given (possibly nil) class/level.
+--
+-- Class is fail-CLOSED: when the composition names specific classes, only a
+-- KNOWN wanted class is admitted, so an unknown class is rejected (class is
+-- almost always known off chat/LFG/mesh; inviting an unverifiable class would
+-- leak the composition the user set). Level is SOFT: only a CONFIRMED below-floor
+-- level fails; an unknown level passes (level is only knowable off the mesh or a
+-- manual /who, so blocking unknowns would reject almost everyone).
+function Autopilot.RecruitFilter(partyLens, classFile, level)
+    local db = partyLens.db
+    local classSet, hasClassGate = CompClassSet(db.autopilot)
+    local minLevel = tonumber(db.minLevel) or 0
+
+    if hasClassGate then
+        if not (classFile and classFile ~= "" and classSet[classFile]) then
+            return "fail"
+        end
+    end
+
+    if minLevel > 0 and level and level > 0 and level < minLevel then
+        return "fail"
+    end
+
+    return "pass"
+end
+
+-- Best-known class/level for a name: any live entry for that leader, then the
+-- /who cache. Cheap linear scan over the (bounded) entry list.
+local function KnownFor(partyLens, name)
+    local target = Utils.SafeLower(Short(name))
+    local classFile, level
+    for _, e in ipairs(partyLens.entries or {}) do
+        if Utils.SafeLower(Short(e.leader or "")) == target then
+            classFile = classFile or e.classFile
+            level = level or e.level
+        end
+    end
+    if Who then
+        local c = Who.Get(name)
+        if c then
+            classFile = classFile or c.classFile
+            level = level or c.level
+        end
+    end
+    return classFile, level
 end
 
 -- ---------------------------------------------------------------------------
@@ -203,22 +275,63 @@ end
 -- for. The order matters: a specific call for our class/role always wins; a call
 -- for a DIFFERENT class/role (and not ours) is a hard skip; a listing that names
 -- nothing role-specific is "open" and only contacted when not strict.
-function Autopilot.FindMatch(entry, myRole, myClass, strict)
+-- myRoles is a set { tank=bool, heal=bool, dps=bool } — the player can offer more
+-- than one (derived from their specs), so we engage a listing that asks for ANY
+-- of them, and only hard-skip a listing that asks for role(s) that are NONE of ours.
+function Autopilot.FindMatch(entry, myRoles, myClass, strict)
+    myRoles = myRoles or {}
     local text = Utils.SafeLower(
         (entry.message or "") .. " " .. (entry.activity or "") .. " " .. (entry.needs or ""))
     local roles = LocalizedKeywords.GetRoleKeywords()
 
-    -- Explicit call for our class or role -> always engage.
+    -- A listing that marks a role as already filled ("tank spot filled",
+    -- "healer full", "dps cheio") must not false-trigger the substring matching
+    -- below. Blank any role keyword that a fill marker closely follows, so a
+    -- closed slot signals neither engage nor skip. Token-based (no fragile
+    -- patterns): only the specific role word near the marker is dropped, so other
+    -- open mentions of the same role survive.
+    local FILLED = {
+        filled = true, full = true, covered = true, sorted = true, taken = true,
+        capped = true, complete = true, done = true,
+        preenchido = true, preenchida = true, completo = true, fechado = true, cheio = true,
+    }
+    local roleWord = {}
+    for _, words in pairs(roles) do
+        for _, w in ipairs(words) do roleWord[w] = true end
+    end
+    do
+        local tokens, changed = {}, false
+        for w in string.gmatch(text, "%S+") do tokens[#tokens + 1] = w end
+        for i = 1, #tokens do
+            if roleWord[(string.gsub(tokens[i], "%A", ""))] then
+                for j = i + 1, math.min(i + 3, #tokens) do
+                    if FILLED[(string.gsub(tokens[j], "%A", ""))] then
+                        tokens[i] = ""
+                        changed = true
+                        break
+                    end
+                end
+            end
+        end
+        if changed then
+            text = table.concat(tokens, " ")
+        end
+    end
+
+    -- Explicit call for our class -> always engage.
     if myClass and Utils.ContainsAnyWord(text, ClassWordsFor(myClass)) then
         return true
     end
-    if Utils.ContainsAny(text, roles[myRole] or {}) then
-        return true
+    -- Explicit call for ANY of our roles -> engage.
+    for _, role in ipairs({ "tank", "heal", "dps" }) do
+        if myRoles[role] and Utils.ContainsAny(text, roles[role] or {}) then
+            return true
+        end
     end
 
-    -- Explicit call for some OTHER role/class but not ours -> never engage.
+    -- Explicit call for some OTHER role (none of ours) -> never engage.
     for role, words in pairs(roles) do
-        if role ~= myRole and Utils.ContainsAny(text, words) then
+        if not myRoles[role] and Utils.ContainsAny(text, words) then
             return false
         end
     end
@@ -309,7 +422,15 @@ function Autopilot.RankCandidates(partyLens)
             elseif Roster.IsInGroup(entry.leader) then
                 ok = false
             else
-                entry._apRole = Autopilot.GuessPlayerRole(entry)
+                -- Class/level gate (class fail-closed, level soft). Mesh users
+                -- carry class+level; chat/LFG carry class. An unknown class under
+                -- an active class filter is skipped (we never proactively whisper
+                -- someone we can't confirm matches).
+                if Autopilot.RecruitFilter(partyLens, entry.classFile, entry.level) == "fail" then
+                    ok = false
+                else
+                    entry._apRole = Autopilot.GuessPlayerRole(entry)
+                end
             end
         elseif ok and cfg.role == "find" then
             -- We answer groups recruiting our role/class. FindMatch reads what
@@ -318,7 +439,7 @@ function Autopilot.RankCandidates(partyLens)
             -- "matches anyone" and spammed everyone).
             if entry.intent ~= "group" then
                 ok = false
-            elseif not Autopilot.FindMatch(entry, cfg.myRole or "dps", myClass, findStrict) then
+            elseif not Autopilot.FindMatch(entry, partyLens.db.myRoles or { dps = true }, myClass, findStrict) then
                 ok = false
             end
         end
@@ -397,7 +518,7 @@ function Autopilot.Engage(partyLens, entry)
         rt.pendingAction = { kind = "whisper", name = entry.leader, message = message }
         Autopilot.Log(partyLens, L("AP_LOG_SUGGEST_WHISPER", Short(entry.leader)))
     elseif Autopilot.WithinRate(partyLens) then
-        SendChatMessage(message, "WHISPER", nil, entry.leader)
+        Utils.SendChat(message, "WHISPER", nil, entry.leader)
         Autopilot.RecordContact(partyLens, entry.leader)
         Autopilot.Log(partyLens, L(entry.isAddonUser and "AP_LOG_PL_WHISPERED" or "AP_LOG_WHISPERED", Short(entry.leader)))
     end
@@ -413,7 +534,7 @@ function Autopilot.PressGo(partyLens)
             Autopilot.DoInvite(a.name)
             Autopilot.Log(partyLens, L("AP_LOG_INVITED", Short(a.name)))
         elseif a.kind == "whisper" then
-            SendChatMessage(a.message, "WHISPER", nil, a.name)
+            Utils.SendChat(a.message, "WHISPER", nil, a.name)
             Autopilot.Log(partyLens, L("AP_LOG_WHISPERED", Short(a.name)))
         end
         Autopilot.RecordContact(partyLens, a.name)
@@ -459,6 +580,17 @@ function Autopilot.HandleWhisper(partyLens, message, sender)
     if not Autopilot.CanContact(partyLens, sender) or not Autopilot.WithinRate(partyLens) then
         return
     end
+
+    -- Honor the class/level filter (class fail-closed, level soft). We can't
+    -- resolve an unknown class here — SendWho is click-only on this client — so
+    -- an unknown class under an active class filter is skipped rather than
+    -- invited (the user can click the row's "Who" button to resolve it).
+    local classFile, level = KnownFor(partyLens, sender)
+    if Autopilot.RecruitFilter(partyLens, classFile, level) == "fail" then
+        Autopilot.Log(partyLens, L("AP_LOG_SKIP_FILTER", Short(sender)))
+        return
+    end
+
     Autopilot.DoInvite(sender)
     Autopilot.RecordContact(partyLens, sender)
     Autopilot.Log(partyLens, L("AP_LOG_INVITED", Short(sender)))
@@ -491,7 +623,7 @@ function Autopilot.AnnounceReady(partyLens)
     end
     local channel = (IsInRaid and IsInRaid()) and "RAID" or "PARTY"
     local msg = L("AP_ANNOUNCE_READY", activity)
-    SendChatMessage(msg, channel)
+    Utils.SendChat(msg, channel)
     Autopilot.Log(partyLens, L("AP_LOG_ANNOUNCED"))
 end
 
@@ -559,7 +691,7 @@ function Autopilot.AnnounceLFM(partyLens)
         return false
     end
 
-    SendChatMessage(message, "CHANNEL", nil, channelNumber)
+    Utils.SendChat(message, "CHANNEL", nil, channelNumber)
     rt.lastAnnounce = time()
     Autopilot.Log(partyLens, L("AP_LOG_ANNOUNCED_LFM"))
     return true

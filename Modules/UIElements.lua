@@ -526,6 +526,75 @@ function UIElements.CreateRoleToggle(parent, role, size)
     return pip
 end
 
+-- Class filter toggle: a small glass square holding the class icon, tinted with
+-- the class color. Selected = full color + accent border; unselected = dimmed
+-- and desaturated. Mirrors the role-pip idiom already used in the toolbar.
+function UIElements.CreateClassToggle(parent, classFile, size)
+    size = size or 22
+    local t = UIElements.CreatePanel(parent, nil, { 0.06, 0.07, 0.09, 0.9 }, PALETTE.stroke)
+    t:SetSize(size, size)
+    t.classFile = classFile
+    t.selected = false
+    t:EnableMouse(true)
+
+    local cc = (RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile])
+        or (CUSTOM_CLASS_COLORS and CUSTOM_CLASS_COLORS[classFile])
+    local rgb = cc and { cc.r, cc.g, cc.b, 1 } or PALETTE.teal
+    t.rgb = rgb
+
+    local icon = t:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", 2, -2)
+    icon:SetPoint("BOTTOMRIGHT", -2, 2)
+    if CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classFile] then
+        icon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+        local co = CLASS_ICON_TCOORDS[classFile]
+        icon:SetTexCoord(co[1], co[2], co[3], co[4])
+        t.icon = icon
+    else
+        -- Fallback where class icons are unavailable: a class-colored initial.
+        icon:Hide()
+        local letter = UIElements.CreateLabel(t, string.sub(classFile or "?", 1, 1),
+            math.max(10, math.floor(size * 0.55)), rgb)
+        letter:SetPoint("CENTER")
+        letter:SetJustifyH("CENTER")
+    end
+
+    function t:SetSelected(value)
+        self.selected = value and true or false
+        if self.selected then
+            UIElements.SetPanelBorder(self, { self.rgb[1], self.rgb[2], self.rgb[3], 0.9 })
+            self:SetAlpha(1)
+            if self.icon and self.icon.SetDesaturated then self.icon:SetDesaturated(false) end
+        else
+            UIElements.SetPanelBorder(self, PALETTE.stroke)
+            self:SetAlpha(0.4)
+            if self.icon and self.icon.SetDesaturated then self.icon:SetDesaturated(true) end
+        end
+    end
+    t:SetSelected(false)
+
+    t:SetScript("OnMouseUp", function(self)
+        self:SetSelected(not self.selected)
+        if self.onToggle then
+            self.onToggle(self.classFile, self.selected)
+        end
+    end)
+    t:SetScript("OnEnter", function(self)
+        if not self.selected then self:SetAlpha(0.7) end
+        if GameTooltip and self.className then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText(self.className)
+            GameTooltip:Show()
+        end
+    end)
+    t:SetScript("OnLeave", function(self)
+        self:SetSelected(self.selected)
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
+    return t
+end
+
 -- Joined "role counter": a single pill with a colored role cap (T/H/D) flush
 -- against a numeric input — reads as one control instead of a loose pip + box.
 -- Returns (editBox, shell); use editBox:GetText()/SetText() for the count.
@@ -644,10 +713,12 @@ function UIElements.CreateDropdown(parent, width, height, accent)
         return self.popup:IsShown()
     end
 
+    -- The closed-dropdown label always reflects the SELECTED value, looked up in
+    -- the FULL option set (so a search filter over the popup never blanks it).
     function dd:SetValue(value, fire)
         self.value = value
         local shown = false
-        for _, opt in ipairs(self.options) do
+        for _, opt in ipairs(self.allOptions or self.options) do
             if opt.value == value then
                 self.label:SetText(opt.label)
                 shown = true
@@ -662,18 +733,22 @@ function UIElements.CreateDropdown(parent, width, height, accent)
         end
     end
 
-    function dd:SetOptions(options, value)
-        self.options = options or {}
+    -- Renders a (possibly filtered) list of options into rows, with an optional
+    -- right-aligned level tag per activity, then sizes the popup.
+    function dd:Render(list)
         local rowH = self.rowH
         local innerWidth = self:GetWidth() - 4
         self.content:SetWidth(innerWidth)
-        for i, opt in ipairs(self.options) do
+        for i, opt in ipairs(list) do
             local row = self.rows[i]
             if not row then
                 row = UIElements.CreateButton(self.content, "", 10, rowH, self.accent)
                 -- List rows are borderless (a per-row frame would look like a
                 -- grid); selection/hover is carried by the background fill.
                 row.top:Hide(); row.bottom:Hide(); row.left:Hide(); row.right:Hide()
+                row.meta = UIElements.CreateLabel(row, "", 10, PALETTE.muted)
+                row.meta:SetPoint("RIGHT", -8, 0)
+                row.meta:SetJustifyH("RIGHT")
                 self.rows[i] = row
             end
             row:ClearAllPoints()
@@ -682,20 +757,30 @@ function UIElements.CreateDropdown(parent, width, height, accent)
             row:SetHeight(rowH)
             row:SetText(opt.label)
             row.label:ClearAllPoints()
-            row.label:SetPoint("RIGHT", -6, 0)
             row.label:SetJustifyH("LEFT")
+
+            local hasMeta = opt.levelText and opt.levelText ~= ""
             if opt.header then
                 -- Non-interactive category heading: tinted, accent-colored title.
                 row:EnableMouse(false)
                 row:SetScript("OnClick", nil)
                 TextureColor(row.bg, { 0.045, 0.055, 0.072, 0.92 })
                 row.label:SetPoint("LEFT", 8, 0)
+                row.label:SetPoint("RIGHT", -8, 0)
                 row.label:SetTextColor(self.accent[1], self.accent[2], self.accent[3], 0.95)
+                row.meta:Hide()
             else
                 row:EnableMouse(true)
                 TextureColor(row.bg, row.normalColor)
                 row.label:SetPoint("LEFT", opt.indent and 22 or 10, 0)
+                row.label:SetPoint("RIGHT", hasMeta and -46 or -8, 0)
                 row.label:SetTextColor(PALETTE.text[1], PALETTE.text[2], PALETTE.text[3], 1)
+                if hasMeta then
+                    row.meta:SetText(opt.levelText)
+                    row.meta:Show()
+                else
+                    row.meta:Hide()
+                end
                 local optValue = opt.value
                 row:SetScript("OnClick", function()
                     dd:SetValue(optValue, true)
@@ -704,14 +789,132 @@ function UIElements.CreateDropdown(parent, width, height, accent)
             end
             row:Show()
         end
-        for i = #self.options + 1, #self.rows do
+        for i = #list + 1, #self.rows do
             self.rows[i]:Hide()
         end
-        local n = #self.options
+        local n = #list
         self.content:SetHeight(math.max(1, n * rowH))
         local visible = math.min(n, self.maxRows)
-        self.popup:SetHeight(4 + math.max(1, visible) * rowH)
+        local barH = self.searchable and 30 or 0
+        self.popup:SetHeight(4 + barH + math.max(1, visible) * rowH)
+        self.scroll:SetVerticalScroll(0)
+    end
+
+    -- Filters the full option set by the search text + level cap. With no filter
+    -- active the list is shown verbatim (headers/indent preserved); with a filter
+    -- it collapses to a flat list of matching items (headers dropped), while the
+    -- "Any"/retry control rows are always kept.
+    function dd:ApplyFilter()
+        local search = string.lower(self.searchText or "")
+        local levelLimit = self.levelLimit
+        local filtering = (search ~= "" or levelLimit ~= nil)
+        local list
+        if not filtering then
+            list = self.allOptions or {}
+        else
+            list = {}
+            for _, opt in ipairs(self.allOptions or {}) do
+                local keep
+                if opt.header then
+                    keep = false
+                elseif opt.value == "__any__" or opt.value == "__retry__" then
+                    keep = true
+                else
+                    local okText = (search == "")
+                        or (string.find(string.lower(opt.label or ""), search, 1, true) ~= nil)
+                    local okLevel = (not levelLimit) or (not opt.minLevel) or opt.minLevel == 0
+                        or (opt.minLevel <= levelLimit)
+                    keep = okText and okLevel
+                end
+                if keep then
+                    list[#list + 1] = opt
+                end
+            end
+        end
+        self.options = list
+        self:Render(list)
+    end
+
+    function dd:SetOptions(options, value)
+        self.allOptions = options or {}
+        self.options = self.allOptions
+        self:ApplyFilter()
         self:SetValue(value, false)
+    end
+
+    -- Selects the first real (non-header, non-sentinel) option — used by Enter in
+    -- the search box to accept the top match. Skips the "Any"/retry control rows
+    -- so Enter lands on the searched activity, not the always-present "Any" row.
+    function dd:PickFirst()
+        for _, opt in ipairs(self.options or {}) do
+            if not opt.header and opt.value ~= "__retry__" and opt.value ~= "__any__" then
+                self:SetValue(opt.value, true)
+                self:Close()
+                return
+            end
+        end
+    end
+
+    -- Adds a search box (and optional level-cap box) to the top of the popup.
+    -- Call once, right after creation. Non-searchable dropdowns are unchanged.
+    function dd:EnableSearch(withLevel)
+        if self.searchBox then
+            return
+        end
+        self.searchable = true
+        self.scroll:ClearAllPoints()
+        self.scroll:SetPoint("TOPLEFT", 2, -32)
+        self.scroll:SetPoint("BOTTOMRIGHT", -2, 2)
+
+        local bar = UIElements.CreatePanel(self.popup, nil, PALETTE.field, PALETTE.stroke)
+        bar:SetPoint("TOPLEFT", 3, -3)
+        bar:SetPoint("TOPRIGHT", -3, -3)
+        bar:SetHeight(26)
+
+        local search = CreateFrame("EditBox", nil, bar)
+        search:SetAutoFocus(false)
+        search:SetFont(STANDARD_TEXT_FONT, 12, "")
+        search:SetTextColor(PALETTE.text[1], PALETTE.text[2], PALETTE.text[3], 1)
+        search:SetHeight(20)
+        search:SetPoint("LEFT", 8, 0)
+        search:SetPoint("RIGHT", bar, "RIGHT", withLevel and -70 or -8, 0)
+        self.searchBox = search
+
+        local ph = UIElements.CreateLabel(bar, self.searchPlaceholder or "Search...", 11, PALETTE.faint)
+        ph:SetPoint("LEFT", 9, 0)
+
+        search:SetScript("OnTextChanged", function(box)
+            self.searchText = box:GetText()
+            if box:GetText() == "" then ph:Show() else ph:Hide() end
+            self:ApplyFilter()
+        end)
+        search:SetScript("OnEscapePressed", function(box)
+            if box:GetText() ~= "" then box:SetText("") else self:Close() end
+        end)
+        search:SetScript("OnEnterPressed", function() self:PickFirst() end)
+
+        if withLevel then
+            local cap = UIElements.CreateLabel(bar, "\226\137\164" .. (self.levelShort or "Lv"), 10, PALETTE.faint)
+            cap:SetPoint("RIGHT", -36, 0)
+            local levelBox = CreateFrame("EditBox", nil, bar)
+            levelBox:SetAutoFocus(false)
+            levelBox:SetNumeric(true)
+            levelBox:SetMaxLetters(2)
+            levelBox:SetFont(STANDARD_TEXT_FONT, 12, "")
+            levelBox:SetJustifyH("CENTER")
+            levelBox:SetTextColor(PALETTE.text[1], PALETTE.text[2], PALETTE.text[3], 1)
+            levelBox:SetHeight(20)
+            levelBox:SetWidth(26)
+            levelBox:SetPoint("RIGHT", -8, 0)
+            levelBox:SetScript("OnEscapePressed", function(box) box:ClearFocus() end)
+            levelBox:SetScript("OnEnterPressed", function(box) box:ClearFocus() end)
+            levelBox:SetScript("OnTextChanged", function(box)
+                local n = tonumber(box:GetText())
+                self.levelLimit = (n and n > 0) and n or nil
+                self:ApplyFilter()
+            end)
+            self.levelBox = levelBox
+        end
     end
 
     function dd:Toggle()
@@ -722,7 +925,30 @@ function UIElements.CreateDropdown(parent, width, height, accent)
             self.catcher:Show()
             self.popup:Show()
             self.popup:Raise()
+            if self.searchBox then
+                self.searchBox:SetFocus()
+            end
         end
+    end
+
+    local baseClose = dd.Close
+    function dd:Close()
+        -- Reset the search/level filter on close so reopening (or a data refresh
+        -- via SetOptions) starts from the full list instead of a stale filter.
+        local hadFilter = (self.searchText and self.searchText ~= "") or self.levelLimit ~= nil
+        if self.searchBox then
+            self.searchBox:ClearFocus()
+            self.searchBox:SetText("")
+        end
+        if self.levelBox then
+            self.levelBox:SetText("")
+        end
+        self.searchText = ""
+        self.levelLimit = nil
+        if hadFilter then
+            self:ApplyFilter()
+        end
+        baseClose(self)
     end
 
     catcher:SetScript("OnClick", function() dd:Close() end)

@@ -22,6 +22,7 @@ local UIElements = LoadModule("UIElements")
 local MinimapButton = LoadModule("Minimap")
 local Roster = LoadModule("Roster")
 local Comm = LoadModule("Comm")
+local Who = LoadModule("Who")
 local Autopilot = LoadModule("Autopilot")
 local UIMain = LoadModule("UIMain")
 local Search = LoadModule("Search")
@@ -101,6 +102,9 @@ function PartyLens:Refresh()
             local leaderStr = Utils.ClassColoredName(entry.leader or "", entry.classFile)
             if entry.classFile and LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[entry.classFile] then
                 leaderStr = leaderStr .. " · " .. LOCALIZED_CLASS_NAMES_MALE[entry.classFile]
+            end
+            if entry.level and entry.level > 0 then
+                leaderStr = leaderStr .. " · " .. Localization.L("LEVEL_SHORT") .. " " .. entry.level
             end
             local sourceLabel = entry.source == "tool" and Localization.L("SOURCE_LFG") or Localization.L("SOURCE_CHAT")
             local openText = entry.open and Localization.L("OPEN_STATUS") or Localization.L("CLOSED_STATUS")
@@ -245,6 +249,15 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
         -- Pre-load the group-finder activity catalog so the Create picker is
         -- populated by the time the player opens it.
         LFGTool.RequestActivities()
+        if UIMain.DetectAndApplySpec then
+            UIMain.DetectAndApplySpec(self)
+        end
+    elseif event == "PLAYER_TALENT_UPDATE" or event == "CHARACTER_POINTS_CHANGED"
+        or event == "ACTIVE_TALENT_GROUP_CHANGED" then
+        -- Respec / point spent / dual-spec swap: refresh the detected spec.
+        if UIMain.DetectAndApplySpec then
+            UIMain.DetectAndApplySpec(self)
+        end
     elseif event == "CHAT_MSG_CHANNEL" then
         Chat.HandleChatMessage(self, ...)
     elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" or event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
@@ -269,6 +282,8 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHAT_MSG_ADDON" then
         -- args: prefix, text, channel, sender
         Comm.OnMessage(self, ...)
+    elseif event == "WHO_LIST_UPDATE" then
+        Who.OnWhoList(self)
     end
 end)
 
@@ -282,3 +297,9 @@ PartyLens:RegisterEvent("LFG_LIST_AVAILABILITY_UPDATE")
 PartyLens:RegisterEvent("CHAT_MSG_WHISPER")
 PartyLens:RegisterEvent("GROUP_ROSTER_UPDATE")
 PartyLens:RegisterEvent("CHAT_MSG_ADDON")
+PartyLens:RegisterEvent("WHO_LIST_UPDATE")
+-- Talent/spec events aren't guaranteed to exist on every client build, and an
+-- unknown event name raises an error — register them defensively.
+for _, ev in ipairs({ "PLAYER_TALENT_UPDATE", "CHARACTER_POINTS_CHANGED", "ACTIVE_TALENT_GROUP_CHANGED" }) do
+    pcall(PartyLens.RegisterEvent, PartyLens, ev)
+end

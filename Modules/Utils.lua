@@ -5,6 +5,41 @@ function Utils.Print(message)
     DEFAULT_CHAT_FRAME:AddMessage("|cff35f0c5PartyLens|r " .. tostring(message))
 end
 
+-- Brand sign prepended to every VISIBLE chat message PartyLens sends (whispers,
+-- channel / party / raid announces) so recipients can tell it came from the
+-- addon. Plain text (no color escape) so it survives every channel. NOT applied
+-- to the hidden addon-comm mesh — that carries its own binary protocol.
+Utils.CHAT_SIGN = "[PartyLens]: "
+
+-- Signed wrapper around SendChatMessage. Every outgoing chat send routes through
+-- here so the sign is applied in exactly one place. Idempotent (won't double-sign)
+-- and drops empty messages.
+function Utils.SendChat(message, chatType, language, target)
+    message = tostring(message or "")
+    if message == "" then
+        return
+    end
+    if string.sub(message, 1, #Utils.CHAT_SIGN) ~= Utils.CHAT_SIGN then
+        message = Utils.CHAT_SIGN .. message
+    end
+    -- SendChatMessage caps at 255 BYTES and blind-cuts the tail, which can split
+    -- a multi-byte UTF-8 char (ptBR accents, CJK). Clamp on a code-point boundary
+    -- so the sign is preserved and no stray continuation byte is left behind.
+    if #message > 255 then
+        local cut = 255
+        while cut > 0 do
+            local b = string.byte(message, cut + 1)
+            if b and b >= 0x80 and b < 0xC0 then
+                cut = cut - 1 -- next byte is a UTF-8 continuation; back off the split
+            else
+                break
+            end
+        end
+        message = string.sub(message, 1, cut)
+    end
+    SendChatMessage(message, chatType, language, target)
+end
+
 function Utils.SafeLower(value)
     return string.lower(tostring(value or ""))
 end

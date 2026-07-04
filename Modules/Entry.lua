@@ -85,6 +85,7 @@ local function MergeEntry(canonical, incoming)
         canonical.message = incoming.message
     end
     canonical.classFile = canonical.classFile or incoming.classFile
+    canonical.level = canonical.level or incoming.level
     -- Only let a tool update (or a first value) overwrite the descriptive fields,
     -- so chat guesses do not clobber the tool's authoritative activity name.
     if fromTool or not canonical.activity or canonical.activity == "" then

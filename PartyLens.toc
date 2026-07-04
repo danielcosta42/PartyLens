@@ -23,6 +23,7 @@ Modules/Messaging.lua
 Modules/Roster.lua
 Modules/Summon.lua
 Modules/Comm.lua
+Modules/Who.lua
 Modules/Autopilot.lua
 Modules/UIElements.lua
 Modules/Search.lua

@@ -9,6 +9,7 @@ local MinimapButton = _G[ADDON_NAME .. "_Minimap"]
 local Autopilot = _G[ADDON_NAME .. "_Autopilot"]
 local Roster = _G[ADDON_NAME .. "_Roster"]
 local Summon = _G[ADDON_NAME .. "_Summon"]
+local Who = _G[ADDON_NAME .. "_Who"]
 
 local L = Localization.L
 local UIMain = {}
@@ -179,6 +180,7 @@ function UIMain.SetMode(partyLens, mode)
     HideFrame(partyLens.autopilotPanel)
     HideFrame(partyLens.summonPanel)
     HideFrame(partyLens.countPill)
+    HideFrame(partyLens.compPopup)
 
     if mode == "create" then
         ShowFrame(partyLens.createPanel)
@@ -281,16 +283,16 @@ function UIMain.CreateResultRow(partyLens, index)
 
     row.who = UIElements.CreateButton(row, L("WHO_CHECK"), 60, 18, P.gold)
     row.who:SetPoint("TOP", row.open, "BOTTOM", 0, -5)
+    -- A real click is the only context where SendWho is permitted on this
+    -- client, so the /who level+class lookup is driven from here. Route it
+    -- through the Who module so the result is harvested into the row (level
+    -- appears + the level filter can use it), throttled and de-duped.
     row.who:SetScript("OnClick", function(button)
         local entry = button:GetParent().entry
-        if entry and entry.leader then
+        if entry and entry.leader and Who then
             local name = (entry.leaderDisplay and entry.leaderDisplay ~= "" and entry.leaderDisplay)
                 or Utils.PlayerShortName(entry.leader)
-            if C_FriendList and C_FriendList.SendWho then
-                C_FriendList.SendWho('n-"' .. name .. '"')
-            elseif SendWho then
-                SendWho('n-"' .. name .. '"')
-            end
+            Who.Lookup(partyLens, name)
         end
     end)
 
@@ -324,6 +326,167 @@ local function SetRoleFilter(partyLens, role, value)
     partyLens.db.roleFilter = partyLens.db.roleFilter or {}
     partyLens.db.roleFilter[role] = value and true or false
     partyLens:Refresh()
+end
+
+-- TBC class roster (no Death Knight). Order groups tanks/healers loosely first.
+local CLASS_FILTER_ORDER = {
+    "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST",
+    "SHAMAN", "MAGE", "WARLOCK", "DRUID",
+}
+
+local function SetClassFilter(partyLens, classFile, value)
+    partyLens.db.classFilter = partyLens.db.classFilter or {}
+    -- Store as a sparse set (nil to clear) so `next()` cheaply tells us whether
+    -- any class filter is active.
+    partyLens.db.classFilter[classFile] = value and true or nil
+    partyLens:Refresh()
+end
+
+local function SetMinLevel(partyLens, text)
+    local n = tonumber(Utils.Trim(text or "")) or 0
+    n = math.max(0, math.min(70, n)) -- TBC level cap is 70
+    partyLens.db.minLevel = n
+    partyLens:Refresh()
+end
+
+-- TBC specializations per class, each mapped to a role so picking specs derives
+-- the tank/heal/dps totals. Spec is a recruiting WISHLIST (it can't be verified
+-- for strangers on this client), so it shapes your plan + role math; the CLASS
+-- is the hard gate for who Autopilot invites. Druid Feral defaults to dps (its
+-- bear/cat split isn't distinguishable here); adjust counts to taste.
+local CLASS_SPECS = {
+    WARRIOR = { { key = "arms", role = "dps", en = "Arms", pt = "Armas" }, { key = "fury", role = "dps", en = "Fury", pt = "Fúria" }, { key = "prot", role = "tank", en = "Protection", pt = "Proteção" } },
+    PALADIN = { { key = "holy", role = "heal", en = "Holy", pt = "Sagrado" }, { key = "prot", role = "tank", en = "Protection", pt = "Proteção" }, { key = "ret", role = "dps", en = "Retribution", pt = "Retribuição" } },
+    HUNTER  = { { key = "bm", role = "dps", en = "Beast Mastery", pt = "Domínio" }, { key = "mm", role = "dps", en = "Marksmanship", pt = "Precisão" }, { key = "surv", role = "dps", en = "Survival", pt = "Sobrevivência" } },
+    ROGUE   = { { key = "assa", role = "dps", en = "Assassination", pt = "Assassínio" }, { key = "combat", role = "dps", en = "Combat", pt = "Combate" }, { key = "sub", role = "dps", en = "Subtlety", pt = "Sutileza" } },
+    PRIEST  = { { key = "disc", role = "heal", en = "Discipline", pt = "Disciplina" }, { key = "holy", role = "heal", en = "Holy", pt = "Sagrado" }, { key = "shadow", role = "dps", en = "Shadow", pt = "Sombra" } },
+    SHAMAN  = { { key = "ele", role = "dps", en = "Elemental", pt = "Elemental" }, { key = "enh", role = "dps", en = "Enhancement", pt = "Aperfeiç." }, { key = "resto", role = "heal", en = "Restoration", pt = "Restaur." } },
+    MAGE    = { { key = "arcane", role = "dps", en = "Arcane", pt = "Arcano" }, { key = "fire", role = "dps", en = "Fire", pt = "Fogo" }, { key = "frost", role = "dps", en = "Frost", pt = "Gelo" } },
+    WARLOCK = { { key = "affli", role = "dps", en = "Affliction", pt = "Aflição" }, { key = "demo", role = "dps", en = "Demonology", pt = "Demonol." }, { key = "destro", role = "dps", en = "Destruction", pt = "Destruição" } },
+    DRUID   = { { key = "balance", role = "dps", en = "Balance", pt = "Equilíbrio" }, { key = "feral", role = "dps", en = "Feral", pt = "Feral" }, { key = "resto", role = "heal", en = "Restoration", pt = "Restaur." } },
+}
+
+local function SpecName(spec)
+    if Localization.CurrentLocale == "ptBR" and spec.pt then
+        return spec.pt
+    end
+    return spec.en
+end
+
+-- Sums the composition into tank/heal/dps totals (+ overall count).
+local function CompTotals(partyLens)
+    local comp = (partyLens.db.autopilot and partyLens.db.autopilot.comp) or {}
+    local t, h, d = 0, 0, 0
+    for classFile, specList in pairs(CLASS_SPECS) do
+        local picks = comp[classFile]
+        if picks then
+            for _, spec in ipairs(specList) do
+                local n = tonumber(picks[spec.key]) or 0
+                if n > 0 then
+                    if spec.role == "tank" then t = t + n
+                    elseif spec.role == "heal" then h = h + n
+                    else d = d + n end
+                end
+            end
+        end
+    end
+    return t, h, d, (t + h + d)
+end
+
+local function CompActive(partyLens)
+    return select(4, CompTotals(partyLens)) > 0
+end
+
+-- The player's own class specs (from CLASS_SPECS) + the class token.
+local function PlayerSpecList()
+    local _, classToken = UnitClass("player")
+    return CLASS_SPECS[classToken or ""], classToken
+end
+
+-- Index (1-3) of the talent tree with the most points — the player's active
+-- spec. Returns nil if the talent API is unavailable or no points are spent yet.
+-- Tree order matches CLASS_SPECS order for every TBC class, so the index maps
+-- straight onto the spec list. Defensive: a bad/absent API just yields nil and
+-- the manual picker still works.
+local function DetectSpecIndex()
+    if not (GetNumTalentTabs and GetTalentTabInfo) then
+        return nil
+    end
+    local tabs = GetNumTalentTabs() or 0
+    local best, bestPts = nil, 0
+    for i = 1, tabs do
+        -- Modern-engine Anniversary client (post-4.4.0) signature:
+        --   id, name, description, icon, pointsSpent, background, ...
+        -- (pointsSpent is the 5th return, NOT the 3rd as on legacy Classic).
+        -- Fall back to the legacy 3rd-slot value if the 5th isn't numeric.
+        local ok, r1, r2, r3, r4, r5 = pcall(GetTalentTabInfo, i)
+        local pts = (ok and (tonumber(r5) or tonumber(r3))) or 0
+        if pts > bestPts then
+            bestPts = pts
+            best = i
+        end
+    end
+    return best
+end
+
+-- Derived role set from a set of spec keys (using each spec's role).
+local function SpecRolesFromKeys(specKeys, specs)
+    local roleSet = { tank = false, heal = false, dps = false }
+    if specs and specKeys then
+        for _, s in ipairs(specs) do
+            if specKeys[s.key] then
+                roleSet[s.role] = true
+            end
+        end
+    end
+    return roleSet
+end
+
+-- Builds a shared spec picker into `parent`: an "Auto" chip (detect the active
+-- spec from talents) + one toggle chip per class spec. Selecting specs is
+-- multi-select and pins manual mode; the roles the player matches for are derived
+-- from the chosen specs. Every instance is registered so RefreshSpecPickers keeps
+-- them all in sync (the same picker appears in Settings and Autopilot "find").
+-- point = { "TOPLEFT", x, y } for the Auto chip; withRoleHint adds a "→ roles" tag.
+local function BuildSpecChips(partyLens, parent, point, withRoleHint)
+    local P = UIElements.PALETTE
+    local specs = PlayerSpecList()
+    partyLens.specPickers = partyLens.specPickers or {}
+    local group = { specChips = {} }
+
+    local auto = UIElements.CreateButton(parent, L("SPEC_AUTO"), 50, 24, P.teal)
+    auto:SetPoint(point[1], point[2], point[3])
+    auto:SetScript("OnClick", function()
+        partyLens.db.specAuto = true
+        UIMain.CommitSpec(partyLens)
+    end)
+    group.autoChip = auto
+
+    local prev = auto
+    if specs then
+        for _, s in ipairs(specs) do
+            local chip = UIElements.CreateButton(parent, SpecName(s), 90, 24, P.blue)
+            chip:SetPoint("LEFT", prev, "RIGHT", 5, 0)
+            local key = s.key
+            chip:SetScript("OnClick", function()
+                local db = partyLens.db
+                db.specAuto = false
+                db.specKeys = db.specKeys or {}
+                db.specKeys[key] = (not db.specKeys[key]) or nil
+                UIMain.CommitSpec(partyLens)
+            end)
+            group.specChips[key] = chip
+            prev = chip
+        end
+    end
+
+    if withRoleHint then
+        group.roleHint = UIElements.CreateLabel(parent, "", 10, P.gold)
+        group.roleHint:SetPoint("LEFT", prev, "RIGHT", 10, 0)
+    end
+
+    partyLens.specPickers[#partyLens.specPickers + 1] = group
+    return group
 end
 
 -- ===========================================================================
@@ -417,10 +580,51 @@ local function CreateResultsPanel(partyLens, host)
         prevPip = pip
     end
 
+    -- Toolbar row 3: class + minimum-level filters (also govern who Autopilot
+    -- invites, hence the hint).
+    local classLabel = UIElements.CreateLabel(panel, L("CLASS_FILTER_LABEL"), 10, P.muted)
+    classLabel:SetPoint("TOPLEFT", PAD, -104)
+
+    partyLens.db.classFilter = partyLens.db.classFilter or {}
+    partyLens.classToggles = {}
+    local prevClass
+    for _, cf in ipairs(CLASS_FILTER_ORDER) do
+        local toggle = UIElements.CreateClassToggle(panel, cf, 22)
+        toggle.className = (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[cf]) or cf
+        if prevClass then
+            toggle:SetPoint("LEFT", prevClass, "RIGHT", 4, 0)
+        else
+            toggle:SetPoint("TOPLEFT", PAD, -120)
+        end
+        toggle:SetSelected(partyLens.db.classFilter[cf] and true or false)
+        toggle.onToggle = function(classFile, selected) SetClassFilter(partyLens, classFile, selected) end
+        partyLens.classToggles[cf] = toggle
+        prevClass = toggle
+    end
+
+    local levelLabel = UIElements.CreateLabel(panel, L("MIN_LEVEL_LABEL"), 10, P.muted)
+    levelLabel:SetPoint("TOPLEFT", PAD + 264, -104)
+    local minLevel, minLevelShell = UIElements.CreateEditBox(panel, "PartyLensMinLevelEditBox", 56, 26)
+    partyLens.minLevelBox = minLevel
+    minLevelShell:SetPoint("TOPLEFT", PAD + 264, -120)
+    minLevel:SetNumeric(true)
+    minLevel:SetMaxLetters(2)
+    minLevel:SetText(tostring(partyLens.db.minLevel or 0))
+    minLevel:SetPlaceholder("0")
+    minLevel:SetScript("OnTextChanged", function(editBox)
+        SetMinLevel(partyLens, editBox:GetText())
+        editBox:UpdatePlaceholder()
+    end)
+
+    local filterHint = UIElements.CreateLabel(panel, L("FILTER_INVITE_HINT"), 9, P.faint)
+    filterHint:SetPoint("TOPLEFT", PAD + 264 + 74, -110)
+    filterHint:SetPoint("RIGHT", -PAD, 0)
+    filterHint:SetJustifyH("LEFT")
+
     -- Results scroll area.
     local scrollFrame = CreateFrame("ScrollFrame", "PartyLensScrollFrame", panel)
     partyLens.scrollFrame = scrollFrame
-    scrollFrame:SetPoint("TOPLEFT", PAD, -112)
+    scrollFrame:SetPoint("TOPLEFT", PAD, -152)
     scrollFrame:SetPoint("BOTTOMRIGHT", -PAD, PAD)
     scrollFrame:EnableMouseWheel(true)
     scrollFrame:SetScript("OnMouseWheel", function(scroll, delta)
@@ -486,6 +690,9 @@ local function CreateCreatePanel(partyLens, host)
     local activityDropdown = UIElements.CreateDropdown(panel, 380, 30, P.blue)
     partyLens.activityDropdown = activityDropdown
     activityDropdown.placeholder = L("LISTING_PICK")
+    activityDropdown.searchPlaceholder = L("SEARCH_ACTIVITY")
+    activityDropdown.levelShort = L("LEVEL_SHORT")
+    activityDropdown:EnableSearch(true)
     activityDropdown:SetPoint("TOPLEFT", PAD, -114)
     activityDropdown.onSelect = function(value)
         if value == "__retry__" then
@@ -596,14 +803,6 @@ local function UpdateAutopilotContent(partyLens)
     end
 end
 
-local function UpdateAutopilotMyRole(partyLens)
-    local ap = partyLens.ap
-    if not ap then return end
-    for key, btn in pairs(ap.myRoleBtns) do
-        btn:SetActive(key == partyLens.db.autopilot.myRole)
-    end
-end
-
 local function SaveAutopilotNumber(editBox, key, partyLens, minValue)
     local n = tonumber(Utils.Trim(editBox:GetText())) or 0
     partyLens.db.autopilot[key] = math.max(minValue or 0, n)
@@ -647,6 +846,138 @@ local function Card(parent, titleText, y, h)
         card.title:SetPoint("TOPLEFT", 12, -9)
     end
     return card
+end
+
+-- A spec chip inside the composition popup: shows the spec name and, once you
+-- want one or more, a "×N" count. Click cycles the count 0→1→2→3→0.
+local function MakeSpecChip(parent, classFile, spec, rgb, partyLens)
+    local chip = UIElements.CreateButton(parent, SpecName(spec), 104, 24, { rgb[1], rgb[2], rgb[3], 1 })
+    chip.specKey = spec.key
+    chip.specName = SpecName(spec)
+    function chip:SetCount(n)
+        n = tonumber(n) or 0
+        if n > 0 then
+            self:SetText(self.specName .. "  x" .. n)
+            self:SetActive(true)
+        else
+            self:SetText(self.specName)
+            self:SetActive(false)
+        end
+    end
+    chip:SetScript("OnClick", function()
+        local comp = partyLens.db.autopilot.comp or {}
+        partyLens.db.autopilot.comp = comp
+        comp[classFile] = comp[classFile] or {}
+        local n = (tonumber(comp[classFile][spec.key]) or 0) + 1
+        if n > 3 then n = 0 end
+        comp[classFile][spec.key] = (n > 0) and n or nil
+        if not next(comp[classFile]) then
+            comp[classFile] = nil
+        end
+        UIMain.CommitComp(partyLens)
+    end)
+    return chip
+end
+
+-- The composition editor: a class-per-row grid of spec chips. Lives as a modal
+-- over the main window (opened from the Autopilot build card) so it has room to
+-- breathe. Repainted by UIMain.RefreshComp.
+local function CreateCompPopup(partyLens)
+    local P = UIElements.PALETTE
+    local pop = UIElements.CreatePanel(partyLens.frame, "PartyLensCompPopup", P.shell, P.strokeHot, true)
+    partyLens.compPopup = pop
+    pop:SetFrameStrata("FULLSCREEN_DIALOG")
+    pop:SetSize(540, 60 + #CLASS_FILTER_ORDER * 32 + 50)
+    pop:SetPoint("CENTER", partyLens.frame, "CENTER", 0, 0)
+    pop:EnableMouse(true)
+    pop:Hide()
+    pop.rows = {}
+
+    local title = UIElements.CreateLabel(pop, L("COMP_TITLE"), 15, P.text)
+    title:SetPoint("TOPLEFT", 16, -14)
+
+    local close = UIElements.CreateButton(pop, L("CLOSE"), 28, 24, P.coral)
+    close:SetPoint("TOPRIGHT", -12, -12)
+    close:SetScript("OnClick", function() pop:Hide() end)
+
+    local sub = UIElements.CreateLabel(pop, L("COMP_HINT"), 10, P.muted)
+    sub:SetPoint("TOPLEFT", 16, -34)
+    sub:SetPoint("RIGHT", -16, 0)
+    sub:SetJustifyH("LEFT")
+
+    local y = -58
+    for _, classFile in ipairs(CLASS_FILTER_ORDER) do
+        local row = CreateFrame("Frame", nil, pop)
+        row:SetPoint("TOPLEFT", 16, y)
+        row:SetPoint("RIGHT", pop, "RIGHT", -16, 0)
+        row:SetHeight(28)
+        row.chips = {}
+
+        local iconFrame = UIElements.CreatePanel(row, nil, { 0.06, 0.07, 0.09, 0.9 }, P.stroke)
+        iconFrame:SetSize(24, 24)
+        iconFrame:SetPoint("LEFT", 0, 0)
+        local icon = iconFrame:CreateTexture(nil, "ARTWORK")
+        icon:SetPoint("TOPLEFT", 2, -2)
+        icon:SetPoint("BOTTOMRIGHT", -2, 2)
+        if CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classFile] then
+            icon:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+            local co = CLASS_ICON_TCOORDS[classFile]
+            icon:SetTexCoord(co[1], co[2], co[3], co[4])
+        end
+
+        local cc = RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
+        local rgb = cc and { cc.r, cc.g, cc.b, 1 } or P.text
+        local nameLabel = UIElements.CreateLabel(row,
+            (LOCALIZED_CLASS_NAMES_MALE and LOCALIZED_CLASS_NAMES_MALE[classFile]) or classFile, 11, rgb)
+        nameLabel:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
+        nameLabel:SetWidth(94)
+        nameLabel:SetJustifyH("LEFT")
+
+        local prevChip
+        for _, spec in ipairs(CLASS_SPECS[classFile]) do
+            local chip = MakeSpecChip(row, classFile, spec, rgb, partyLens)
+            if prevChip then
+                chip:SetPoint("LEFT", prevChip, "RIGHT", 6, 0)
+            else
+                chip:SetPoint("LEFT", nameLabel, "RIGHT", 6, 0)
+            end
+            row.chips[#row.chips + 1] = chip
+            prevChip = chip
+        end
+        pop.rows[classFile] = row
+        y = y - 32
+    end
+
+    pop.needLabel = UIElements.CreateLabel(pop, "", 12, P.gold)
+    pop.needLabel:SetPoint("BOTTOMLEFT", 16, 18)
+
+    local clear = UIElements.CreateButton(pop, L("COMP_CLEAR"), 90, 26, P.coral)
+    clear:SetPoint("BOTTOMRIGHT", -122, 12)
+    clear:SetScript("OnClick", function()
+        partyLens.db.autopilot.comp = {}
+        UIMain.CommitComp(partyLens)
+    end)
+
+    local done = UIElements.CreateButton(pop, L("COMP_DONE"), 96, 26, P.teal)
+    done:SetPoint("BOTTOMRIGHT", -16, 12)
+    done:SetScript("OnClick", function() pop:Hide() end)
+
+    -- Modal click-catcher: without it, controls in the main window's margin
+    -- (sidebar, header close) stay clickable under the "modal". A full-window
+    -- button one level below the popup swallows outside clicks and dismisses,
+    -- mirroring the dropdown catcher in UIElements.
+    local catcher = CreateFrame("Button", nil, partyLens.frame)
+    catcher:SetAllPoints(partyLens.frame)
+    catcher:SetFrameStrata("FULLSCREEN_DIALOG")
+    catcher:EnableMouse(true)
+    catcher:Hide()
+    catcher:SetScript("OnClick", function() pop:Hide() end)
+    pop.catcher = catcher
+    pop:SetScript("OnShow", function(self)
+        catcher:Show()
+        catcher:SetFrameLevel(math.max(0, self:GetFrameLevel() - 1))
+    end)
+    pop:SetScript("OnHide", function() catcher:Hide() end)
 end
 
 local function CreateAutopilotPanel(partyLens, host)
@@ -705,8 +1036,9 @@ local function CreateAutopilotPanel(partyLens, host)
             partyLens.db.autopilot.activityType = key
             UpdateAutopilotContent(partyLens)
             UIMain.RefreshAutopilotActivities(partyLens, true)
-            -- Auto-fill a comfortable comp for the content type (build only).
-            if partyLens.db.autopilot.role == "build" then
+            -- Auto-fill a comfortable size for the content type (build only, and
+            -- only when the player hasn't defined an explicit class/spec comp).
+            if partyLens.db.autopilot.role == "build" and not CompActive(partyLens) then
                 if key == "dungeon" then
                     ApplyComp(partyLens, ComfortableComp(5))
                 elseif key == "raid" then
@@ -721,6 +1053,9 @@ local function CreateAutopilotPanel(partyLens, host)
     local activityDropdown = UIElements.CreateDropdown(contentCard, 340, 28, P.purple)
     ap.activityDropdown = activityDropdown
     activityDropdown.placeholder = L("AP_ANY_ACTIVITY")
+    activityDropdown.searchPlaceholder = L("SEARCH_ACTIVITY")
+    activityDropdown.levelShort = L("LEVEL_SHORT")
+    activityDropdown:EnableSearch(true)
     activityDropdown:SetPoint("TOPLEFT", 260, -26)
     activityDropdown:SetPoint("RIGHT", -12, 0)
     activityDropdown.onSelect = function(value)
@@ -735,7 +1070,7 @@ local function CreateAutopilotPanel(partyLens, host)
         end
         partyLens.db.autopilot.activityID = tonumber(value)
         local label, maxp
-        for _, opt in ipairs(activityDropdown.options) do
+        for _, opt in ipairs(activityDropdown.allOptions or activityDropdown.options) do
             if opt.value == value then
                 label = opt.label
                 maxp = opt.maxPlayers
@@ -743,8 +1078,9 @@ local function CreateAutopilotPanel(partyLens, host)
             end
         end
         partyLens.db.autopilot.activityFilter = label or ""
-        -- Match the comp to the picked activity's size (build only).
-        if maxp and partyLens.db.autopilot.role == "build" then
+        -- Match the size to the picked activity (build only, and only when no
+        -- explicit class/spec comp is set).
+        if maxp and partyLens.db.autopilot.role == "build" and not CompActive(partyLens) then
             ApplyComp(partyLens, ComfortableComp(maxp))
         end
     end
@@ -760,17 +1096,16 @@ local function CreateAutopilotPanel(partyLens, host)
     buildBox:SetPoint("TOPRIGHT", -12, -26)
     buildBox:SetHeight(58)
 
-    -- Row 1: unified role counters + invite keyword.
-    local function MakeCounter(name, key, x, role)
-        local box, shell = UIElements.CreateRoleCounter(buildBox, name, role, 62, 28)
-        shell:SetPoint("TOPLEFT", x, -2)
-        box:SetText(tostring(partyLens.db.autopilot[key] or 0))
-        box:SetScript("OnTextChanged", function(editBox) SaveAutopilotNumber(editBox, key, partyLens, 0) end)
-        return box
-    end
-    ap.needT = MakeCounter("PartyLensAPNeedTank", "needTank", 0, "tank")
-    ap.needH = MakeCounter("PartyLensAPNeedHeal", "needHeal", 68, "heal")
-    ap.needD = MakeCounter("PartyLensAPNeedDps", "needDps", 136, "dps")
+    -- Row 1: composition editor (opens the class/spec popup) + derived need
+    -- readout + invite keyword.
+    ap.compBtn = UIElements.CreateButton(buildBox, L("COMP_EDIT"), 150, 28, P.teal)
+    ap.compBtn:SetPoint("TOPLEFT", 0, -2)
+    ap.compBtn:SetScript("OnClick", function() UIMain.OpenComp(partyLens) end)
+
+    ap.compNeed = UIElements.CreateLabel(buildBox, "", 11, P.gold)
+    ap.compNeed:SetPoint("LEFT", ap.compBtn, "RIGHT", 10, 0)
+    ap.compNeed:SetWidth(74)
+    ap.compNeed:SetJustifyH("LEFT")
 
     local kwLabel = UIElements.CreateLabel(buildBox, L("AP_KEYWORD_SHORT"), 10, P.muted)
     kwLabel:SetPoint("TOPLEFT", 236, -8)
@@ -805,28 +1140,10 @@ local function CreateAutopilotPanel(partyLens, host)
     findBox:SetPoint("TOPRIGHT", -12, -26)
     findBox:SetHeight(58)
 
-    ap.myRoleBtns = {}
-    local roleOrder = {
-        { key = "tank", labelKey = "ROLE_TANK", color = P.roleTank },
-        { key = "heal", labelKey = "ROLE_HEAL", color = P.roleHeal },
-        { key = "dps", labelKey = "ROLE_DPS", color = P.roleDps },
-    }
-    local prevRole
-    for _, r in ipairs(roleOrder) do
-        local btn = UIElements.CreateButton(findBox, L(r.labelKey), 74, 28, r.color)
-        if prevRole then
-            btn:SetPoint("LEFT", prevRole, "RIGHT", 6, 0)
-        else
-            btn:SetPoint("TOPLEFT", 0, -2)
-        end
-        local key = r.key
-        btn:SetScript("OnClick", function()
-            partyLens.db.autopilot.myRole = key
-            UpdateAutopilotMyRole(partyLens)
-        end)
-        ap.myRoleBtns[r.key] = btn
-        prevRole = btn
-    end
+    -- The roles the player answers for come from their spec(s) — the same picker
+    -- as Settings (multi-select, unified). Pick 2+ specs to match groups needing
+    -- any of those roles.
+    BuildSpecChips(partyLens, findBox, { "TOPLEFT", 0, -2 }, true)
 
     ap.autoWhisperToggle = UIElements.CreateToggle(findBox, L("AP_AUTO_WHISPER"), 150)
     ap.autoWhisperToggle:SetPoint("TOPLEFT", 0, -34)
@@ -931,11 +1248,170 @@ local function CreateAutopilotPanel(partyLens, host)
         ap.logLines[i] = line
     end
 
+    CreateCompPopup(partyLens)
+
     UpdateAutopilotRole(partyLens)
     UpdateAutopilotTier(partyLens)
     UpdateAutopilotContent(partyLens)
-    UpdateAutopilotMyRole(partyLens)
     UIMain.RefreshAutopilotActivities(partyLens, true)
+    UIMain.RefreshComp(partyLens)
+    -- Re-sync the spec pickers now that the find-box picker exists too.
+    UIMain.CommitSpec(partyLens)
+end
+
+-- Applies a composition change: derives the tank/heal/dps totals (which feed the
+-- size gate, the mesh, and the LFM announce) and repaints the readouts. When the
+-- comp is emptied the last totals are left in place so recruiting-by-size still
+-- works. The class GATE is read live from the comp by Autopilot.RecruitFilter, so
+-- nothing else needs writing here.
+function UIMain.CommitComp(partyLens)
+    local t, h, d, total = CompTotals(partyLens)
+    local cfg = partyLens.db.autopilot
+    if total > 0 then
+        cfg.needTank, cfg.needHeal, cfg.needDps = t, h, d
+    else
+        -- Comp emptied (Clear, or the last spec cycled to 0): revert the size
+        -- gate to the selected content's default instead of stranding the just-
+        -- cleared comp's per-role totals (which would make Autopilot recruit the
+        -- wrong headcount). Mirrors the content-button auto-fill.
+        cfg.needTank, cfg.needHeal, cfg.needDps =
+            ComfortableComp(cfg.activityType == "raid" and 25 or 5)
+    end
+    UIMain.RefreshComp(partyLens)
+    if UIMain.RefreshAutopilot then
+        UIMain.RefreshAutopilot(partyLens)
+    end
+end
+
+-- Repaints the build-card readout/button and, if open, the popup's spec chips
+-- and derived-need footer.
+function UIMain.RefreshComp(partyLens)
+    local ap = partyLens.ap
+    local comp = (partyLens.db.autopilot and partyLens.db.autopilot.comp) or {}
+    local t, h, d, total = CompTotals(partyLens)
+
+    if ap and ap.compNeed then
+        if total > 0 then
+            local parts = {}
+            if t > 0 then parts[#parts + 1] = t .. "T" end
+            if h > 0 then parts[#parts + 1] = h .. "H" end
+            if d > 0 then parts[#parts + 1] = d .. "D" end
+            ap.compNeed:SetText(table.concat(parts, " ") .. "  ·  " .. total)
+        else
+            ap.compNeed:SetText(L("COMP_NONE"))
+        end
+    end
+
+    local pop = partyLens.compPopup
+    if pop then
+        for classFile, row in pairs(pop.rows) do
+            local picks = comp[classFile]
+            for _, chip in ipairs(row.chips) do
+                chip:SetCount(picks and picks[chip.specKey] or 0)
+            end
+        end
+        if pop.needLabel then
+            pop.needLabel:SetText(L("COMP_NEED", t, h, d, total))
+        end
+    end
+end
+
+function UIMain.OpenComp(partyLens)
+    if not partyLens.compPopup then
+        return
+    end
+    UIMain.RefreshComp(partyLens)
+    partyLens.compPopup:Show()
+    partyLens.compPopup:Raise()
+end
+
+-- Readable derived roles, e.g. "Heal / DPS", from db.myRoles.
+function UIMain.RolesText(partyLens)
+    local mr = partyLens.db.myRoles or {}
+    local parts = {}
+    if mr.tank then parts[#parts + 1] = L("ROLE_TANK") end
+    if mr.heal then parts[#parts + 1] = L("ROLE_HEAL") end
+    if mr.dps then parts[#parts + 1] = L("ROLE_DPS") end
+    return table.concat(parts, " / ")
+end
+
+-- Central spec commit: (re)derives db.spec / db.role / db.myRoles from the chosen
+-- specs (db.specKeys). In Auto mode it first sets specKeys to the single detected
+-- talent spec (updates on respec). db.myRoles then drives find matching, the mesh,
+-- and the whisper {role}; db.spec fills {spec}. Called from the pickers, on login,
+-- and on respec.
+function UIMain.CommitSpec(partyLens)
+    local db = partyLens.db
+    if not db then
+        return
+    end
+    local specs = PlayerSpecList()
+    db.specKeys = db.specKeys or {}
+
+    -- Drop any pinned key that isn't valid for the player's class (defensive).
+    if specs then
+        local valid = {}
+        for _, s in ipairs(specs) do valid[s.key] = true end
+        for key in pairs(db.specKeys) do
+            if not valid[key] then db.specKeys[key] = nil end
+        end
+    end
+
+    if db.specAuto then
+        -- Only replace the detected spec when detection actually resolves one.
+        -- On login the talent API may not be populated yet (DetectSpecIndex
+        -- returns nil); wiping first would collapse the roles to the dps
+        -- fallback until the next talent event, silently mis-broadcasting a
+        -- healer/tank as dps. Keep the prior specKeys through a transient nil.
+        local idx = DetectSpecIndex()
+        if idx and specs and specs[idx] then
+            if wipe then wipe(db.specKeys) else db.specKeys = {} end
+            db.specKeys[specs[idx].key] = true
+        end
+    end
+
+    local names = {}
+    if specs then
+        for _, s in ipairs(specs) do
+            if db.specKeys[s.key] then
+                names[#names + 1] = SpecName(s)
+            end
+        end
+    end
+    local roleSet = SpecRolesFromKeys(db.specKeys, specs)
+    if not (roleSet.tank or roleSet.heal or roleSet.dps) then
+        roleSet.dps = true -- never leave find matching with zero roles
+    end
+    db.spec = table.concat(names, " / ")
+    db.myRoles = roleSet
+    -- Primary role token for Search scoring + legacy consumers.
+    db.role = (roleSet.tank and "tank") or (roleSet.heal and "heal") or "dps"
+
+    UIMain.RefreshSpecPickers(partyLens)
+    if UIMain.RefreshAutopilot then
+        UIMain.RefreshAutopilot(partyLens)
+    end
+end
+
+-- Back-compat name used by Core's login / talent-change events.
+function UIMain.DetectAndApplySpec(partyLens)
+    UIMain.CommitSpec(partyLens)
+end
+
+-- Syncs every spec picker instance (Settings + Autopilot "find") to db state.
+function UIMain.RefreshSpecPickers(partyLens)
+    local roleHint = "\226\134\146 " .. UIMain.RolesText(partyLens) -- "→ Heal / DPS"
+    for _, g in ipairs(partyLens.specPickers or {}) do
+        if g.autoChip then
+            g.autoChip:SetActive(partyLens.db.specAuto and true or false)
+        end
+        for key, chip in pairs(g.specChips) do
+            chip:SetActive(partyLens.db.specKeys and partyLens.db.specKeys[key] and true or false)
+        end
+        if g.roleHint then
+            g.roleHint:SetText(roleHint)
+        end
+    end
 end
 
 local function ActivityIsHeroic(label)
@@ -1027,7 +1503,8 @@ function UIMain.RefreshAutopilotActivities(partyLens, allowRequest)
         end)
         options[#options + 1] = { value = "__header__", label = g.label, header = true }
         for _, item in ipairs(g.items) do
-            options[#options + 1] = { value = item.value, label = item.label, indent = true, maxPlayers = item.maxPlayers }
+            options[#options + 1] = { value = item.value, label = item.label, indent = true,
+                maxPlayers = item.maxPlayers, minLevel = item.minLevel, levelText = item.levelText }
         end
     end
 
@@ -1085,7 +1562,9 @@ function UIMain.RefreshAutopilot(partyLens)
         UIElements.SetButtonEnabled(ap.announceBtn, armed and snap.size > 1)
         ap.announceBtn:Show()
     else
-        ap.needLabel:SetText(L("AP_MYROLE_LABEL") .. ": " .. (cfg.myRole or "dps"))
+        local rolesText = UIMain.RolesText and UIMain.RolesText(partyLens) or ""
+        if rolesText == "" then rolesText = "dps" end
+        ap.needLabel:SetText(L("AP_MYROLE_LABEL") .. ": " .. rolesText)
         ap.needLabel:SetTextColor(P.muted[1], P.muted[2], P.muted[3], 1)
         ap.announceBtn:Hide()
     end
@@ -1175,44 +1654,37 @@ local function CreateSettingsPanel(partyLens, host)
 
     Section(panel, L("PROFILE_AND_WHISPER"), PAD, -116)
 
+    -- Spec picker: Auto (detected from talents) or pick the spec(s) you play.
+    -- The roles you match for are DERIVED from the specs (shown to the right), so
+    -- a Resto/Balance druid matches groups needing heal OR dps.
     local specLabel = UIElements.CreateLabel(panel, L("SPEC_LABEL"), 10, P.muted)
     specLabel:SetPoint("TOPLEFT", PAD, -140)
-    local spec, specShell = UIElements.CreateEditBox(panel, "PartyLensSpecEditBox", 130, 30)
-    partyLens.specBox = spec
-    specShell:SetPoint("TOPLEFT", PAD, -156)
-    spec:SetText(partyLens.db.spec or "")
-    spec:SetScript("OnTextChanged", function(editBox) SaveEditBox(editBox, "spec", partyLens) end)
-
-    local roleLabel = UIElements.CreateLabel(panel, L("ROLE_LABEL"), 10, P.muted)
-    roleLabel:SetPoint("TOPLEFT", PAD + 146, -140)
-    local role, roleShell = UIElements.CreateEditBox(panel, "PartyLensRoleEditBox", 100, 30)
-    partyLens.roleBox = role
-    roleShell:SetPoint("TOPLEFT", PAD + 146, -156)
-    role:SetText(partyLens.db.role or "")
-    role:SetScript("OnTextChanged", function(editBox) SaveEditBox(editBox, "role", partyLens) end)
+    BuildSpecChips(partyLens, panel, { "TOPLEFT", PAD, -158 }, true)
 
     local commentLabel = UIElements.CreateLabel(panel, L("COMMENT_LABEL"), 10, P.muted)
-    commentLabel:SetPoint("TOPLEFT", PAD + 262, -140)
+    commentLabel:SetPoint("TOPLEFT", PAD, -192)
     local comment, commentShell = UIElements.CreateEditBox(panel, "PartyLensCommentEditBox", 100, 30)
     partyLens.commentBox = comment
-    commentShell:SetPoint("TOPLEFT", PAD + 262, -156)
+    commentShell:SetPoint("TOPLEFT", PAD, -208)
     commentShell:SetPoint("RIGHT", -PAD, 0)
     comment:SetText(partyLens.db.comment or "")
     comment:SetScript("OnTextChanged", function(editBox) SaveEditBox(editBox, "comment", partyLens) end)
 
     local templateLabel = UIElements.CreateLabel(panel, L("TEMPLATE_LABEL"), 10, P.muted)
-    templateLabel:SetPoint("TOPLEFT", PAD, -198)
+    templateLabel:SetPoint("TOPLEFT", PAD, -244)
     local template, templateShell = UIElements.CreateEditBox(panel, "PartyLensTemplateEditBox", 100, 32)
     partyLens.templateBox = template
-    templateShell:SetPoint("TOPLEFT", PAD, -214)
+    templateShell:SetPoint("TOPLEFT", PAD, -260)
     templateShell:SetPoint("RIGHT", -PAD, 0)
     template:SetText(partyLens.db.template or "")
     template:SetScript("OnTextChanged", function(editBox) SaveEditBox(editBox, "template", partyLens) end)
 
     local hint = UIElements.CreateLabel(panel, L("TEMPLATE_HINT"), 10, P.faint)
-    hint:SetPoint("TOPLEFT", PAD, -258)
+    hint:SetPoint("TOPLEFT", PAD, -300)
     hint:SetPoint("RIGHT", -PAD, 0)
     hint:SetJustifyH("LEFT")
+
+    UIMain.CommitSpec(partyLens)
 end
 
 -- ===========================================================================
@@ -1411,6 +1883,12 @@ function UIMain.CreateMainUI(partyLens)
             partyLens._summonTicker:Cancel()
             partyLens._summonTicker = nil
         end
+    end)
+    -- Re-show paths (Toggle / minimap / keybind / "/partylens show") call a bare
+    -- frame:Show() without SetMode, so make sure the comp popup never re-appears
+    -- stranded over whatever screen the window opens into.
+    frame:SetScript("OnShow", function()
+        HideFrame(partyLens.compPopup)
     end)
     frame:Hide()
     tinsert(UISpecialFrames, "PartyLensFrame")

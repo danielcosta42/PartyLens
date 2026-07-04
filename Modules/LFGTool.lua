@@ -208,8 +208,25 @@ function LFGTool.RefreshGameFinder(partyLens, contentFilter)
     end
 end
 
+-- Compact "60-62" / "70" level tag for an activity's recommended range.
+local function LevelRangeText(minLevel, maxLevel)
+    minLevel = tonumber(minLevel) or 0
+    maxLevel = tonumber(maxLevel) or 0
+    if minLevel > 0 and maxLevel > 0 then
+        if maxLevel > minLevel then
+            return minLevel .. "-" .. maxLevel
+        end
+        return tostring(minLevel)
+    elseif minLevel > 0 then
+        return tostring(minLevel)
+    elseif maxLevel > 0 then
+        return tostring(maxLevel)
+    end
+    return ""
+end
+
 local function ActivityEntry(activityID)
-    local fullName, maxPlayers, orderIndex, categoryID
+    local fullName, maxPlayers, orderIndex, categoryID, minLevel, maxLevel
     -- The Anniversary client is a modern build: GetActivityInfo was replaced by
     -- the table-returning GetActivityInfoTable. Prefer it; fall back to the old
     -- positional form on older clients.
@@ -220,6 +237,14 @@ local function ActivityEntry(activityID)
             maxPlayers = info.maxNumPlayers or info.maxPlayers
             orderIndex = info.orderIndex
             categoryID = info.categoryID
+            -- Modern GroupFinderActivityInfo has no "maxLevel"; the real fields
+            -- are minLevel + min/maxLevelSuggestion. Fall back through them so a
+            -- range like "68-70" renders wherever the client exposes it.
+            minLevel = info.minLevel
+            if not minLevel or minLevel == 0 then
+                minLevel = info.minLevelSuggestion
+            end
+            maxLevel = info.maxLevelSuggestion or info.maxLevel
         end
     elseif C_LFGList.GetActivityInfo then
         fullName, _, categoryID, _, _, _, _, maxPlayers, _, orderIndex = C_LFGList.GetActivityInfo(activityID)
@@ -233,6 +258,9 @@ local function ActivityEntry(activityID)
         order = orderIndex or 0,
         maxPlayers = maxPlayers or 0,
         categoryID = categoryID,
+        minLevel = tonumber(minLevel) or 0,
+        maxLevel = tonumber(maxLevel) or 0,
+        levelText = LevelRangeText(minLevel, maxLevel),
     }
 end
 
@@ -484,7 +512,7 @@ function LFGTool.AnnounceListing(partyLens)
     end
 
     if type(channelNumber) == "number" and channelNumber > 0 then
-        SendChatMessage(message, "CHANNEL", nil, channelNumber)
+        Utils.SendChat(message, "CHANNEL", nil, channelNumber)
         Utils.Print(Localization.L("LISTING_ANNOUNCED"))
     else
         Utils.Print(Localization.L("LFG_JOIN_ATTEMPT"))

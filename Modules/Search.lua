@@ -1,6 +1,7 @@
 local ADDON_NAME = ...
 local Utils = _G[ADDON_NAME .. "_Utils"]
 local Entry = _G[ADDON_NAME .. "_Entry"]
+local Who = _G[ADDON_NAME .. "_Who"]
 
 local Search = {}
 
@@ -100,6 +101,38 @@ function Search.GetFilteredEntries(partyLens)
                 or (rf.dps and string.find(needs, "dps", 1, true))
             if not matchesRole then
                 include = false
+            end
+        end
+
+        -- Class + level filters. Class is almost always known (chat GUID / LFG
+        -- leader / mesh), so an unknown class is EXCLUDED when a class filter is
+        -- active. Level is only knowable off the mesh or a /who (the "Who"
+        -- button), so an unknown level is KEPT — hiding it would empty the list —
+        -- and only a CONFIRMED below-floor level is dropped. We fill from the
+        -- /who cache inline (no lookup of our own: SendWho is a click-only,
+        -- hardware-event-restricted call, so we never auto-scan).
+        if include then
+            local classFilter = partyLens.db.classFilter
+            local hasClassFilter = classFilter and next(classFilter) ~= nil
+            local minLevel = tonumber(partyLens.db.minLevel) or 0
+
+            if Who and (hasClassFilter or minLevel > 0) then
+                Who.Enrich(partyLens, entry) -- cache-fill only; no /who sent
+            end
+
+            if hasClassFilter then
+                if entry.classFile and entry.classFile ~= "" then
+                    if not classFilter[entry.classFile] then
+                        include = false
+                    end
+                else
+                    include = false -- unknown class: hide while filtering
+                end
+            end
+
+            if include and minLevel > 0 and entry.level and entry.level > 0
+                and entry.level < minLevel then
+                include = false -- known to be below the floor
             end
         end
 
