@@ -5,6 +5,33 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.14.0]
+
+- **Rede de Layer (nova aba)**: detecção de layer **standalone** (sem integrar com
+  NWB/AutoLayer — via zoneUID do GUID de NPC) e uma malha invisível entre usuários
+  PartyLens sobre o canal LookingForGroup. Toggle de **beacon** (botão direito no
+  minimapa ou no botão Beacon): como beacon você **convida em silêncio** quem pede a
+  sua layer no chat — sem spam de party, sem popup de /w, com o frame da party
+  escondido — e manda um /w assinado (marketing).
+- **Seletor de layer visual**: em vez de digitar número, chips das layers que a rede
+  **conhece de verdade** — ponto teal = beacon no ar ali, dourado = a sua layer,
+  destaque = o que você pediu. Botões **Qualquer** / **Parar**. `/partylens reqlayer`
+  segue como atalho.
+- **Numeração que converge de verdade**: a malha compartilha o conjunto **completo**
+  de layers, então "minha Layer 5 = a sua Layer 5" (e tende a bater com o NWB). O
+  match de convite é por **identidade absoluta (zoneUID) + mesmo mapa** — nunca puxa
+  ninguém pra layer errada; se não dá pra confirmar, **recusa** em vez de chutar.
+- **Canal Layer dedicado**: o addon reconhece um canal chamado "Layer"/"Camada" (e
+  qualquer canal customizado) e ali aceita pedidos curtos — `5`, `inv 4`, `hop me`,
+  `any` — sem exigir a palavra "layer", filtrando spam de LFG cross-postado.
+- **Corre pelo cliente**: pedidos de usuários de addons concorrentes (OpenLayer,
+  AutoLayer) também são atendidos — quem convida primeiro leva o cliente.
+- **Log de atividade** mostra o que o beacon detecta e faz ("Fulano quer L5",
+  "convidou Fulano → L4"), com um status explicando por que está / não está
+  convidando (beacon off, layer desconhecida, party cheia, no ar).
+- **Créditos**: autoria de **Chehul (danielcosta42)** na TOC, no rodapé de
+  Configurações e no tooltip do minimapa.
+
 ## [0.13.0]
 
 - **Composição por classe/spec** (aba **Autopilot** → Construir): botão

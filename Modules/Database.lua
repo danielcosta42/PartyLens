@@ -37,6 +37,22 @@ function Database.EnsureDB(partyLens)
         -- minLevel: 0 = off; otherwise hide/skip players known to be below it.
         -- Level is only knowable via the mesh or a /who lookup on this client.
         minLevel = 0,
+        -- Layer network: beacon = am I a node that auto-invites layer requesters.
+        -- channels = which public chats to scan for requests. seen/hops filled at
+        -- runtime. Detection lives in Layer.lua; the engine in LayerNet.lua.
+        layer = {
+            beacon = false,
+            channels = { trade = true, general = true, lookingforgroup = true, world = true },
+            -- Instruction whisper to the invited player: ON (it doubles as
+            -- marketing — every hopper receives the addon's name). The beacon
+            -- itself stays silent: the outgoing echo is filtered and the whisper
+            -- tab it would open is auto-closed (FCF_OpenTemporaryWindow hook).
+            whisper = true,
+            -- Hide the party unit frames while beaconing (SetAlpha, not :Hide).
+            hideParty = true,
+            hops = 0,
+            seen = {},
+        },
         listingCategory = "dungeons",
         listingActivityID = "",
         listingTitle = "",

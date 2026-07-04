@@ -87,8 +87,17 @@ function MinimapButton.Create(partyLens)
     button.ring:SetSize(53, 53)
     button.ring:SetPoint("TOPLEFT", 0, 0)
 
-    button:SetScript("OnClick", function()
-        partyLens:Toggle()
+    -- Left-click opens the window; RIGHT-click toggles the layer beacon.
+    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    button:SetScript("OnClick", function(_, btn)
+        if btn == "RightButton" then
+            local LayerNet = _G[ADDON_NAME .. "_LayerNet"]
+            if LayerNet then
+                LayerNet.ToggleBeacon(partyLens)
+            end
+        else
+            partyLens:Toggle()
+        end
     end)
     button:SetScript("OnDragStart", function(self)
         self:SetScript("OnUpdate", function()
@@ -104,6 +113,10 @@ function MinimapButton.Create(partyLens)
             GameTooltip:SetOwner(self, "ANCHOR_LEFT")
             GameTooltip:SetText("PartyLens", 0.12, 0.85, 0.72)
             GameTooltip:AddLine(Localization.L("MINIMAP_TOOLTIP"), 0.9, 0.93, 0.93, true)
+            local on = partyLens.db and partyLens.db.layer and partyLens.db.layer.beacon
+            GameTooltip:AddLine(Localization.L("MINIMAP_BEACON",
+                on and Localization.L("LAYER_ON") or Localization.L("LAYER_OFF")), 0.6, 0.62, 0.68, true)
+            GameTooltip:AddLine(Localization.L("CREDIT_BY"), 0.4, 0.42, 0.46)
             GameTooltip:Show()
         end
     end)

@@ -10,6 +10,8 @@ local Autopilot = _G[ADDON_NAME .. "_Autopilot"]
 local Roster = _G[ADDON_NAME .. "_Roster"]
 local Summon = _G[ADDON_NAME .. "_Summon"]
 local Who = _G[ADDON_NAME .. "_Who"]
+local Layer = _G[ADDON_NAME .. "_Layer"]
+local LayerNet = _G[ADDON_NAME .. "_LayerNet"]
 
 local L = Localization.L
 local UIMain = {}
@@ -73,7 +75,7 @@ function UIMain.RefreshActivityList(partyLens, allowRequest)
 end
 
 -- Top-level navigation modes.
-local MODES = { browse = true, create = true, settings = true, autopilot = true, summon = true }
+local MODES = { browse = true, create = true, settings = true, autopilot = true, summon = true, layer = true }
 
 local CONTENT_CATEGORIES = {
     { key = "all", labelKey = "FILTER_ALL" },
@@ -147,6 +149,7 @@ local MODE_TITLE = {
     browse = "MODE_BROWSE",
     autopilot = "AP_TITLE",
     summon = "SUMMON_TITLE",
+    layer = "LAYER_TITLE",
     create = "LISTING_SECTION_TITLE",
     settings = "SETTINGS_TITLE",
 }
@@ -179,6 +182,7 @@ function UIMain.SetMode(partyLens, mode)
     HideFrame(partyLens.settingsPanel)
     HideFrame(partyLens.autopilotPanel)
     HideFrame(partyLens.summonPanel)
+    HideFrame(partyLens.layerPanel)
     HideFrame(partyLens.countPill)
     HideFrame(partyLens.compPopup)
 
@@ -200,6 +204,14 @@ function UIMain.SetMode(partyLens, mode)
         if C_Timer and C_Timer.NewTicker then
             partyLens._summonTicker = C_Timer.NewTicker(1.5, function()
                 UIMain.RefreshSummon(partyLens)
+            end)
+        end
+    elseif mode == "layer" then
+        ShowFrame(partyLens.layerPanel)
+        UIMain.RefreshLayer(partyLens)
+        if C_Timer and C_Timer.NewTicker then
+            partyLens._summonTicker = C_Timer.NewTicker(1.5, function()
+                UIMain.RefreshLayer(partyLens)
             end)
         end
     else
@@ -1684,6 +1696,14 @@ local function CreateSettingsPanel(partyLens, host)
     hint:SetPoint("RIGHT", -PAD, 0)
     hint:SetJustifyH("LEFT")
 
+    -- Credit footer (bottom-right): the author signature, matching the sibling addons.
+    local credit = UIElements.CreateLabel(panel, L("CREDIT"), 10, P.muted)
+    credit:SetPoint("BOTTOMRIGHT", -PAD, PAD)
+    credit:SetJustifyH("RIGHT")
+    local link = UIElements.CreateLabel(panel, "|cff5a6470github.com/danielcosta42/PartyLens|r", 9, P.faint)
+    link:SetPoint("BOTTOMRIGHT", credit, "TOPRIGHT", 0, 2)
+    link:SetJustifyH("RIGHT")
+
     UIMain.CommitSpec(partyLens)
 end
 
@@ -1842,6 +1862,271 @@ function UIMain.RefreshSummon(partyLens)
     end
 end
 
+-- ===========================================================================
+-- Layer network panel
+-- ===========================================================================
+local function CreateLayerPanel(partyLens, host)
+    local P = UIElements.PALETTE
+    local panel = CreateFrame("Frame", "PartyLensLayerPanel", host)
+    partyLens.layerPanel = panel
+    panel:SetAllPoints(host)
+
+    local ln = { stats = {}, logLines = {} }
+    partyLens.layerUI = ln
+
+    local hint = UIElements.CreateLabel(panel, L("LAYER_HINT"), 10, P.muted)
+    hint:SetPoint("TOPLEFT", PAD, -PAD)
+    hint:SetPoint("RIGHT", -PAD, 0)
+    hint:SetJustifyH("LEFT")
+
+    -- Current layer (big) on the left; beacon toggle on the right.
+    Section(panel, L("LAYER_CURRENT"), PAD, -46, 260)
+    ln.layerBig = UIElements.CreateLabel(panel, "", 30, P.freshNew)
+    ln.layerBig:SetPoint("TOPLEFT", PAD, -68)
+    ln.layerSub = UIElements.CreateLabel(panel, "", 11, P.muted)
+    ln.layerSub:SetPoint("TOPLEFT", PAD, -106)
+
+    ln.beaconBtn = UIElements.CreateButton(panel, "", 210, 40, P.freshNew)
+    ln.beaconBtn:SetPoint("TOPRIGHT", -PAD, -62)
+    ln.beaconBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    ln.beaconBtn:SetScript("OnClick", function()
+        if LayerNet then LayerNet.ToggleBeacon(partyLens) end
+    end)
+    local bhint = UIElements.CreateLabel(panel, L("LAYER_BEACON_HINT"), 9, P.faint)
+    bhint:SetPoint("TOPRIGHT", ln.beaconBtn, "BOTTOMRIGHT", 0, -4)
+    bhint:SetWidth(210)
+    bhint:SetJustifyH("RIGHT")
+
+    -- Live network stats (marketing: the "living network" feel).
+    Section(panel, L("LAYER_NETWORK"), PAD, -146)
+    local statDefs = {
+        { key = "nodes", labelKey = "LAYER_NODES", color = P.teal },
+        { key = "covered", labelKey = "LAYER_COVERED", color = P.blue },
+        { key = "hops", labelKey = "LAYER_HOPS", color = P.gold },
+        { key = "requests", labelKey = "LAYER_REQUESTS", color = P.purple },
+    }
+    local cardW, gap = 138, 10
+    for i, d in ipairs(statDefs) do
+        local card = UIElements.CreatePanel(panel, nil, { 0.082, 0.096, 0.120, 0.55 }, P.stroke, true)
+        card:SetSize(cardW, 58)
+        card:SetPoint("TOPLEFT", PAD + (i - 1) * (cardW + gap), -170)
+        local num = UIElements.CreateLabel(card, "0", 22, d.color)
+        num:SetPoint("TOPLEFT", 12, -8)
+        local lbl = UIElements.CreateLabel(card, L(d.labelKey), 9, P.muted)
+        lbl:SetPoint("BOTTOMLEFT", 12, 8)
+        ln.stats[d.key] = num
+    end
+
+    -- Requester side — "I want to hop." Tap a KNOWN layer (the picker is built from
+    -- the converged mesh set) or "Qualquer"; a dot marks layers with a LIVE beacon,
+    -- gold marks the one you're on. No typing. Tapping broadcasts an invisible mesh
+    -- request (every beacon on that layer auto-invites me) + one signed public line.
+    Section(panel, L("LAYER_HOP"), PAD, -244)
+    ln.hopHint = UIElements.CreateLabel(panel, L("LAYER_HOP_HINT"), 9, P.faint)
+    ln.hopHint:SetPoint("TOPLEFT", PAD, -262)
+    ln.hopHint:SetPoint("RIGHT", -PAD, 0)
+    ln.hopHint:SetJustifyH("LEFT")
+
+    ln.hopNone = UIElements.CreateLabel(panel, L("LAYER_HOP_NONE"), 11, P.faint)
+    ln.hopNone:SetPoint("TOPLEFT", PAD, -282)
+    ln.hopNone:SetPoint("RIGHT", -PAD, 0)
+    ln.hopNone:SetJustifyH("LEFT")
+    ln.hopNone:Hide()
+
+    -- Layer chips are pooled and (re)laid out in RefreshLayer as the set converges.
+    ln.chipPool = {}
+    ln.chipY = -280
+
+    -- Active-request line + Stop button (shown only while a request is active).
+    ln.reqActive = UIElements.CreateLabel(panel, "", 11, P.gold)
+    ln.reqActive:SetPoint("TOPLEFT", PAD, -348)
+    ln.reqActive:SetWidth(420)
+    ln.reqActive:SetJustifyH("LEFT")
+    ln.reqCancel = UIElements.CreateButton(panel, L("LAYER_REQ_CANCEL"), 84, 22, P.coral)
+    ln.reqCancel:SetPoint("TOPRIGHT", -PAD, -344)
+    ln.reqCancel:SetScript("OnClick", function()
+        if LayerNet then LayerNet.CancelRequest(partyLens) end
+    end)
+    ln.reqCancel:Hide()
+
+    -- Beacon status line — tells you WHY it is / isn't inviting (beacon off, layer
+    -- unknown, party full, or listening). Prominent because the beacon is silent.
+    ln.status = UIElements.CreateLabel(panel, "", 12, P.gold)
+    ln.status:SetPoint("TOPLEFT", PAD, -374)
+    ln.status:SetPoint("RIGHT", -PAD, 0)
+    ln.status:SetJustifyH("LEFT")
+
+    -- Activity log — the beacon acts silently (no chat/party/whisper), so this is
+    -- how you actually SEE it working ("invited X -> L5").
+    Section(panel, L("LAYER_ACTIVITY"), PAD, -398)
+    for i = 1, 5 do
+        local line = UIElements.CreateLabel(panel, "", 10, P.faint)
+        line:SetPoint("TOPLEFT", PAD, -420 - (i - 1) * 15)
+        line:SetPoint("RIGHT", -PAD, 0)
+        line:SetJustifyH("LEFT")
+        line:Hide()
+        ln.logLines[i] = line
+    end
+    ln.empty = UIElements.CreateLabel(panel, L("LAYER_NO_ACTIVITY"), 11, P.faint)
+    ln.empty:SetPoint("TOPLEFT", PAD, -422)
+    ln.empty:Hide()
+end
+
+-- Lazily create / fetch pooled layer-picker chip #i (a button with a "beacon live"
+-- corner dot).
+local function HopChip(ln, panel, i)
+    local P = UIElements.PALETTE
+    local chip = ln.chipPool[i]
+    if not chip then
+        chip = UIElements.CreateButton(panel, "", 44, 26, P.teal)
+        chip.dot = chip:CreateTexture(nil, "OVERLAY")
+        chip.dot:SetSize(7, 7)
+        chip.dot:SetPoint("TOPRIGHT", -3, -3)
+        UIElements.SetTextureColor(chip.dot, P.teal)
+        chip.dot:Hide()
+        ln.chipPool[i] = chip
+    end
+    return chip
+end
+
+-- Rebuild the layer-picker chips from the converged mesh set. Flow-lays them out
+-- (wrapping to a 2nd row if needed) and colours them: gold = your current layer,
+-- teal dot = a beacon is live there, dim = known but no beacon yet, highlighted =
+-- your active request.
+local function RefreshHopChips(partyLens)
+    local ln = partyLens.layerUI
+    local panel = partyLens.layerPanel
+    if not ln or not ln.chipPool or not panel then
+        return
+    end
+    local P = UIElements.PALETTE
+    local mr = LayerNet.MyRequest and LayerNet.MyRequest(partyLens)
+    local layers = (LayerNet.KnownLayers and LayerNet.KnownLayers(partyLens)) or {}
+
+    local right = panel:GetWidth() or 0
+    if right < 100 then right = 600 end -- pre-layout fallback
+    local x, y = PAD, ln.chipY
+    local rowH, idx = 30, 0
+    local function place(chip, w)
+        chip:SetWidth(w)
+        if x + w > right - PAD then
+            x, y = PAD, y - rowH -- wrap
+        end
+        chip:ClearAllPoints()
+        chip:SetPoint("TOPLEFT", x, y)
+        chip:Show()
+        x = x + w + 6
+    end
+
+    -- "Qualquer" first.
+    idx = idx + 1
+    local anyChip = HopChip(ln, panel, idx)
+    anyChip.dot:Hide()
+    anyChip:SetText(L("LAYER_REQ_ANY"))
+    anyChip.label:SetTextColor(P.text[1], P.text[2], P.text[3], 1)
+    anyChip:SetScript("OnClick", function()
+        if LayerNet then LayerNet.RequestLayer(partyLens, "any") end
+    end)
+    local anySel = (mr and mr.req.any) and true or false
+    anyChip:SetActive(anySel)
+    if not anySel then anyChip:SetAlpha(1) end
+    place(anyChip, 74)
+
+    -- One chip per known layer.
+    for _, ly in ipairs(layers) do
+        idx = idx + 1
+        local ord = ly.ordinal
+        local chip = HopChip(ln, panel, idx)
+        chip:SetText("L" .. ord)
+        chip:SetScript("OnClick", function()
+            if LayerNet then LayerNet.RequestLayer(partyLens, tostring(ord)) end
+        end)
+        if ly.hasBeacon then chip.dot:Show() else chip.dot:Hide() end
+        if ly.isCurrent then
+            chip.label:SetTextColor(P.gold[1], P.gold[2], P.gold[3], 1)
+        else
+            chip.label:SetTextColor(P.text[1], P.text[2], P.text[3], 1)
+        end
+        local sel = (mr and not mr.req.any and mr.req.layers and mr.req.layers[ord]) and true or false
+        chip:SetActive(sel)
+        if not sel then
+            chip:SetAlpha((ly.hasBeacon or ly.isCurrent) and 1 or 0.5)
+        end
+        place(chip, 44)
+    end
+
+    -- Park any leftover pooled chips.
+    for i = idx + 1, #ln.chipPool do
+        ln.chipPool[i]:Hide()
+    end
+    if ln.hopNone then
+        if #layers == 0 then ln.hopNone:Show() else ln.hopNone:Hide() end
+    end
+end
+
+-- Repaints the Layer panel: current layer, beacon state, live stats, request list.
+function UIMain.RefreshLayer(partyLens)
+    local ln = partyLens.layerUI
+    if not ln or not Layer or not LayerNet then
+        return
+    end
+    local cur = Layer.Current(partyLens)
+    local stats = LayerNet.Stats(partyLens)
+
+    if cur.ordinal then
+        ln.layerBig:SetText(L("LAYER_N", cur.ordinal))
+        ln.layerSub:SetText(L("LAYER_OF", cur.count or 1))
+    else
+        ln.layerBig:SetText("?")
+        ln.layerSub:SetText(L("LAYER_UNKNOWN"))
+    end
+
+    local on = partyLens.db.layer and partyLens.db.layer.beacon
+    ln.beaconBtn:SetText(L("LAYER_BEACON") .. ":  " .. (on and L("LAYER_ON") or L("LAYER_OFF")))
+    ln.beaconBtn:SetActive(on and true or false)
+
+    ln.stats.nodes:SetText(stats.nodes)
+    ln.stats.covered:SetText(stats.layersCovered)
+    ln.stats.hops:SetText(stats.hops)
+    ln.stats.requests:SetText(stats.openRequests)
+
+    if ln.status then
+        local P = UIElements.PALETTE
+        local st, warn = LayerNet.Status(partyLens)
+        ln.status:SetText(st)
+        local c = warn and P.coral or P.gold
+        ln.status:SetTextColor(c[1], c[2], c[3], 1)
+    end
+
+    -- Requester side: the layer picker + my own active request line.
+    RefreshHopChips(partyLens)
+    if ln.reqActive then
+        local mr = LayerNet.MyRequest and LayerNet.MyRequest(partyLens)
+        if mr then
+            ln.reqActive:SetText(L("LAYER_REQ_ACTIVE", LayerNet.RequestText(mr.req)))
+            if ln.reqCancel then ln.reqCancel:Show() end
+        else
+            ln.reqActive:SetText("")
+            if ln.reqCancel then ln.reqCancel:Hide() end
+        end
+    end
+
+    local log = LayerNet.RecentLog(partyLens)
+    for i, line in ipairs(ln.logLines) do
+        local entry = log[i]
+        if entry then
+            local stamp = (date and date("%H:%M", entry.t)) or ""
+            line:SetText("|cff5a6470" .. stamp .. "|r  " .. (entry.text or ""))
+            line:Show()
+        else
+            line:Hide()
+        end
+    end
+    if ln.empty then
+        if #log == 0 then ln.empty:Show() else ln.empty:Hide() end
+    end
+end
+
 local function NavButton(parent, text, y, accent, onClick)
     local b = UIElements.CreateButton(parent, text, SIDEBAR_W - 20, 32, accent)
     b:SetPoint("TOPLEFT", 10, y)
@@ -1920,6 +2205,7 @@ function UIMain.CreateMainUI(partyLens)
         { key = "browse", labelKey = "MODE_BROWSE", accent = P.teal },
         { key = "autopilot", labelKey = "AP_TITLE", accent = P.blue },
         { key = "summon", labelKey = "SUMMON_TITLE", accent = P.purple },
+        { key = "layer", labelKey = "LAYER_TITLE", accent = P.freshNew },
         { key = "create", labelKey = "TAB_CREATE", accent = P.gold },
         { key = "settings", labelKey = "TAB_SETTINGS", accent = P.coral },
     }
@@ -1977,6 +2263,7 @@ function UIMain.CreateMainUI(partyLens)
     CreateSettingsPanel(partyLens, hostPanel)
     CreateAutopilotPanel(partyLens, hostPanel)
     CreateSummonPanel(partyLens, hostPanel)
+    CreateLayerPanel(partyLens, hostPanel)
 
     UIMain.SetMode(partyLens, partyLens.mode)
 end

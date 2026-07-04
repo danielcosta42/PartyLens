@@ -23,6 +23,8 @@ local MinimapButton = LoadModule("Minimap")
 local Roster = LoadModule("Roster")
 local Comm = LoadModule("Comm")
 local Who = LoadModule("Who")
+local Layer = LoadModule("Layer")
+local LayerNet = LoadModule("LayerNet")
 local Autopilot = LoadModule("Autopilot")
 local UIMain = LoadModule("UIMain")
 local Search = LoadModule("Search")
@@ -205,6 +207,10 @@ function PartyLens:OnAddonLoaded(name)
     Comm.Init()
     UIMain.CreateMainUI(self)
     MinimapButton.SetShown(self, self.db.minimap)
+    -- Layer network: install the (beacon-gated) chat-silencing filters and start
+    -- the presence/cleanup ticker. Detection rides target/mouseover events above.
+    LayerNet.InstallFilters(self)
+    LayerNet.Start(self)
 
     SLASH_PARTYLENS1 = "/partylens"
     SlashCmdList.PARTYLENS = function(msg)
@@ -231,6 +237,42 @@ function PartyLens:OnAddonLoaded(name)
             Autopilot.Arm(self)
         elseif msg == "disarm" then
             Autopilot.Disarm(self)
+        elseif msg == "beacon" then
+            LayerNet.ToggleBeacon(self)
+        elseif msg:sub(1, 8) == "reqlayer" then
+            -- "/partylens reqlayer 5" (or "reqlayer any" / just "reqlayer").
+            -- Triggered by the Enter key, so the visible chat post is allowed.
+            LayerNet.RequestLayer(self, Utils.Trim(msg:sub(9)))
+        elseif msg == "layerframe" then
+            -- Diagnostic: which party-frame candidates exist, and (after 3s) the
+            -- frame under the mouse — hover the party frame to identify it.
+            for _, n in ipairs({ "PartyFrame", "CompactPartyFrame", "CompactRaidFrameContainer",
+                "PartyMemberFrame1", "PartyMemberFrame2", "PartyMemberFrame3", "PartyMemberFrame4" }) do
+                local f = _G[n]
+                Utils.Print(n .. ": " .. (f and ("shown=" .. tostring(f:IsShown()) ..
+                    " a=" .. tostring(f:GetAlpha())) or "NIL"))
+            end
+            Utils.Print("hover the party frame now... reading in 3s")
+            if C_Timer and C_Timer.After then
+                C_Timer.After(3, function()
+                    local foci = GetMouseFoci and GetMouseFoci()
+                    local f = (foci and foci[1]) or (GetMouseFocus and GetMouseFocus())
+                    if f and f.GetName then
+                        Utils.Print("UNDER MOUSE: " .. (f:GetName() or "(anonymous)"))
+                        local p, d = f:GetParent(), 0
+                        while p and p.GetName and d < 8 do
+                            Utils.Print("  ^ " .. (p:GetName() or "(anonymous)"))
+                            p, d = p:GetParent(), d + 1
+                        end
+                    else
+                        Utils.Print("nothing under mouse (hover the frame during the 3s)")
+                    end
+                end)
+            end
+        elseif msg == "layer" then
+            UIMain.CreateMainUI(self)
+            self.frame:Show()
+            UIMain.SetMode(self, "layer")
         elseif msg == "diag" then
             LFGTool.Diagnose()
         else
@@ -260,6 +302,16 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "CHAT_MSG_CHANNEL" then
         Chat.HandleChatMessage(self, ...)
+        -- args: text(1), sender(2), ..., channelBaseName(9)
+        LayerNet.OnChannelChat(self, (select(1, ...)), (select(2, ...)), (select(9, ...)))
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        LayerNet.Observe(self, "target")
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        LayerNet.Observe(self, "mouseover")
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        -- Passive layer detection: any nearby NPC's GUID reveals the layer, so
+        -- the player doesn't have to target anything (map lookup is cached).
+        LayerNet.Observe(self, ...)
     elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" or event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
         LFGTool.CaptureToolResults(self)
     elseif event == "LFG_LIST_SEARCH_FAILED" then
@@ -274,14 +326,17 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
     elseif event == "CHAT_MSG_WHISPER" then
         -- args: message, sender, ...
         Autopilot.HandleWhisper(self, ...)
+        LayerNet.OnRequest(self, (select(1, ...)), (select(2, ...)), "whisper")
     elseif event == "GROUP_ROSTER_UPDATE" then
         Autopilot.OnRosterUpdate(self)
+        LayerNet.OnRosterUpdate(self)
         if UIMain.RefreshSummon then
             UIMain.RefreshSummon(self)
         end
     elseif event == "CHAT_MSG_ADDON" then
         -- args: prefix, text, channel, sender
         Comm.OnMessage(self, ...)
+        LayerNet.OnAddonMessage(self, ...) -- layer mesh (own prefix; ignores others)
     elseif event == "WHO_LIST_UPDATE" then
         Who.OnWhoList(self)
     end
@@ -296,6 +351,9 @@ PartyLens:RegisterEvent("LFG_LIST_SEARCH_FAILED")
 PartyLens:RegisterEvent("LFG_LIST_AVAILABILITY_UPDATE")
 PartyLens:RegisterEvent("CHAT_MSG_WHISPER")
 PartyLens:RegisterEvent("GROUP_ROSTER_UPDATE")
+PartyLens:RegisterEvent("PLAYER_TARGET_CHANGED")
+PartyLens:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+pcall(PartyLens.RegisterEvent, PartyLens, "NAME_PLATE_UNIT_ADDED")
 PartyLens:RegisterEvent("CHAT_MSG_ADDON")
 PartyLens:RegisterEvent("WHO_LIST_UPDATE")
 -- Talent/spec events aren't guaranteed to exist on every client build, and an

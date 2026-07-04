@@ -1,7 +1,7 @@
 ## Interface: 20505
 ## Title: PartyLens
 ## Notes: A modern group radar for chat and the built-in group finder.
-## Author: Daniel + Codex
+## Author: Chehul (danielcosta42)
 ## Version: @project-version@
 ## SavedVariables: PartyLensDB
 ## IconTexture: Interface\AddOns\PartyLens\Icon
@@ -25,6 +25,8 @@ Modules/Summon.lua
 Modules/Comm.lua
 Modules/Who.lua
 Modules/Autopilot.lua
+Modules/Layer.lua
+Modules/LayerNet.lua
 Modules/UIElements.lua
 Modules/Search.lua
 Modules/Minimap.lua
