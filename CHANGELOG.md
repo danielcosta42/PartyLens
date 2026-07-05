@@ -5,6 +5,25 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.15.0]
+
+- **Radar de World Boss (aba nova)**: o addon reconhece world bosses / rares pelo
+  npcID do GUID (Kazzak, Doomwalker, Fel Reaver — catálogo expansível), avisa no
+  chat + som, e **espalha pela malha** ("boss X na layer N") pra todo usuário
+  PartyLens do reino. A aba lista os avistamentos com **Ir** (pede a layer exata do
+  boss, mesmo em outro mapa) e **Gritar** (rally assinado no chat público). Um
+  banner de alerta também aparece no topo da aba Layer.
+- **Reputação / Vouch (só positivo)**: dê **vouch** em quem jogou junto; cada vouch
+  corre pela malha e todos somam "N pessoas endossaram" (sem downvote, resistente a
+  auto-vouch). Companheiros de grupo viram sugestões automáticas; um digest
+  periódico sincroniza a rede; a contagem tem TTL/cap pra não crescer sem limite.
+- **Broker de grupo (aba Network)**: lista os usuários PartyLens **procurando grupo
+  agora** (pela malha), com **Convidar** e **/w** — o LFG da rede, cross-layer.
+- **Aba "Network" (dashboard)**: contadores ao vivo — **Nós · Layers · Bosses ·
+  Hops · Pedidos · Sua rep** — mais o broker e a lista de vouch.
+- Comandos: `/partylens radar`, `/partylens network`, `/partylens vouch Nome`,
+  `/partylens boss`, `/partylens bosstest`.
+
 ## [0.14.0]
 
 - **Rede de Layer (nova aba)**: detecção de layer **standalone** (sem integrar com

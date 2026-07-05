@@ -53,6 +53,15 @@ function Database.EnsureDB(partyLens)
             hops = 0,
             seen = {},
         },
+        -- Community reputation (positive-only "vouches", shared over the mesh).
+        -- given[lname]=epoch (people I vouched — one each), tally[lname]={[voter]=epoch}
+        -- (vouches I've HEARD, distinct voters = the score), groupmates[lname]=epoch
+        -- (people I recently grouped with — the suggestions to vouch).
+        rep = {
+            given = {},
+            tally = {},
+            groupmates = {},
+        },
         listingCategory = "dungeons",
         listingActivityID = "",
         listingTitle = "",

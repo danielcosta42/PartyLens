@@ -25,6 +25,8 @@ local Comm = LoadModule("Comm")
 local Who = LoadModule("Who")
 local Layer = LoadModule("Layer")
 local LayerNet = LoadModule("LayerNet")
+local WorldBoss = LoadModule("WorldBoss")
+local Reputation = LoadModule("Reputation")
 local Autopilot = LoadModule("Autopilot")
 local UIMain = LoadModule("UIMain")
 local Search = LoadModule("Search")
@@ -211,6 +213,7 @@ function PartyLens:OnAddonLoaded(name)
     -- the presence/cleanup ticker. Detection rides target/mouseover events above.
     LayerNet.InstallFilters(self)
     LayerNet.Start(self)
+    Reputation.Start(self) -- periodic vouch-digest sync
 
     SLASH_PARTYLENS1 = "/partylens"
     SlashCmdList.PARTYLENS = function(msg)
@@ -243,6 +246,22 @@ function PartyLens:OnAddonLoaded(name)
             -- "/partylens reqlayer 5" (or "reqlayer any" / just "reqlayer").
             -- Triggered by the Enter key, so the visible chat post is allowed.
             LayerNet.RequestLayer(self, Utils.Trim(msg:sub(9)))
+        elseif msg == "boss" then
+            local list = WorldBoss.Active(self)
+            if #list == 0 then
+                Utils.Print(Localization.L("WB_NONE"))
+            else
+                for _, s in ipairs(list) do
+                    Utils.Print(Localization.L("WB_ALERT", s.name, s.ordinal or "?"))
+                end
+            end
+        elseif msg == "bosstest" then
+            -- Dev/QA: inject a fake sighting on our current layer to see the banner.
+            local cur = Layer.Current(self)
+            WorldBoss.OnMeshSighting(self, cur.mapID, cur.zoneUID or 1, 18728, 73, "Tester")
+            UIMain.CreateMainUI(self)
+            self.frame:Show()
+            UIMain.SetMode(self, "layer")
         elseif msg == "layerframe" then
             -- Diagnostic: which party-frame candidates exist, and (after 3s) the
             -- frame under the mouse — hover the party frame to identify it.
@@ -273,6 +292,18 @@ function PartyLens:OnAddonLoaded(name)
             UIMain.CreateMainUI(self)
             self.frame:Show()
             UIMain.SetMode(self, "layer")
+        elseif msg == "radar" then
+            UIMain.CreateMainUI(self)
+            self.frame:Show()
+            UIMain.SetMode(self, "radar")
+        elseif msg == "network" or msg == "net" then
+            UIMain.CreateMainUI(self)
+            self.frame:Show()
+            UIMain.SetMode(self, "network")
+        elseif msg:sub(1, 5) == "vouch" then
+            -- "/partylens vouch Name" — quick vouch from chat.
+            local name = Utils.Trim(msg:sub(6))
+            if name ~= "" then Reputation.Vouch(self, name) end
         elseif msg == "diag" then
             LFGTool.Diagnose()
         else
@@ -306,12 +337,15 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
         LayerNet.OnChannelChat(self, (select(1, ...)), (select(2, ...)), (select(9, ...)))
     elseif event == "PLAYER_TARGET_CHANGED" then
         LayerNet.Observe(self, "target")
+        WorldBoss.Observe(self, "target")
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
         LayerNet.Observe(self, "mouseover")
+        WorldBoss.Observe(self, "mouseover")
     elseif event == "NAME_PLATE_UNIT_ADDED" then
-        -- Passive layer detection: any nearby NPC's GUID reveals the layer, so
-        -- the player doesn't have to target anything (map lookup is cached).
+        -- Passive layer + world-boss detection: any nearby NPC's GUID reveals the
+        -- layer AND whether it's a tracked boss/rare (map lookup is cached).
         LayerNet.Observe(self, ...)
+        WorldBoss.Observe(self, ...)
     elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" or event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
         LFGTool.CaptureToolResults(self)
     elseif event == "LFG_LIST_SEARCH_FAILED" then
@@ -330,6 +364,7 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
     elseif event == "GROUP_ROSTER_UPDATE" then
         Autopilot.OnRosterUpdate(self)
         LayerNet.OnRosterUpdate(self)
+        Reputation.OnRoster(self) -- remember who I grouped with (vouch suggestions)
         if UIMain.RefreshSummon then
             UIMain.RefreshSummon(self)
         end

@@ -27,6 +27,8 @@ Modules/Who.lua
 Modules/Autopilot.lua
 Modules/Layer.lua
 Modules/LayerNet.lua
+Modules/WorldBoss.lua
+Modules/Reputation.lua
 Modules/UIElements.lua
 Modules/Search.lua
 Modules/Minimap.lua

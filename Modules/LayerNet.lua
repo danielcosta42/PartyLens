@@ -410,6 +410,12 @@ function LayerNet.RegisterPrefix()
     end
 end
 
+-- Public broadcast over the mesh (invisible, realm-wide, not hardware-gated). Used
+-- by sibling features (e.g. the world-boss radar) that ride the same channel.
+function LayerNet.Broadcast(payload)
+    return SendNet(payload)
+end
+
 -- Encode a parsed request { any, exclude, layers } to a compact spec string.
 local function SpecFromReq(req)
     if not req or req.any then
@@ -530,6 +536,20 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
             LayerNet.Engage(partyLens, sender, req)
         end
         LayerNet.Refresh(partyLens)
+    elseif kind == "W" then
+        -- World-boss sighting: W|mapID|bossZoneUID|npcID|hp. The boss's zoneUID was
+        -- already merged above, so its layer can be numbered in our frame.
+        local WB = _G[ADDON_NAME .. "_WorldBoss"]
+        if WB and WB.OnMeshSighting then
+            WB.OnMeshSighting(partyLens, mapID, zoneUID, tonumber(f5), tonumber(f6), Utils.PlayerShortName(sender))
+        end
+    elseif kind == "V" or kind == "VD" then
+        -- Reputation: V|targetName (one vouch) or VD|name1,name2,... (voter's digest).
+        -- Fields aren't numeric, so hand the RAW text to Reputation to re-split.
+        local Rep = _G[ADDON_NAME .. "_Reputation"]
+        if Rep and Rep.OnMesh then
+            Rep.OnMesh(partyLens, kind, text, sender)
+        end
     end
 end
 
@@ -784,15 +804,21 @@ function LayerNet.SendMyRequest(partyLens, includeVisible)
     -- Resolve the primary requested NUMBER to its absolute zoneUID in MY (converged)
     -- frame, and send THAT so the beacon matches on zoneUID identity, not on a bare
     -- number the two clients might disagree about. 0 = unresolved / any.
+    -- A "fixed" request (e.g. a world-boss hop) already knows the EXACT target
+    -- map + zoneUID — it may be on a DIFFERENT map than where I'm standing, so use
+    -- those directly instead of resolving against my current map.
+    local reqMap = mr.fixedMap or cur.mapID or 0
     local target = 0
-    if not mr.req.any then
+    if mr.fixedTarget then
+        target = mr.fixedTarget
+    elseif not mr.req.any then
         local n = FirstLayer(mr.req)
         if n then
             target = Layer.ZoneUIDAt(partyLens, cur.mapID, n) or 0
         end
     end
     SendNet(table.concat({
-        LayerNet.NET_PROTO, "R", tostring(cur.mapID or 0), tostring(cur.zoneUID or 0),
+        LayerNet.NET_PROTO, "R", tostring(reqMap), tostring(cur.zoneUID or 0),
         mr.spec, tostring(target),
     }, "|"))
     mr.lastNet = time()
@@ -821,6 +847,32 @@ function LayerNet.RequestLayer(partyLens, spec)
     rt.myRequest = {
         req = req, spec = SpecFromReq(req), t = time(), lastNet = 0,
         size0 = (GetNumGroupMembers and GetNumGroupMembers()) or 0,
+    }
+    LayerNet.SendMyRequest(partyLens, true)
+    LayerNet.Log(partyLens, L("LAYER_LOG_REQUESTED", LayerNet.RequestText(req)))
+    LayerNet.Refresh(partyLens)
+end
+
+-- Request a hop to a SPECIFIC map+layer identity (e.g. a world boss on another
+-- zone). Unlike RequestLayer, the target zoneUID is pinned, so a beacon on the
+-- boss's own map+layer matches exactly — even though I'm standing somewhere else.
+function LayerNet.RequestLayerFor(partyLens, mapID, zoneUID)
+    if not (mapID and zoneUID and mapID > 0 and zoneUID > 0) then
+        return
+    end
+    Layer.MergeSeen(partyLens, mapID, { zoneUID }) -- so the target layer can be numbered
+    local ord = Layer.OrdinalOf(partyLens, mapID, zoneUID)
+    local req = { any = false, exclude = false, layers = {} }
+    if ord then
+        req.layers[ord] = true
+    end
+    local rt = RT(partyLens)
+    rt.myRequest = {
+        req = req,
+        spec = ord and tostring(ord) or "1", -- never "any": we want the exact target
+        t = time(), lastNet = 0,
+        size0 = (GetNumGroupMembers and GetNumGroupMembers()) or 0,
+        fixedMap = mapID, fixedTarget = zoneUID,
     }
     LayerNet.SendMyRequest(partyLens, true)
     LayerNet.Log(partyLens, L("LAYER_LOG_REQUESTED", LayerNet.RequestText(req)))

@@ -12,6 +12,8 @@ local Summon = _G[ADDON_NAME .. "_Summon"]
 local Who = _G[ADDON_NAME .. "_Who"]
 local Layer = _G[ADDON_NAME .. "_Layer"]
 local LayerNet = _G[ADDON_NAME .. "_LayerNet"]
+local WorldBoss = _G[ADDON_NAME .. "_WorldBoss"]
+local Reputation = _G[ADDON_NAME .. "_Reputation"]
 
 local L = Localization.L
 local UIMain = {}
@@ -75,7 +77,7 @@ function UIMain.RefreshActivityList(partyLens, allowRequest)
 end
 
 -- Top-level navigation modes.
-local MODES = { browse = true, create = true, settings = true, autopilot = true, summon = true, layer = true }
+local MODES = { browse = true, create = true, settings = true, autopilot = true, summon = true, layer = true, radar = true, network = true }
 
 local CONTENT_CATEGORIES = {
     { key = "all", labelKey = "FILTER_ALL" },
@@ -150,6 +152,8 @@ local MODE_TITLE = {
     autopilot = "AP_TITLE",
     summon = "SUMMON_TITLE",
     layer = "LAYER_TITLE",
+    radar = "WB_TITLE",
+    network = "NET_TITLE",
     create = "LISTING_SECTION_TITLE",
     settings = "SETTINGS_TITLE",
 }
@@ -183,6 +187,8 @@ function UIMain.SetMode(partyLens, mode)
     HideFrame(partyLens.autopilotPanel)
     HideFrame(partyLens.summonPanel)
     HideFrame(partyLens.layerPanel)
+    HideFrame(partyLens.radarPanel)
+    HideFrame(partyLens.networkPanel)
     HideFrame(partyLens.countPill)
     HideFrame(partyLens.compPopup)
 
@@ -212,6 +218,22 @@ function UIMain.SetMode(partyLens, mode)
         if C_Timer and C_Timer.NewTicker then
             partyLens._summonTicker = C_Timer.NewTicker(1.5, function()
                 UIMain.RefreshLayer(partyLens)
+            end)
+        end
+    elseif mode == "radar" then
+        ShowFrame(partyLens.radarPanel)
+        UIMain.RefreshRadar(partyLens)
+        if C_Timer and C_Timer.NewTicker then
+            partyLens._summonTicker = C_Timer.NewTicker(2, function()
+                UIMain.RefreshRadar(partyLens)
+            end)
+        end
+    elseif mode == "network" then
+        ShowFrame(partyLens.networkPanel)
+        UIMain.RefreshNetwork(partyLens)
+        if C_Timer and C_Timer.NewTicker then
+            partyLens._summonTicker = C_Timer.NewTicker(2, function()
+                UIMain.RefreshNetwork(partyLens)
             end)
         end
     else
@@ -1874,10 +1896,31 @@ local function CreateLayerPanel(partyLens, host)
     local ln = { stats = {}, logLines = {} }
     partyLens.layerUI = ln
 
-    local hint = UIElements.CreateLabel(panel, L("LAYER_HINT"), 10, P.muted)
-    hint:SetPoint("TOPLEFT", PAD, -PAD)
-    hint:SetPoint("RIGHT", -PAD, 0)
-    hint:SetJustifyH("LEFT")
+    ln.hint = UIElements.CreateLabel(panel, L("LAYER_HINT"), 10, P.muted)
+    ln.hint:SetPoint("TOPLEFT", PAD, -PAD)
+    ln.hint:SetPoint("RIGHT", -PAD, 0)
+    ln.hint:SetJustifyH("LEFT")
+
+    -- World-boss radar banner: hidden until a boss is spotted (by us or the mesh),
+    -- then it takes the top strip with a Hop (pull me there) + Shout (public rally)
+    -- button. Rare, so it borrows the hint's space rather than a permanent slot.
+    ln.bossBanner = UIElements.CreatePanel(panel, nil, { 0.22, 0.09, 0.07, 0.9 }, P.coral, true)
+    ln.bossBanner:SetHeight(28)
+    ln.bossBanner:SetPoint("TOPLEFT", PAD, -PAD + 2)
+    ln.bossBanner:SetPoint("TOPRIGHT", -PAD, -PAD + 2)
+    ln.bossText = UIElements.CreateLabel(ln.bossBanner, "", 12, P.gold)
+    ln.bossText:SetPoint("LEFT", 10, 0)
+    ln.bossShout = UIElements.CreateButton(ln.bossBanner, L("WB_SHOUT"), 60, 20, P.gold)
+    ln.bossShout:SetPoint("RIGHT", -6, 0)
+    ln.bossShout:SetScript("OnClick", function()
+        if WorldBoss and ln.bossCurrent then WorldBoss.AnnouncePublic(partyLens, ln.bossCurrent) end
+    end)
+    ln.bossHop = UIElements.CreateButton(ln.bossBanner, L("WB_HOP"), 50, 20, P.freshNew)
+    ln.bossHop:SetPoint("RIGHT", ln.bossShout, "LEFT", -6, 0)
+    ln.bossHop:SetScript("OnClick", function()
+        if WorldBoss and ln.bossCurrent then WorldBoss.HopTo(partyLens, ln.bossCurrent) end
+    end)
+    ln.bossBanner:Hide()
 
     -- Current layer (big) on the left; beacon toggle on the right.
     Section(panel, L("LAYER_CURRENT"), PAD, -46, 260)
@@ -2098,6 +2141,25 @@ function UIMain.RefreshLayer(partyLens)
         ln.status:SetTextColor(c[1], c[2], c[3], 1)
     end
 
+    -- World-boss radar: show the banner (over the hint) when something's up.
+    if ln.bossBanner then
+        local bosses = (WorldBoss and WorldBoss.Active and WorldBoss.Active(partyLens)) or {}
+        local top = bosses[1]
+        ln.bossCurrent = top
+        if top then
+            local ord = top.ordinal or "?"
+            local txt = (top.hp and top.hp > 0)
+                and L("WB_LINE", top.name, ord, top.hp)
+                or L("WB_LINE_NOHP", top.name, ord)
+            ln.bossText:SetText(txt)
+            ln.bossBanner:Show()
+            if ln.hint then ln.hint:Hide() end
+        else
+            ln.bossBanner:Hide()
+            if ln.hint then ln.hint:Show() end
+        end
+    end
+
     -- Requester side: the layer picker + my own active request line.
     RefreshHopChips(partyLens)
     if ln.reqActive then
@@ -2124,6 +2186,251 @@ function UIMain.RefreshLayer(partyLens)
     end
     if ln.empty then
         if #log == 0 then ln.empty:Show() else ln.empty:Hide() end
+    end
+end
+
+-- ===========================================================================
+-- Radar panel — world bosses / rares the network has spotted.
+-- ===========================================================================
+local function AgoText(t)
+    local s = time() - (t or time())
+    if s < 60 then return s .. "s" end
+    if s < 3600 then return math.floor(s / 60) .. "m" end
+    return math.floor(s / 3600) .. "h"
+end
+
+local function CreateRadarPanel(partyLens, host)
+    local P = UIElements.PALETTE
+    local panel = CreateFrame("Frame", "PartyLensRadarPanel", host)
+    partyLens.radarPanel = panel
+    panel:SetAllPoints(host)
+
+    local rd = { rows = {} }
+    partyLens.radarUI = rd
+
+    local hint = UIElements.CreateLabel(panel, L("WB_HINT"), 10, P.muted)
+    hint:SetPoint("TOPLEFT", PAD, -PAD)
+    hint:SetPoint("RIGHT", -PAD, 0)
+    hint:SetJustifyH("LEFT")
+
+    Section(panel, L("WB_ACTIVE"), PAD, -46)
+
+    for i = 1, 6 do
+        local card = UIElements.CreatePanel(panel, nil, { 0.082, 0.096, 0.120, 0.6 }, P.stroke, true)
+        card:SetHeight(44)
+        card:SetPoint("TOPLEFT", PAD, -70 - (i - 1) * 50)
+        card:SetPoint("RIGHT", -PAD, 0)
+
+        card.name = UIElements.CreateLabel(card, "", 13, P.gold)
+        card.name:SetPoint("TOPLEFT", 12, -7)
+        card.sub = UIElements.CreateLabel(card, "", 10, P.muted)
+        card.sub:SetPoint("BOTTOMLEFT", 12, 7)
+
+        card.shout = UIElements.CreateButton(card, L("WB_SHOUT"), 62, 22, P.gold)
+        card.shout:SetPoint("RIGHT", -8, 0)
+        card.hop = UIElements.CreateButton(card, L("WB_HOP"), 50, 22, P.freshNew)
+        card.hop:SetPoint("RIGHT", card.shout, "LEFT", -6, 0)
+        card.hop:SetScript("OnClick", function()
+            if WorldBoss and card.sighting then WorldBoss.HopTo(partyLens, card.sighting) end
+        end)
+        card.shout:SetScript("OnClick", function()
+            if WorldBoss and card.sighting then WorldBoss.AnnouncePublic(partyLens, card.sighting) end
+        end)
+        card:Hide()
+        rd.rows[i] = card
+    end
+
+    rd.empty = UIElements.CreateLabel(panel, L("WB_NONE"), 12, P.faint)
+    rd.empty:SetPoint("TOPLEFT", PAD, -74)
+    rd.empty:SetPoint("RIGHT", -PAD, 0)
+    rd.empty:Hide()
+end
+
+function UIMain.RefreshRadar(partyLens)
+    local rd = partyLens.radarUI
+    if not rd or not WorldBoss then
+        return
+    end
+    local P = UIElements.PALETTE
+    local list = WorldBoss.Active(partyLens)
+    for i, card in ipairs(rd.rows) do
+        local s = list[i]
+        if s then
+            card.sighting = s
+            local c = (s.kind == "boss") and P.gold or P.coral
+            card.name:SetTextColor(c[1], c[2], c[3], 1)
+            card.name:SetText(s.name)
+            local hp = (s.hp and s.hp > 0) and (s.hp .. "%") or "?"
+            card.sub:SetText(L("WB_SUB", s.ordinal or "?", hp, s.spotter or "?", AgoText(s.t)))
+            card:Show()
+        else
+            card.sighting = nil
+            card:Hide()
+        end
+    end
+    if rd.empty then
+        if #list == 0 then rd.empty:Show() else rd.empty:Hide() end
+    end
+end
+
+-- ===========================================================================
+-- Network panel — live dashboard, the group broker (PartyLens LFG), and the
+-- reputation vouch list, all reading data the mesh already gives us.
+-- ===========================================================================
+local function NetStatCard(panel, i, labelKey, color)
+    local P = UIElements.PALETTE
+    local cardW, gap = 94, 8
+    local card = UIElements.CreatePanel(panel, nil, { 0.082, 0.096, 0.120, 0.55 }, P.stroke, true)
+    card:SetSize(cardW, 52)
+    card:SetPoint("TOPLEFT", PAD + (i - 1) * (cardW + gap), -44)
+    card.num = UIElements.CreateLabel(card, "0", 20, color)
+    card.num:SetPoint("TOPLEFT", 10, -7)
+    card.lbl = UIElements.CreateLabel(card, L(labelKey), 8, P.muted)
+    card.lbl:SetPoint("BOTTOMLEFT", 10, 7)
+    return card
+end
+
+local function InviteName(name)
+    if C_PartyInfo and C_PartyInfo.InviteUnit then
+        pcall(C_PartyInfo.InviteUnit, name)
+    elseif InviteUnit then
+        pcall(InviteUnit, name)
+    end
+end
+
+local function CreateNetworkPanel(partyLens, host)
+    local P = UIElements.PALETTE
+    local panel = CreateFrame("Frame", "PartyLensNetworkPanel", host)
+    partyLens.networkPanel = panel
+    panel:SetAllPoints(host)
+
+    local nu = { stats = {}, brokerRows = {}, repRows = {} }
+    partyLens.networkUI = nu
+
+    local hint = UIElements.CreateLabel(panel, L("NET_HINT"), 10, P.muted)
+    hint:SetPoint("TOPLEFT", PAD, -PAD)
+    hint:SetPoint("RIGHT", -PAD, 0)
+    hint:SetJustifyH("LEFT")
+
+    -- Live counters.
+    local statDefs = {
+        { key = "nodes", labelKey = "NET_NODES", color = P.teal },
+        { key = "layers", labelKey = "NET_LAYERS", color = P.freshNew },
+        { key = "bosses", labelKey = "NET_BOSSES", color = P.coral },
+        { key = "hops", labelKey = "NET_HOPS", color = P.gold },
+        { key = "reqs", labelKey = "NET_REQS", color = P.purple },
+        { key = "rep", labelKey = "NET_REP", color = P.blue },
+    }
+    for i, d in ipairs(statDefs) do
+        nu.stats[d.key] = NetStatCard(panel, i, d.labelKey, d.color)
+    end
+
+    -- Broker: PartyLens users looking for group / more.
+    Section(panel, L("NET_BROKER"), PAD, -110)
+    for i = 1, 4 do
+        local row = UIElements.CreatePanel(panel, nil, { 0.082, 0.096, 0.120, 0.5 }, P.stroke, true)
+        row:SetHeight(30)
+        row:SetPoint("TOPLEFT", PAD, -134 - (i - 1) * 36)
+        row:SetPoint("RIGHT", -PAD, 0)
+        row.text = UIElements.CreateLabel(row, "", 11, P.text)
+        row.text:SetPoint("LEFT", 10, 0)
+        row.text:SetWidth(360)
+        row.text:SetJustifyH("LEFT")
+        row.inv = UIElements.CreateButton(row, L("NET_INVITE"), 48, 22, P.teal)
+        row.inv:SetPoint("RIGHT", -8, 0)
+        row.wsp = UIElements.CreateButton(row, L("NET_WHISPER"), 40, 22, P.blue)
+        row.wsp:SetPoint("RIGHT", row.inv, "LEFT", -6, 0)
+        row.inv:SetScript("OnClick", function()
+            if row.pname then InviteName(row.pname) end
+        end)
+        row.wsp:SetScript("OnClick", function()
+            if row.pname and ChatFrame_SendTell then ChatFrame_SendTell(row.pname) end
+        end)
+        row:Hide()
+        nu.brokerRows[i] = row
+    end
+    nu.brokerEmpty = UIElements.CreateLabel(panel, L("NET_BROKER_NONE"), 11, P.faint)
+    nu.brokerEmpty:SetPoint("TOPLEFT", PAD, -138)
+    nu.brokerEmpty:Hide()
+
+    -- Reputation: vouch the people you've grouped with.
+    Section(panel, L("NET_REP_SECTION"), PAD, -290)
+    for i = 1, 4 do
+        local row = UIElements.CreatePanel(panel, nil, { 0.082, 0.096, 0.120, 0.5 }, P.stroke, true)
+        row:SetHeight(30)
+        row:SetPoint("TOPLEFT", PAD, -314 - (i - 1) * 36)
+        row:SetPoint("RIGHT", -PAD, 0)
+        row.text = UIElements.CreateLabel(row, "", 11, P.text)
+        row.text:SetPoint("LEFT", 10, 0)
+        row.vouch = UIElements.CreateButton(row, L("REP_VOUCH_BTN"), 78, 22, P.gold)
+        row.vouch:SetPoint("RIGHT", -8, 0)
+        row.vouch:SetScript("OnClick", function()
+            if Reputation and row.pname then Reputation.Vouch(partyLens, row.pname) end
+        end)
+        row:Hide()
+        nu.repRows[i] = row
+    end
+    nu.repEmpty = UIElements.CreateLabel(panel, L("NET_REP_NONE"), 11, P.faint)
+    nu.repEmpty:SetPoint("TOPLEFT", PAD, -318)
+    nu.repEmpty:Hide()
+end
+
+function UIMain.RefreshNetwork(partyLens)
+    local nu = partyLens.networkUI
+    if not nu then
+        return
+    end
+    local stats = (LayerNet and LayerNet.Stats and LayerNet.Stats(partyLens)) or {}
+    local bosses = (WorldBoss and WorldBoss.Active and WorldBoss.Active(partyLens)) or {}
+    nu.stats.nodes.num:SetText(stats.nodes or 0)
+    nu.stats.layers.num:SetText((Layer and Layer.CountOnMap and Layer.CountOnMap(partyLens, Layer.CurrentMap())) or stats.layersCovered or 0)
+    nu.stats.bosses.num:SetText(#bosses)
+    nu.stats.hops.num:SetText(stats.hops or 0)
+    nu.stats.reqs.num:SetText(stats.openRequests or 0)
+    nu.stats.rep.num:SetText((Reputation and Reputation.MyScore and Reputation.MyScore(partyLens)) or 0)
+
+    -- Broker: fresh PartyLens LFG/LFM entries.
+    local now, matches = time(), {}
+    for _, e in ipairs(partyLens.entries or {}) do
+        if e.isAddonUser and e.open ~= false and (now - (e.timestamp or 0)) < 300
+            and e.leaderDisplay and e.leaderDisplay ~= "" then
+            matches[#matches + 1] = e
+        end
+    end
+    table.sort(matches, function(a, b) return (a.timestamp or 0) > (b.timestamp or 0) end)
+    for i, row in ipairs(nu.brokerRows) do
+        local e = matches[i]
+        if e then
+            row.pname = e.leaderDisplay
+            row.text:SetText("|cff8fd6c8" .. e.leaderDisplay .. "|r  " .. (e.message or ""))
+            row:Show()
+        else
+            row.pname = nil
+            row:Hide()
+        end
+    end
+    if nu.brokerEmpty then
+        if #matches == 0 then nu.brokerEmpty:Show() else nu.brokerEmpty:Hide() end
+    end
+
+    -- Reputation: groupmates to vouch.
+    local mates = (Reputation and Reputation.Groupmates and Reputation.Groupmates(partyLens)) or {}
+    for i, row in ipairs(nu.repRows) do
+        local m = mates[i]
+        if m then
+            row.pname = m.name
+            local score = (m.count and m.count > 0) and ("  |cff5a6470" .. L("REP_COUNT", m.count) .. "|r") or ""
+            row.text:SetText(m.name .. score)
+            row.vouch:SetText(m.vouched and L("REP_VOUCHED_BTN") or L("REP_VOUCH_BTN"))
+            UIElements.SetButtonEnabled(row.vouch, not m.vouched)
+            row:Show()
+        else
+            row.pname = nil
+            row:Hide()
+        end
+    end
+    if nu.repEmpty then
+        if #mates == 0 then nu.repEmpty:Show() else nu.repEmpty:Hide() end
     end
 end
 
@@ -2206,6 +2513,8 @@ function UIMain.CreateMainUI(partyLens)
         { key = "autopilot", labelKey = "AP_TITLE", accent = P.blue },
         { key = "summon", labelKey = "SUMMON_TITLE", accent = P.purple },
         { key = "layer", labelKey = "LAYER_TITLE", accent = P.freshNew },
+        { key = "radar", labelKey = "WB_TITLE", accent = P.coral },
+        { key = "network", labelKey = "NET_TITLE", accent = P.blue },
         { key = "create", labelKey = "TAB_CREATE", accent = P.gold },
         { key = "settings", labelKey = "TAB_SETTINGS", accent = P.coral },
     }
@@ -2264,6 +2573,8 @@ function UIMain.CreateMainUI(partyLens)
     CreateAutopilotPanel(partyLens, hostPanel)
     CreateSummonPanel(partyLens, hostPanel)
     CreateLayerPanel(partyLens, hostPanel)
+    CreateRadarPanel(partyLens, hostPanel)
+    CreateNetworkPanel(partyLens, hostPanel)
 
     UIMain.SetMode(partyLens, partyLens.mode)
 end

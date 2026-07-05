@@ -51,6 +51,24 @@ function Layer.ZoneUIDFromUnit(unit)
     return zoneUID
 end
 
+-- The npcID (field 6 of a creature GUID) for a unit, or nil — identifies WHICH
+-- creature it is (world boss, rare), independent of which layer it's on. Same GUID
+-- parse as the layer detection, just the next field.
+function Layer.NpcIDFromUnit(unit)
+    if not UnitExists(unit) or UnitIsPlayer(unit) or UnitPlayerControlled(unit) then
+        return nil
+    end
+    local guid = UnitGUID(unit)
+    if not guid then
+        return nil
+    end
+    local kind, _, _, _, _, npcID = strsplit("-", guid)
+    if kind ~= "Creature" and kind ~= "Vehicle" then
+        return nil
+    end
+    return tonumber(npcID)
+end
+
 -- The map we're currently on (best-effort; falls back to 0). Cached for ~1s so
 -- harvesting from a burst of nameplates in a city stays cheap.
 local _mapCache, _mapCacheAt = nil, 0
