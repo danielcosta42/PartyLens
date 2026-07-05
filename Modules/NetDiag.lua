@@ -63,13 +63,31 @@ local function LFGChannelNumber()
     return (type(n) == "number" and n > 0) and n or nil
 end
 
--- Guard so a WorldFrame hook armed by one run never lingers into the next.
-local run = 0
+-- The WorldFrame OnMouseDown hook can't be unhooked, so install it EXACTLY ONCE
+-- and route each netdiag run's Part-3 click test through this module-level pointer.
+-- A finished (or absent) run leaves activeState nil, so the lingering hook no-ops —
+-- no per-run closure accumulates on WorldFrame.
+local activeState = nil
+local clickHookInstalled = false
+
+local function InstallClickHook()
+    if clickHookInstalled or not (WorldFrame and WorldFrame.HookScript) then
+        return
+    end
+    clickHookInstalled = true
+    WorldFrame:HookScript("OnMouseDown", function()
+        local st = activeState
+        if not st or st.fired or st.finished or not st.num then
+            return
+        end
+        st.fired = true
+        local ok, err = pcall(SendChatMessage, "PLNETDIAG " .. st.token3, "CHANNEL", nil, st.num)
+        if not ok then st.err3 = tostring(err) end
+        if st.finishFn then C_Timer.After(1.0, st.finishFn) end
+    end)
+end
 
 function NetDiag.Run(partyLens)
-    run = run + 1
-    local myRun = run
-
     if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
         pcall(C_ChatInfo.RegisterAddonMessagePrefix, DIAG_PREFIX)
     end
@@ -150,6 +168,9 @@ function NetDiag.Run(partyLens)
         if LeaveChannelByName then
             pcall(LeaveChannelByName, diagName)
         end
+        if activeState == state then
+            activeState = nil -- release the single click-hook's pointer for this run
+        end
     end
 
     -- Part 2: timer (non-hardware) channel send.
@@ -184,17 +205,13 @@ function NetDiag.Run(partyLens)
             return
         end
 
-        -- Part 3: send from a real click via a WorldFrame OnMouseDown hook.
+        -- Part 3: send from a real click. The WorldFrame OnMouseDown hook is
+        -- installed ONCE (it can't be unhooked); it acts on whichever run is active.
         Utils.Print("3) |cffffff00CLICK anywhere in the game world|r to test a click-driven channel send...")
-        if WorldFrame and WorldFrame.HookScript then
-            WorldFrame:HookScript("OnMouseDown", function()
-                if state.fired or state.finished or myRun ~= run then return end
-                state.fired = true
-                local ok, err = pcall(SendChatMessage, "PLNETDIAG " .. token3, "CHANNEL", nil, state.num)
-                if not ok then state.err3 = tostring(err) end
-                C_Timer.After(1.0, Finish)
-            end)
-        end
+        state.token3 = token3
+        state.finishFn = Finish
+        activeState = state
+        InstallClickHook()
         -- Safety: finish even if the user never clicks.
         C_Timer.After(20.0, Finish)
     end)

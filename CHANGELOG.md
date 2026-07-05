@@ -5,6 +5,28 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.18.4]
+
+Passe de review global (dois passes multi-agente, cada achado verificado
+adversarialmente) — três correções reais:
+
+- **Whisper não quebra mais com "%" no texto**: os tokens do template ({comment},
+  {spec}, {activity}...) eram inseridos como string de *substituição* do `string.gsub`,
+  onde o Lua interpreta `%` — então um comentário/spec com "%" (ex.: "50% off") lançava
+  "invalid use of '%' in replacement string" e quebrava tanto o botão Whisper quanto o
+  sussurro automático do autopilot em modo "find". Agora todo valor livre é escapado
+  (helper `EscRepl`) antes de virar substituição.
+- **Hop pra world boss não corrompe mais a numeração de layer de quem recebe**: o pedido
+  fixo (map-pinned) de boss mandava no campo 4 o SEU zoneUID da cidade onde você está —
+  mas sob o mapa do boss (outro mapa). Cada beacon que recebia fundia esse zoneUID
+  estrangeiro no seen-set do mapa do boss, deslocando os ordinais/contagem de layers
+  daquele mapa (quando o NWB não está instalado). Agora um pedido fixo manda 0 no campo
+  4 (o sentinela que o receptor já rejeita), então nada estranho entra no conjunto.
+- **NetDiag não vaza mais hook**: cada `/partylens netdiag` instalava um novo hook
+  OnMouseDown no WorldFrame (que não dá pra remover), acumulando um por execução. Agora
+  o hook é instalado uma única vez e roteado pro run ativo via ponteiro de módulo.
+- Limpeza: removido um `local CHANNEL_KEY` morto (resíduo de refactor) no LayerNet.
+
 ## [0.18.3]
 
 - **Contador "PartyLens na rede" do Autopilot deixa de ficar travado em zero**: ele

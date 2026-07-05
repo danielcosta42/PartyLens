@@ -337,9 +337,6 @@ end
 -- ---------------------------------------------------------------------------
 -- Inbound chat: record the request (for the UI) and, as a beacon, engage on match
 -- ---------------------------------------------------------------------------
-local CHANNEL_KEY = { trade = "trade", general = "general", world = "world",
-    lookingforgroup = "lookingforgroup", ["services"] = "trade" }
-
 -- source: "trade"|"general"|"world"|"lookingforgroup"|"guild"|"whisper" (already gated by caller)
 function LayerNet.OnRequest(partyLens, msg, sender, source)
     if not sender or sender == "" or SameAsPlayer(sender) then
@@ -875,8 +872,14 @@ function LayerNet.SendMyRequest(partyLens, includeVisible)
             target = Layer.ZoneUIDAt(partyLens, cur.mapID, n) or 0
         end
     end
+    -- Field 4 is MY zoneUID *on reqMap*. For a map-pinned (fixed) request — e.g. a
+    -- world-boss hop — the boss's map differs from the one I'm standing on, so my
+    -- current zoneUID does NOT belong to reqMap. Send 0 (the sentinel the receiver
+    -- rejects at OnAddonMessage's `zoneUID > 0` guard) rather than leak a foreign
+    -- standing-map zoneUID into the boss map's seen-set and corrupt its ordinals.
+    local myZoneOnReqMap = mr.fixedMap and 0 or (cur.zoneUID or 0)
     SendNet(table.concat({
-        LayerNet.NET_PROTO, "R", tostring(reqMap), tostring(cur.zoneUID or 0),
+        LayerNet.NET_PROTO, "R", tostring(reqMap), tostring(myZoneOnReqMap),
         mr.spec, tostring(target),
     }, "|"), "R") -- realm-wide too, so a beacon anywhere on the realm can answer
     mr.lastNet = time()
