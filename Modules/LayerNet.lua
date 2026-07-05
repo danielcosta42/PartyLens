@@ -989,15 +989,24 @@ function LayerNet.KnownLayers(partyLens)
     local cur = Layer.Current(partyLens)
     local mapID = cur.mapID
     local rt = RT(partyLens)
-    local beaconOn, nodeCount = {}, {}
+    -- Key beacon presence by ORDINAL (the same NWB-aware number the chips + the
+    -- "Layers covered" stat use), NOT by raw zoneUID: a peer beacon's zoneUID can
+    -- differ from NWB's layer-N zoneUID (a server layer has different zoneUIDs per
+    -- zone), so matching raw zoneUIDs against ZoneUIDAt(i) missed their dot even
+    -- though Stats counted them. OrdinalOf is map-agnostic under NWB, so drop the
+    -- n.mapID filter too.
+    local beaconAt, nodeCount = {}, {}
     for _, n in pairs(rt.nodes) do
-        if n.mapID == mapID and n.zoneUID then
-            nodeCount[n.zoneUID] = (nodeCount[n.zoneUID] or 0) + 1
-            if n.beacon then beaconOn[n.zoneUID] = true end
+        if n.zoneUID then
+            local ord = Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID)
+            if ord then
+                nodeCount[ord] = (nodeCount[ord] or 0) + 1
+                if n.beacon then beaconAt[ord] = true end
+            end
         end
     end
-    if CFG(partyLens).beacon and cur.zoneUID then
-        beaconOn[cur.zoneUID] = true -- I'm a live beacon on my own layer
+    if CFG(partyLens).beacon and cur.ordinal then
+        beaconAt[cur.ordinal] = true -- I'm a live beacon on my own layer
     end
     -- Number the picker with the SAME scheme as the big "Your layer" display:
     -- Layer.CountOnMap / Layer.ZoneUIDAt defer to NWB when installed, so chip "L6" is
@@ -1013,8 +1022,8 @@ function LayerNet.KnownLayers(partyLens)
                 ordinal = i,
                 zoneUID = z,
                 isCurrent = (z == cur.zoneUID),
-                hasBeacon = beaconOn[z] == true,
-                nodes = nodeCount[z] or 0,
+                hasBeacon = beaconAt[i] == true,
+                nodes = nodeCount[i] or 0,
             }
         end
     end

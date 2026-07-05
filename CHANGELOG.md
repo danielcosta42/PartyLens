@@ -5,6 +5,14 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.18.2]
+
+- **Ponto de beacon nos chips certo**: a marca de "beacon no ar" nos chips agora usa
+  o MESMO número (ordinal NWB-aware) do stat "Layers covered" — antes casava pelo
+  zoneUID cru + filtro de mapa, então um beacon de outro nó (com zoneUID diferente pra
+  a mesma layer do servidor, ou em outra zona) era contado no stat mas não pintava o
+  ponto no chip. Agora bate.
+
 ## [0.18.1]
 
 - **Seletor de layer alinhado ao display**: os chips agora usam a MESMA numeração do
