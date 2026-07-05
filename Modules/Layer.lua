@@ -141,10 +141,58 @@ local function SortedZoneUIDs(layerDB, mapID)
     return list
 end
 
--- Ordinal (1-based) of a zoneUID within a map's sorted set, or nil.
+-- ---------------------------------------------------------------------------
+-- NovaWorldBuffs alignment (optional). NWB is the community-standard layer
+-- numbering: it derives its zoneID from the SAME creature-GUID field we do, and
+-- numbers layers by sorted-zoneID index — but over a FULLER, realm-shared set,
+-- so a physical layer we call "3" (of 4 we've seen) is NWB's "5" (of more). When
+-- NWB is installed we defer to ITS number so PartyLens shows and matches the same
+-- "Layer N" everyone else does; when it's absent we use our own ordinal (fully
+-- standalone). NWB isn't a global — it's an AceAddon object, fetched by name.
+-- ---------------------------------------------------------------------------
+local _nwb
+local function GetNWB()
+    if _nwb then
+        return _nwb
+    end
+    local LibStub = _G.LibStub
+    if not LibStub then
+        return nil
+    end
+    local ok, ace = pcall(LibStub, "AceAddon-3.0", true)
+    if not ok or not ace or not ace.GetAddon then
+        return nil
+    end
+    local ok2, nwb = pcall(ace.GetAddon, ace, "NovaWorldBuffs", true)
+    if ok2 and nwb and nwb.GetLayerNum and nwb.getLayerZoneID then
+        _nwb = nwb
+        return nwb
+    end
+    return nil
+end
+
+-- NWB's layer number for a zoneUID (nil if NWB absent or it doesn't know it).
+function Layer.NWBNumber(zoneUID)
+    local nwb = GetNWB()
+    if not nwb or not zoneUID then
+        return nil
+    end
+    local ok, n = pcall(nwb.GetLayerNum, nwb, zoneUID)
+    if ok and type(n) == "number" and n > 0 then
+        return n
+    end
+    return nil
+end
+
+-- Ordinal (1-based) of a zoneUID — NWB's number when it knows this layer, else our
+-- own sorted-index within the map's seen set.
 function Layer.OrdinalOf(partyLens, mapID, zoneUID)
     if not zoneUID then
         return nil
+    end
+    local nwbNum = Layer.NWBNumber(zoneUID)
+    if nwbNum then
+        return nwbNum
     end
     for i, z in ipairs(SortedZoneUIDs(DB(partyLens), mapID)) do
         if z == zoneUID then
@@ -154,8 +202,19 @@ function Layer.OrdinalOf(partyLens, mapID, zoneUID)
     return nil
 end
 
--- How many distinct layers we've seen on a map (the "N of M" denominator).
+-- How many distinct layers exist (the "N of M" denominator) — NWB's realm-wide
+-- count when present, else how many we've personally seen on this map.
 function Layer.CountOnMap(partyLens, mapID)
+    local nwb = GetNWB()
+    if nwb and nwb.data and nwb.data.layers then
+        local n = 0
+        for _ in pairs(nwb.data.layers) do
+            n = n + 1
+        end
+        if n > 0 then
+            return n
+        end
+    end
     return #SortedZoneUIDs(DB(partyLens), mapID)
 end
 
@@ -207,6 +266,15 @@ end
 function Layer.ZoneUIDAt(partyLens, mapID, ordinal)
     if not ordinal then
         return nil
+    end
+    -- Prefer NWB's number->zoneUID so resolving "layer 5" targets the exact layer
+    -- the community calls 5 (consistent with OrdinalOf using NWB's number).
+    local nwb = GetNWB()
+    if nwb then
+        local ok, z = pcall(nwb.getLayerZoneID, nwb, ordinal)
+        if ok and type(z) == "number" and z > 0 then
+            return z
+        end
     end
     return SortedZoneUIDs(DB(partyLens), mapID)[ordinal]
 end

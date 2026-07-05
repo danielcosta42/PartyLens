@@ -5,6 +5,17 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.16.3]
+
+- **Numeração alinhada ao NWB (quando instalado)**: se você roda o NovaWorldBuffs,
+  o PartyLens agora usa **o número de layer do NWB** (o padrão que a comunidade usa
+  no chat) em vez do próprio ordinal — resolvendo o caso em que o PL mostrava "Layer
+  3" e o NWB "Layer 5" pra mesma layer física. O NWB deriva o zoneID do mesmo campo
+  do GUID que a gente usa, mas numera sobre um conjunto mais completo (compartilhado
+  no reino), então o número dele é o "certo". Sem NWB, o PL segue 100% standalone com
+  a própria numeração. O match entre usuários PL continua por **zoneUID exato**, então
+  quem tem e quem não tem NWB ainda casam certo — só o número exibido/pedido alinha.
+
 ## [0.16.2]
 
 - **Reconhecimento entre addons (família Chehul)**: novo módulo compartilhado

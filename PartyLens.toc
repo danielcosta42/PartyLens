@@ -4,6 +4,7 @@
 ## Author: Chehul (danielcosta42)
 ## Version: @project-version@
 ## SavedVariables: PartyLensDB
+## OptionalDeps: NovaWorldBuffs
 ## IconTexture: Interface\AddOns\PartyLens\Icon
 ## X-Curse-Project-ID: 1582736
 ## X-Website: https://github.com/danielcosta42/PartyLens
