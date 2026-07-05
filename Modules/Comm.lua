@@ -41,15 +41,23 @@ end
 function Comm.BuildPayload(partyLens)
     local cfg = partyLens.db.autopilot
     local intent, role
+    -- Live-composition fields (LFM only): filled "t.h.d" and target "t.h.d" per role.
+    local compFilled, compTarget = "", ""
 
     if cfg.role == "build" then
         intent = "lfm"
-        local need = Roster.Needed(partyLens)
+        local need, snap = Roster.Needed(partyLens)
         local parts = {}
         if need.tank > 0 then parts[#parts + 1] = "tank" end
         if need.heal > 0 then parts[#parts + 1] = "heal" end
         if need.dps > 0 then parts[#parts + 1] = "dps" end
         role = (#parts > 0) and table.concat(parts, "+") or "any"
+        -- Broadcast the live composition so receivers can show "T1/1 H0/1 D2/3":
+        -- filled now, and target = filled + still-needed per role.
+        compFilled = (snap.tank or 0) .. "." .. (snap.heal or 0) .. "." .. (snap.dps or 0)
+        compTarget = ((snap.tank or 0) + (need.tank or 0)) .. "."
+            .. ((snap.heal or 0) + (need.heal or 0)) .. "."
+            .. ((snap.dps or 0) + (need.dps or 0))
     else
         intent = "lfg"
         -- The player's roles are derived from their spec(s) — broadcast all of
@@ -74,6 +82,15 @@ function Comm.BuildPayload(partyLens)
     local _, classFile = UnitClass("player")
     local level = (UnitLevel and UnitLevel("player")) or 0
 
+    -- My current layer (map + zoneUID), so receivers can flag me "reachable on your
+    -- layer". Layer loads after Comm, so fetch it lazily at broadcast time.
+    local zoneUID, mapID = 0, 0
+    local Layer = _G[ADDON_NAME .. "_Layer"]
+    if Layer and Layer.Current then
+        local cur = Layer.Current(partyLens)
+        zoneUID, mapID = cur.zoneUID or 0, cur.mapID or 0
+    end
+
     return table.concat({
         Comm.PROTOCOL,
         intent,
@@ -83,6 +100,11 @@ function Comm.BuildPayload(partyLens)
         tostring(cfg.minIlvl or 0),
         classFile or "",
         tostring(level or 0),
+        -- Append-only (protocol stays "1"): layer + live composition.
+        tostring(zoneUID),
+        tostring(mapID),
+        compFilled,
+        compTarget,
     }, "|")
 end
 
@@ -132,7 +154,8 @@ local function ParsePayload(text)
     if type(text) ~= "string" then
         return nil
     end
-    local protocol, intent, role, activityType, label, ilvl, classFile, level = strsplit("|", text)
+    local protocol, intent, role, activityType, label, ilvl, classFile, level,
+        zoneUID, mapID, compFilled, compTarget = strsplit("|", text)
     if protocol ~= Comm.PROTOCOL then
         return nil
     end
@@ -145,6 +168,10 @@ local function ParsePayload(text)
         -- Trailing fields are absent from older-client broadcasts; nil is fine.
         classFile = (classFile ~= nil and classFile ~= "") and classFile or nil,
         level = tonumber(level),
+        zoneUID = tonumber(zoneUID),
+        mapID = tonumber(mapID),
+        compFilled = (compFilled ~= nil and compFilled ~= "") and compFilled or nil,
+        compTarget = (compTarget ~= nil and compTarget ~= "") and compTarget or nil,
     }
 end
 
@@ -174,6 +201,20 @@ function Comm.OnMessage(partyLens, prefix, text, _, sender)
         message = (data.role ~= "" and data.role or "?") .. " LF " .. (activityName or "group")
     end
 
+    -- Live group composition (LFM only): "t.h.d" filled + target -> structured comp
+    -- the receiver renders as "T1/1 H0/1 D2/3", plus a real fill bar (size/max).
+    local comp, numMembers, maxMembers
+    if isLFM and data.compFilled and data.compTarget then
+        local ft, fh, fd = strsplit(".", data.compFilled)
+        local tt, th, td = strsplit(".", data.compTarget)
+        comp = {
+            t = tonumber(ft) or 0, h = tonumber(fh) or 0, d = tonumber(fd) or 0,
+            tMax = tonumber(tt) or 0, hMax = tonumber(th) or 0, dMax = tonumber(td) or 0,
+        }
+        numMembers = comp.t + comp.h + comp.d
+        maxMembers = comp.tMax + comp.hMax + comp.dMax
+    end
+
     Entry.AddOrUpdateEntry(partyLens, {
         id = "addon:" .. Utils.PlayerShortName(sender),
         source = "addon",
@@ -193,6 +234,12 @@ function Comm.OnMessage(partyLens, prefix, text, _, sender)
         message = message,
         timestamp = time(),
         open = true,
+        -- Live composition + fill, and sender's layer for the reachable-now badge.
+        comp = comp,
+        numMembers = numMembers,
+        maxMembers = maxMembers,
+        senderZoneUID = (data.zoneUID and data.zoneUID > 0) and data.zoneUID or nil,
+        senderMapID = (data.mapID and data.mapID > 0) and data.mapID or nil,
     })
 end
 

@@ -5,6 +5,36 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.19.0]
+
+Tier 1 do roadmap de comunidade (funcionalidades novas escolhidas por pesquisa em
+fóruns Classic/TBC — só o que a malha realm-wide entrega de forma única):
+
+- **Composição do grupo ao vivo no Browse**: um líder PartyLens (com o autopilot
+  armado) agora transmite a composição atual do grupo pela mesh, então na lista você
+  vê **T1/1 H0/1 D2/3** (quem já entrou e quais vagas seguem abertas) + a barra de
+  preenchimento real — não só o grito "LFM". Resolve a queixa nº1 dos addons de
+  chat-scan ("dá pra achar grupo, mas não dá pra ver quem já tá nele").
+- **"Na sua layer" (reachable now)**: entradas de usuários PartyLens que estão na sua
+  layer exata (mesmo mapa + zoneUID) ganham um selo teal — um convite simples já cai
+  com você, sem precisar de hop.
+- **Mapa de layer ao vivo (ocupação)**: todo usuário PartyLens agora compartilha
+  presença de layer periodicamente (não só beacons), então o seletor de layer virou um
+  mapa: cada chip mostra **quantos peers PartyLens** estão naquela layer, e layers
+  ocupadas não ficam mais apagadas. Ajuda a escolher uma layer vazia pra farmar / uma
+  cheia pra world PvP. (Opt-out: `db.layer.shareLayer=false`. É densidade de usuários
+  PartyLens, não população total — melhora conforme a adoção.)
+- **Trust inline no momento da decisão**: cada líder na lista mostra um selo com a
+  **contagem de vouches** corroborados (positivo, sem downvote) — teal quando um dos que
+  voucharam é alguém com quem você já groupou (sinal mais forte), dourado caso contrário,
+  escondido quando ninguém vouchou. Ajuda a decidir em quem confiar antes de PUGar/GDKP.
+
+Detalhes técnicos: payload do Comm ganhou 4 campos append-only (protocolo continua "1",
+clientes antigos ignoram); presença de layer ociosa em `LayerNet.PRESENCE_INTERVAL=60s`
+(< NODE_TTL); `Reputation.VouchInfo` e `LayerNet.KnownLayers.nodes` como fontes. Tier 2/3
+(radar de boss estendido, broker de serviços, arena finder, flags negativos com cautela)
+ficam no roadmap salvo pra continuar na sequência.
+
 ## [0.18.4]
 
 Passe de review global (dois passes multi-agente, cada achado verificado

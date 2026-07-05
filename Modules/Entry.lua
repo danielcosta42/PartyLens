@@ -102,6 +102,18 @@ local function MergeEntry(canonical, incoming)
     if incoming.role and incoming.role ~= "" then
         canonical.role = incoming.role
     end
+    -- Mesh-only live data (only the addon source ever sets these): keep the
+    -- broadcast composition + layer even when a chat line for the same leader
+    -- merges in. Don't clobber a tool's authoritative member counts if it has them.
+    if incoming.comp then
+        canonical.comp = incoming.comp
+        canonical.numMembers = canonical.numMembers or incoming.numMembers
+        canonical.maxMembers = canonical.maxMembers or incoming.maxMembers
+    end
+    if incoming.senderZoneUID then
+        canonical.senderZoneUID = incoming.senderZoneUID
+        canonical.senderMapID = incoming.senderMapID
+    end
     canonical.timestamp = math.max(canonical.timestamp or 0, incoming.timestamp or 0)
 end
 

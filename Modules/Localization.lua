@@ -97,6 +97,8 @@ Localization.Strings = {
         SOLO_LABEL = "Solo",
         NEEDS_LABEL = "Needs",
         OPEN_STATUS = "|cff66ff66open|r",
+        REACH_BADGE = "on your layer",
+        COMP_INLINE = "T%d/%d  H%d/%d  D%d/%d",
         CLOSED_STATUS = "|cffff6666closed|r",
         
         -- Action Messages
@@ -366,6 +368,8 @@ Localization.Strings = {
         SOLO_LABEL = "Solo",
         NEEDS_LABEL = "Procura",
         OPEN_STATUS = "|cff66ff66aberto|r",
+        REACH_BADGE = "na sua layer",
+        COMP_INLINE = "T%d/%d  H%d/%d  D%d/%d",
         CLOSED_STATUS = "|cffff6666fechado|r",
         
         LOADED = "carregado. Use /partylens.",

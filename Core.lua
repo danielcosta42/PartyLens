@@ -68,6 +68,10 @@ function PartyLens:Refresh()
         end
     end
 
+    -- My current layer, resolved once, so each row can flag mesh users who are on
+    -- my exact layer (same map + zoneUID) as "reachable now".
+    local myLayer = Layer.Current(self)
+
     for index, row in ipairs(self.rows) do
         local entry = entries[index]
         if entry then
@@ -95,6 +99,20 @@ function PartyLens:Refresh()
                 end
             end
 
+            -- Community trust: positive corroborated vouch count for this leader,
+            -- brighter when one of the voters is someone I've grouped with. Positive-
+            -- only, so a leader with no vouches simply shows no chip.
+            if row.trustChip then
+                local vouches, byContacts = Reputation.VouchInfo(self, entry.leader)
+                if vouches > 0 then
+                    row.trustChip:SetLabel(tostring(vouches))
+                    row.trustChip:SetAccent(byContacts > 0 and P.teal or P.gold)
+                    row.trustChip:Show()
+                else
+                    row.trustChip:Hide()
+                end
+            end
+
             -- Group fill + age/freshness.
             row.fill:SetValue(entry.numMembers, entry.maxMembers, intentColor)
             local age = math.max(0, time() - (entry.timestamp or time()))
@@ -114,7 +132,14 @@ function PartyLens:Refresh()
             end
             local sourceLabel = entry.source == "tool" and Localization.L("SOURCE_LFG") or Localization.L("SOURCE_CHAT")
             local openText = entry.open and Localization.L("OPEN_STATUS") or Localization.L("CLOSED_STATUS")
-            row.leader:SetText(leaderStr .. "   ·   " .. sourceLabel .. "  ·  " .. openText)
+            -- Reachable now: this mesh user is on my exact layer (same map + zoneUID),
+            -- so a plain invite lands them with me — no hop needed.
+            local reachSuffix = ""
+            if entry.senderZoneUID and entry.senderMapID and myLayer.zoneUID
+                and entry.senderMapID == myLayer.mapID and entry.senderZoneUID == myLayer.zoneUID then
+                reachSuffix = "   ·   |cff35f0c5" .. Localization.L("REACH_BADGE") .. "|r"
+            end
+            row.leader:SetText(leaderStr .. "   ·   " .. sourceLabel .. "  ·  " .. openText .. reachSuffix)
 
             -- Role-need pips.
             local needSet = {}
@@ -146,7 +171,18 @@ function PartyLens:Refresh()
                 row.needsLabel:Hide()
             end
 
-            row.message:SetText(entry.message or "")
+            -- Live group composition (from a PartyLens leader's mesh broadcast):
+            -- append "T1/1 H0/1 D2/3" so you see who's already in and what's still open.
+            local msgText = entry.message or ""
+            -- Gate on intent too: if a mesh sender flips LFM->LFG, the existing-row
+            -- copy can't clear the now-nil comp (pairs skips nil keys), but intent
+            -- does update — so a stale "T1/1..." never renders on a player entry.
+            if entry.comp and entry.intent == "group" then
+                local c = entry.comp
+                msgText = msgText .. "   |cff8a94a4"
+                    .. Localization.L("COMP_INLINE", c.t, c.tMax, c.h, c.hMax, c.d, c.dMax) .. "|r"
+            end
+            row.message:SetText(msgText)
 
             UIElements.SetButtonEnabled(row.whisper, hasLeader)
             UIElements.SetButtonEnabled(row.open, hasLeader)

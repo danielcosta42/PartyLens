@@ -31,6 +31,7 @@ LayerNet.PREFIX = "PLLnet"            -- addon-message prefix for the layer mesh
 LayerNet.NET_PROTO = "PLL1"           -- payload protocol tag
 LayerNet.TICK = 5
 LayerNet.SYNC_INTERVAL = 30           -- presence/sighting broadcast cadence (numbering sync)
+LayerNet.PRESENCE_INTERVAL = 60       -- idle layer-presence cadence (feeds the occupancy map); under NODE_TTL
 LayerNet.MAX_PER_MINUTE = 10          -- invites/min (racing to win clients; still bounded)
 LayerNet.CONTACT_COOLDOWN = 90        -- per-name cooldown
 LayerNet.NODE_TTL = 150               -- a node counts as "online" if heard within this
@@ -459,9 +460,9 @@ local function ReqFromSpec(spec)
     return { any = false, exclude = exclude, layers = layers }
 end
 
--- Broadcast our current layer sighting to the mesh (presence + numbering sync).
--- No-op until we've detected a zoneUID. Callers gate this to active participants
--- (beacon / requester) so idle clients don't chatter.
+-- Broadcast our current layer sighting to the mesh (presence + numbering sync +
+-- occupancy). No-op until we've detected a zoneUID. Callers gate the cadence:
+-- active participants (beacon/requester) chatter fast; idle users share slower.
 function LayerNet.BroadcastSighting(partyLens)
     local cur = Layer.Current(partyLens)
     if not cur.zoneUID then
@@ -714,9 +715,14 @@ function LayerNet.Tick(partyLens)
     Layer.PruneSeen(partyLens) -- age out dead layers on a fixed cadence (keeps ordinals aligned)
     -- Presence / numbering sync: broadcast our sighting (a hidden ADDON message,
     -- which is NOT hardware-gated — unlike a visible SendChatMessage to a CHANNEL)
-    -- so everyone's layer NUMBERS converge. Only active participants chatter.
-    if cfg.beacon or rt.myRequest then
-        if (time() - (rt.lastSync or 0)) >= LayerNet.SYNC_INTERVAL then
+    -- so everyone's layer NUMBERS converge AND the realm-wide occupancy map can see
+    -- which layers people are on. Active participants (beacon/requester) chatter at
+    -- the full cadence; idle users share their layer at a slower cadence so the map
+    -- reflects the whole network, not just beacons (opt-out: db.layer.shareLayer=false).
+    local active = cfg.beacon or rt.myRequest
+    if active or cfg.shareLayer ~= false then
+        local interval = active and LayerNet.SYNC_INTERVAL or LayerNet.PRESENCE_INTERVAL
+        if (time() - (rt.lastSync or 0)) >= interval then
             rt.lastSync = time()
             LayerNet.BroadcastSighting(partyLens)
         end

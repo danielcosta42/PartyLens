@@ -264,6 +264,13 @@ function UIMain.CreateResultRow(partyLens, index)
     row.plBadge:SetLabel("PL")
     row.plBadge:Hide()
 
+    -- Positive-vouch count (community trust) — a dot + count, teal when someone I've
+    -- grouped with is among the voters, gold otherwise. Hidden when nobody vouched.
+    row.trustChip = UIElements.CreateChip(row, 44, 20)
+    row.trustChip:EnableDot()
+    row.trustChip:SetPoint("LEFT", row.plBadge, "RIGHT", 7, 0)
+    row.trustChip:Hide()
+
     row.fill = UIElements.CreateFillBar(row, 104, 16)
     row.fill:SetPoint("TOPRIGHT", -90, -12)
 
@@ -2097,8 +2104,12 @@ local function RefreshHopChips(partyLens)
     for _, ly in ipairs(layers) do
         idx = idx + 1
         local ord = ly.ordinal
+        local peers = ly.nodes or 0
         local chip = HopChip(ln, panel, idx)
-        chip:SetText("L" .. ord)
+        -- Live occupancy: how many PartyLens peers we've heard on this layer, so the
+        -- picker doubles as a "which layer is busy / quiet" map. Muted so the layer
+        -- number stays the focus.
+        chip:SetText(peers > 0 and ("L" .. ord .. "  |cff8a94a4" .. peers .. "|r") or ("L" .. ord))
         chip:SetScript("OnClick", function()
             if LayerNet then LayerNet.RequestLayer(partyLens, tostring(ord)) end
         end)
@@ -2111,9 +2122,11 @@ local function RefreshHopChips(partyLens)
         local sel = (mr and not mr.req.any and mr.req.layers and mr.req.layers[ord]) and true or false
         chip:SetActive(sel)
         if not sel then
-            chip:SetAlpha((ly.hasBeacon or ly.isCurrent) and 1 or 0.5)
+            -- Keep layers with a beacon, my current layer, OR live peers at full
+            -- opacity; only dim empty known-but-quiet layers.
+            chip:SetAlpha((ly.hasBeacon or ly.isCurrent or peers > 0) and 1 or 0.5)
         end
-        place(chip, 44)
+        place(chip, peers > 0 and 58 or 44)
     end
 
     -- Park any leftover pooled chips.

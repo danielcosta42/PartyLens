@@ -73,6 +73,26 @@ function Reputation.HasVouched(partyLens, name)
     return DB(partyLens).given[Key(name)] ~= nil
 end
 
+-- Trust snapshot at a decision moment: total distinct corroborated voters (the
+-- realm-wide "N vouched" score) and how many of those voters are people I have
+-- actually grouped with (a stronger, personal signal). Positive-only — a 0 here
+-- means "nobody we heard from vouched", never a negative mark. Returns count, byContacts.
+function Reputation.VouchInfo(partyLens, name)
+    local db = DB(partyLens)
+    local voters = db.tally[Key(name)]
+    if not voters then
+        return 0, 0
+    end
+    local count, byContacts = 0, 0
+    for voter in pairs(voters) do
+        count = count + 1
+        if db.groupmates[voter] then
+            byContacts = byContacts + 1
+        end
+    end
+    return count, byContacts
+end
+
 -- Vouch for a player (once). Records locally + broadcasts to the mesh.
 function Reputation.Vouch(partyLens, name)
     local key = Key(name)
