@@ -35,4 +35,6 @@ Modules/Search.lua
 Modules/Minimap.lua
 Modules/UIMain.lua
 Modules/NetDiag.lua
+Modules/ChehulNet.lua
+Modules/ChehulNetWire.lua
 Core.lua

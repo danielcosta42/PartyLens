@@ -5,6 +5,15 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.16.2]
+
+- **Reconhecimento entre addons (família Chehul)**: novo módulo compartilhado
+  **ChehulNet** — um handshake de presença por **guild + grupo + proximidade** que faz
+  os addons do Chehul (PartyLens, GuildOS, ProfessionHelper) se reconhecerem no reino.
+  O PartyLens continua 100% standalone; ele anuncia sua presença (e "LFG" quando o
+  Autopilot está armado) pra rede da família, servindo de base para recursos
+  cross-addon (ex.: saber que um jogador também roda outro addon da família).
+
 ## [0.16.1]
 
 - **Beacon silencioso de verdade**: enquanto o beacon está ligado, o vai-e-vem de
