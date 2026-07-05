@@ -884,10 +884,36 @@ function LayerNet.SendMyRequest(partyLens, includeVisible)
     -- rejects at OnAddonMessage's `zoneUID > 0` guard) rather than leak a foreign
     -- standing-map zoneUID into the boss map's seen-set and corrupt its ordinals.
     local myZoneOnReqMap = mr.fixedMap and 0 or (cur.zoneUID or 0)
-    SendNet(table.concat({
+    local payload = table.concat({
         LayerNet.NET_PROTO, "R", tostring(reqMap), tostring(myZoneOnReqMap),
         mr.spec, tostring(target),
-    }, "|"), "R") -- realm-wide too, so a beacon anywhere on the realm can answer
+    }, "|")
+    SendNet(payload, "R") -- realm-wide too, so a beacon anywhere on the realm can answer
+
+    -- Direct-deliver to the beacons we ALREADY know about. The broadcast above only
+    -- reaches a cross-layer / cross-guild beacon via the realm bus, which is
+    -- CLICK-FLUSHED (eventual) — and SAY proximity can't cross layers — so a request
+    -- to a beacon on another layer can sit undelivered until the requester happens to
+    -- click in the 3D world. A hidden addon WHISPER delivers instantly from a timer
+    -- (cross-layer, cross-guild), so whisper the request straight to every known
+    -- beacon that can serve it. The beacon re-checks the match itself before inviting.
+    if Net.Whisper then
+        for _, n in pairs(RT(partyLens).nodes) do
+            if n.beacon and n.name and not SameAsPlayer(n.name) then
+                local serves = mr.req.any
+                if not serves and target > 0 and n.zoneUID and n.mapID == reqMap then
+                    if mr.req.exclude then
+                        serves = n.zoneUID ~= target
+                    else
+                        serves = n.zoneUID == target
+                    end
+                end
+                if serves then
+                    Net.Whisper(LayerNet.PREFIX, payload, n.name)
+                end
+            end
+        end
+    end
     mr.lastNet = time()
     if includeVisible then
         local num = LFGChannelNumber()

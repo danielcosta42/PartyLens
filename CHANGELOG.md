@@ -5,7 +5,20 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
-## [0.19.0]
+## [0.19.1]
+
+- **Hop de layer para um beacon conhecido agora é confiável (entrega direta)**: um
+  pedido de hop saía por guild + grupo + proximidade (instantâneo) **+ realm-wide
+  (click-flushed / eventual)**. Quando o beacon está em **outra layer** (proximidade/SAY
+  não cruza layers) e **não é da sua guild**, o único caminho era o realm-wide — que só
+  descarrega quando você clica no mundo 3D. Clicar no chip da UI **não** conta como clique
+  no WorldFrame, então o pedido ficava parado na fila e nenhum convite chegava (mesmo com
+  "Nodes online: 1" mostrando que você ouvia o beacon). Correção: como já **conhecemos** o
+  beacon (`rt.nodes` tem nome + layer dele), o pedido agora é **sussurrado direto** (addon
+  message oculto, entrega de timer, cruza layer e guild) para todo beacon que serve o
+  pedido — o beacon reconfere o match antes de convidar. Vale para o hop normal e para o
+  hop de world boss. `RequestLayer` dispara o sussurro na hora do clique, então o convite
+  vem em segundos.
 
 Tier 1 do roadmap de comunidade (funcionalidades novas escolhidas por pesquisa em
 fóruns Classic/TBC — só o que a malha realm-wide entrega de forma única):
