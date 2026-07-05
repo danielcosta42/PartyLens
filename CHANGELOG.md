@@ -5,6 +5,15 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.17.1]
+
+- **Toda a malha do PartyLens agora fala pela LibChehulMesh**: o Browse, a rede de
+  Layer, o radar de World Boss e os vouches passaram a enviar pelos buses da lib
+  compartilhada (guild/grupo/proximidade), unificando o transporte com o
+  ProfessionHelper e o GuildOS e centralizando a instrumentação (`/partylens
+  netstat`). O post visível de LFG (o "LFM" do autopilot) segue no seu caminho
+  próprio, por ser human-readable.
+
 ## [0.17.0]
 
 - **Malha compartilhada entre addons (LibChehulMesh) + presença realm-wide**: o
