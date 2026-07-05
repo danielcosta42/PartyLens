@@ -21,6 +21,7 @@ local Messaging = LoadModule("Messaging")
 local UIElements = LoadModule("UIElements")
 local MinimapButton = LoadModule("Minimap")
 local Roster = LoadModule("Roster")
+local Net = LoadModule("Net")
 local Comm = LoadModule("Comm")
 local Who = LoadModule("Who")
 local Layer = LoadModule("Layer")
@@ -29,6 +30,7 @@ local WorldBoss = LoadModule("WorldBoss")
 local Reputation = LoadModule("Reputation")
 local Autopilot = LoadModule("Autopilot")
 local UIMain = LoadModule("UIMain")
+local NetDiag = LoadModule("NetDiag")
 local Search = LoadModule("Search")
 local Localization = LoadModule("Localization")
 local LocalizedKeywords = LoadModule("LocalizedKeywords")
@@ -207,6 +209,7 @@ function PartyLens:OnAddonLoaded(name)
     self.entries = {}
     self.entriesById = {}
     Comm.Init()
+    Net.InstallHooks() -- WorldFrame click hook that flushes queued realm-wide posts
     UIMain.CreateMainUI(self)
     MinimapButton.SetShown(self, self.db.minimap)
     -- Layer network: install the (beacon-gated) chat-silencing filters and start
@@ -306,6 +309,10 @@ function PartyLens:OnAddonLoaded(name)
             if name ~= "" then Reputation.Vouch(self, name) end
         elseif msg == "diag" then
             LFGTool.Diagnose()
+        elseif msg == "netdiag" then
+            NetDiag.Run(self)
+        elseif msg == "netstat" then
+            Utils.Print("mesh: " .. Net.HealthLine())
         else
             self:Toggle()
         end

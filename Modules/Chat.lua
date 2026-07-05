@@ -157,6 +157,18 @@ function Chat.HandleChatMessage(partyLens, msg, sender, _, channelName, _, _, _,
         return
     end
 
+    -- Realm-wide mesh recognition: a PartyLens user's posts are signed, so a
+    -- signed LFG line means the poster runs the addon. Flag them (the "PL" badge
+    -- + trusted merge in Entry) and strip the sign so parsing/display see the
+    -- clean line. No addon-message transport needed — this rides the visible post
+    -- every client already scans, which is how we reach realm-wide.
+    local isAddonUser = false
+    local sign = Utils.CHAT_SIGN
+    if msg and string.sub(msg, 1, #sign) == sign then
+        isAddonUser = true
+        msg = Utils.Trim(string.sub(msg, #sign + 1))
+    end
+
     local text = Utils.SafeLower(msg)
     local lfgKeywords = LocalizedKeywords.GetLFGKeywords()
     local lfmKeywords = LocalizedKeywords.GetLFMKeywords()
@@ -195,6 +207,7 @@ function Chat.HandleChatMessage(partyLens, msg, sender, _, channelName, _, _, _,
         channelName = baseName or channelName,
         timestamp = time(),
         open = true,
+        isAddonUser = isAddonUser,
         needs = table.concat(needs, ", "),
         isSpam = Spam and Spam.IsSpam(msg) or false,
     })

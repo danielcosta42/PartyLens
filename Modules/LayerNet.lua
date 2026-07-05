@@ -3,6 +3,7 @@ local Utils = _G[ADDON_NAME .. "_Utils"]
 local Layer = _G[ADDON_NAME .. "_Layer"]
 local Roster = _G[ADDON_NAME .. "_Roster"]
 local Localization = _G[ADDON_NAME .. "_Localization"]
+local Net = _G[ADDON_NAME .. "_Net"]
 
 local L = Localization.L
 local LayerNet = {}
@@ -16,14 +17,15 @@ local LayerNet = {}
 -- inviter's layer) and whispers instructions. Everything the beacon does is kept
 -- INVISIBLE to the beacon player — no party join/leave spam, no whisper popups.
 --
--- Coordination + presence ride a hidden custom chat channel (custom channels are
--- realm-wide / cross-layer; hidden addon messages over a CHANNEL are disabled on
--- this client, so we use a normal channel filtered out of the chat frames).
+-- Coordination + presence ride hidden addon messages (see Modules/Net.lua).
+-- Addon messages over the CHANNEL distribution are BLOCKED on this client
+-- (SendAddonMessage returns 4), so there is NO automatic realm-wide hidden bus:
+-- presence/sightings sync over GUILD + SAY proximity, while the REALM-WIDE reach
+-- for "get me to layer N" comes from the requester's signed VISIBLE post (which
+-- is hardware-gated but every beacon scans it). See /partylens netdiag.
 -- ===========================================================================
 
--- The mesh rides hidden ADDON messages over the realm-wide LookingForGroup
--- channel (the same transport the Browse mesh uses — proven on this client and
--- NOT hardware-gated, unlike a visible SendChatMessage to a CHANNEL). Its own
+-- The mesh sends hidden ADDON messages via Net (guild + proximity). Its own
 -- prefix keeps it separate from the Browse ("PartyLens") traffic.
 LayerNet.PREFIX = "PLLnet"            -- addon-message prefix for the layer mesh
 LayerNet.NET_PROTO = "PLL1"           -- payload protocol tag
@@ -389,18 +391,18 @@ local function LFGChannelNumber()
     return (type(n) == "number" and n > 0) and n or nil
 end
 
--- Fire-and-forget addon broadcast over the LFG channel (invisible, cross-layer).
+-- Fire-and-forget hidden addon broadcast to the layer mesh. CHANNEL is blocked
+-- on this client, so route over the buses that deliver from a timer: GUILD
+-- (guildmates) + SAY proximity (same area / same layer neighbours). Instrumented
+-- via Net.Stats so it can never fail silently again.
 local function SendNet(payload)
-    local num = LFGChannelNumber()
-    if not num then
-        return false
-    end
-    local send = (C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage
-    if not send then
-        return false
-    end
-    pcall(send, LayerNet.PREFIX, payload, "CHANNEL", num)
-    return true
+    -- Guild + current party/raid + SAY proximity. Group is included so vouches,
+    -- world-boss sightings and layer sync reach groupmates who are on a different
+    -- layer (out of ~40yd SAY range) but not in your guild.
+    local sentGuild = Net.Guild(LayerNet.PREFIX, payload)
+    local sentGroup = Net.Group(LayerNet.PREFIX, payload)
+    local sentNear = Net.Proximity(LayerNet.PREFIX, payload)
+    return sentGuild or sentGroup or sentNear
 end
 
 function LayerNet.RegisterPrefix()
@@ -410,8 +412,8 @@ function LayerNet.RegisterPrefix()
     end
 end
 
--- Public broadcast over the mesh (invisible, realm-wide, not hardware-gated). Used
--- by sibling features (e.g. the world-boss radar) that ride the same channel.
+-- Public broadcast over the hidden mesh (guild + nearby; not realm-wide — CHANNEL
+-- is blocked). Used by sibling features (e.g. the world-boss radar).
 function LayerNet.Broadcast(payload)
     return SendNet(payload)
 end

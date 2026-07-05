@@ -22,6 +22,7 @@ Modules/LFGTool.lua
 Modules/Messaging.lua
 Modules/Roster.lua
 Modules/Summon.lua
+Modules/Net.lua
 Modules/Comm.lua
 Modules/Who.lua
 Modules/Autopilot.lua
@@ -33,4 +34,5 @@ Modules/UIElements.lua
 Modules/Search.lua
 Modules/Minimap.lua
 Modules/UIMain.lua
+Modules/NetDiag.lua
 Core.lua

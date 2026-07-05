@@ -2,6 +2,7 @@ local ADDON_NAME = ...
 local Utils = _G[ADDON_NAME .. "_Utils"]
 local Entry = _G[ADDON_NAME .. "_Entry"]
 local Roster = _G[ADDON_NAME .. "_Roster"]
+local Net = _G[ADDON_NAME .. "_Net"]
 
 -- PartyLens "mesh": addon users broadcast a compact, structured LFG/LFM intent
 -- over the LookingForGroup channel as HIDDEN addon messages (invisible in chat).
@@ -85,19 +86,20 @@ function Comm.BuildPayload(partyLens)
     }, "|")
 end
 
--- Sends one intent broadcast over the LookingForGroup channel (hidden). No-op if
--- the channel isn't joined yet (EnsureLFGChannel handles that on login).
+-- Sends one intent broadcast to other PartyLens users (hidden addon message).
+--
+-- The old code sent over the CHANNEL distribution, which is BLOCKED for addon
+-- messages on this client (returns 4) — every broadcast was dropped silently.
+-- There is no automatic realm-wide hidden bus, so we advertise over the buses
+-- that actually deliver from a timer: the GUILD (guildmates running PartyLens)
+-- and SAY proximity (nearby users at city / auction-house hubs). Realm-wide
+-- reach still comes from our SIGNED visible LFG posts, which every PartyLens
+-- user already scans. Instrumented via Net.Stats — never silent again.
 function Comm.Broadcast(partyLens)
-    local channelNumber = GetChannelName and GetChannelName("LookingForGroup")
-    if type(channelNumber) ~= "number" or channelNumber == 0 then
-        return false
-    end
-    local send = (C_ChatInfo and C_ChatInfo.SendAddonMessage) or SendAddonMessage
-    if not send then
-        return false
-    end
-    pcall(send, Comm.PREFIX, Comm.BuildPayload(partyLens), "CHANNEL", channelNumber)
-    return true
+    local payload = Comm.BuildPayload(partyLens)
+    local sentGuild = Net.Guild(Comm.PREFIX, payload)
+    local sentNear = Net.Proximity(Comm.PREFIX, payload)
+    return sentGuild or sentNear
 end
 
 -- Called from the autopilot tick: re-broadcast while armed, throttled. Build mode

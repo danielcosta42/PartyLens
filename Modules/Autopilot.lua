@@ -6,6 +6,7 @@ local LFGTool = _G[ADDON_NAME .. "_LFGTool"]
 local Localization = _G[ADDON_NAME .. "_Localization"]
 local LocalizedKeywords = _G[ADDON_NAME .. "_LocalizedKeywords"]
 local Comm = _G[ADDON_NAME .. "_Comm"]
+local Net = _G[ADDON_NAME .. "_Net"]
 local Who = _G[ADDON_NAME .. "_Who"]
 
 local L = Localization.L
@@ -680,18 +681,17 @@ function Autopilot.AnnounceLFM(partyLens)
     end
     local message = L("AP_LFM_ANNOUNCE", activity, NeedRolesText(need), keyword)
 
-    local channelNumber = GetChannelName and GetChannelName("LookingForGroup")
-    if type(channelNumber) ~= "number" or channelNumber == 0 then
-        if JoinPermanentChannel then
-            JoinPermanentChannel("LookingForGroup")
-        end
-        channelNumber = GetChannelName and GetChannelName("LookingForGroup")
-    end
-    if type(channelNumber) ~= "number" or channelNumber == 0 then
-        return false
+    -- Ensure we're in the channel (the post resolves the number at flush time).
+    if GetChannelName and (GetChannelName("LookingForGroup") or 0) == 0 and JoinPermanentChannel then
+        JoinPermanentChannel("LookingForGroup")
     end
 
-    Utils.SendChat(message, "CHANNEL", nil, channelNumber)
+    -- A visible CHANNEL post is hardware-gated: it CANNOT be sent from this timer
+    -- (the old direct send here raised ADDON_ACTION_BLOCKED and was silently
+    -- dropped, so build mode only ever announced once, on arm). Queue it instead
+    -- and let Net flush it on the player's next click. Signed at flush time, so
+    -- other PartyLens users recognise the poster (realm-wide mesh).
+    Net.QueueChannelPost("ap_lfm", message, "LookingForGroup")
     rt.lastAnnounce = time()
     Autopilot.Log(partyLens, L("AP_LOG_ANNOUNCED_LFM"))
     return true
@@ -838,6 +838,7 @@ function Autopilot.Disarm(partyLens)
     rt.armed = false
     rt.state = "idle"
     rt.pendingAction = nil
+    Net.ClearChannelPost("ap_lfm") -- don't post a stale LFM after we've stopped
     if rt.ticker then
         rt.ticker:Cancel()
         rt.ticker = nil
