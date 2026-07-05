@@ -5,6 +5,24 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.16.0]
+
+- **Correção crítica — a malha voltou a entregar de verdade.** As mensagens de rede
+  (radar de world boss, vouches, sincronização de layer, broker de grupo) eram
+  enviadas pelo tipo **CHANNEL**, que está **bloqueado** neste cliente — o envio
+  retornava erro em silêncio e **nada chegava a ninguém**. Agora todo o tráfego da
+  malha vai por **guild + grupo + proximidade** (buses que entregam de fato), com
+  instrumentação que nunca mais falha calada (`Net`).
+- **Reconhecimento realm-wide:** usuários PartyLens agora se reconhecem pela
+  **assinatura** nos posts do canal — badge **PL** em todo o reino, sem transporte
+  extra. O "me leva pra layer N" e o **Gritar** de boss seguem realm-wide pelo post
+  visível (disparado por clique).
+- **Correção — re-anúncio de LFM (autopilot / build mode).** O re-spam a cada 60s
+  estava sendo **bloqueado em silêncio** (só anunciava uma vez, ao armar). Agora
+  re-posta de novo, disparado nos seus cliques naturais.
+- **Diagnóstico:** `/partylens netdiag` mede o que cada transporte realmente entrega
+  neste cliente; `/partylens netstat` mostra a saúde da malha (envios/ok por bus).
+
 ## [0.15.1]
 
 - **Convite otimista (ganhar a corrida)**: o beacon agora dispara o convite como a
