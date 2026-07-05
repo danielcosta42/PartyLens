@@ -1558,10 +1558,28 @@ function UIMain.RefreshAutopilot(partyLens)
     ap.armBtn:SetText(armed and L("AP_DISARM") or L("AP_ARM"))
     ap.armBtn:SetAccent(armed and P.coral or P.teal)
 
-    local plCount = 0
-    for _, e in ipairs(partyLens.entries or {}) do
-        if e.isAddonUser then plCount = plCount + 1 end
+    -- "PartyLens on the mesh": count the living network, not just users who
+    -- happen to be advertising an LFG intent right now. Every PL user announces
+    -- presence via ChehulNet (the "pl" tag), automatically and realm-wide, so
+    -- that is the canonical source (same living-mesh feel as "Nodes online").
+    -- Union in any advertising entries too, in case a signed chat/Comm line
+    -- arrived before that peer's presence HELLO propagated. Deduped by name.
+    local seen = {}
+    local CN = _G.ChehulNet
+    if CN and CN.peers then
+        for name, p in pairs(CN.peers) do
+            if p.addons and p.addons["pl"] then
+                seen[Utils.SafeLower((Ambiguate and Ambiguate(name, "short")) or name)] = true
+            end
+        end
     end
+    for _, e in ipairs(partyLens.entries or {}) do
+        if e.isAddonUser and e.leader and e.leader ~= "" then
+            seen[Utils.SafeLower((Ambiguate and Ambiguate(e.leader, "short")) or e.leader)] = true
+        end
+    end
+    local plCount = 0
+    for _ in pairs(seen) do plCount = plCount + 1 end
     ap.meshLabel:SetText(L("AP_MESH_COUNT", plCount))
 
     local state = armed and ((rt and rt.state) or "searching") or "idle"

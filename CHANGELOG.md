@@ -5,6 +5,24 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.18.3]
+
+- **Contador "PartyLens na rede" do Autopilot deixa de ficar travado em zero**: ele
+  contava só usuários que estavam **anunciando um LFG naquele instante** (autopilot
+  armado do outro lado gera uma msg Comm) — quem só estava com o addon aberto não
+  contava, apesar do mesh já conhecer a pessoa (ela aparecia como "nó" na rede de
+  layer). Agora o contador reflete a **presença viva do mesh**: conta os peers
+  ChehulNet que rodam PartyLens (tag `pl`, anunciada automática e realm-wide por todo
+  usuário) unidos aos que estão anunciando, sem duplicar por nome — a mesma sensação
+  de rede viva do stat "Nodes online".
+- **Toda a comunicação do Autopilot passa pelo mesh (verificado)**: o broadcast de
+  intenção (`Comm.Broadcast`) já sai por Guild + Proximity + Realm; o recebimento de
+  candidatos chega por `Mesh:Register("PartyLens")` + varredura de chat; o ranqueamento
+  lê `partyLens.entries` (alimentado pelo mesh). Convites e sussurros de recrutamento
+  seguem sendo ação direta do jogador, como devem ser.
+- Rótulo do contador ajustado de "PartyLens por perto" para "PartyLens na rede" (agora
+  reflete guild + proximidade + realm, não só quem está por perto).
+
 ## [0.18.2]
 
 - **Ponto de beacon nos chips certo**: a marca de "beacon no ar" nos chips agora usa
