@@ -34,7 +34,11 @@ LayerNet.SYNC_INTERVAL = 30           -- presence/sighting broadcast cadence (nu
 LayerNet.PRESENCE_INTERVAL = 60       -- idle layer-presence cadence (feeds the occupancy map); under NODE_TTL
 LayerNet.MAX_PER_MINUTE = 10          -- invites/min (racing to win clients; still bounded)
 LayerNet.CONTACT_COOLDOWN = 90        -- per-name cooldown
-LayerNet.NODE_TTL = 150               -- a node counts as "online" if heard within this
+LayerNet.NODE_TTL = 600               -- a node counts as "online" if heard within this (long,
+                                      -- because realm-wide presence is sparse/click-flushed —
+                                      -- otherwise real peers flicker out between rare flushes)
+LayerNet.GOSSIP_INTERVAL = 120        -- how often to gossip our directly-heard nodes realm-wide
+LayerNet.GOSSIP_MAX = 8               -- nodes per gossip digest (fits the ~255-char channel line)
 LayerNet.REQUEST_TTL = 60             -- an inbound request stays "open" this long
 LayerNet.MY_REQUEST_TTL = 120         -- my own layer request stays active/re-broadcast this long
 LayerNet.PARTY_HOLD = 40              -- auto-uninvite an invitee still around after this (they hop fast)
@@ -63,6 +67,7 @@ local function RT(partyLens)
             log = {},           -- recent activity ({ t, text }) — operator visibility
             myRequest = nil,    -- { req, spec, t, lastNet } my own active layer request
             lastSync = 0,       -- last time we broadcast our sighting to the mesh
+            lastGossip = 0,     -- last time we gossiped our directly-heard nodes realm-wide
             ticker = nil,
         }
     end
@@ -492,6 +497,55 @@ function LayerNet.BroadcastSighting(partyLens)
     }, "|"), "S") -- realm-wide too (coalesced to my latest seen-set)
 end
 
+-- Gossip a digest of the nodes we've heard FIRST-HAND out over the realm bus, so a
+-- single click-flush teaches everyone about many peers at once (1-hop epidemic
+-- spread — the realm bus alone is sparse/click-flushed, so most users would never
+-- see each other otherwise). Realm-ONLY (guild/proximity already deliver directly),
+-- coalesced to our latest, capped to fit the ~255-char channel line. Beacons first,
+-- then freshest. Only first-hand records are shared, so gossip can't amplify itself.
+local function GossipNodes(partyLens)
+    if not Net.Realm then
+        return
+    end
+    local list = {}
+    for _, n in pairs(RT(partyLens).nodes) do
+        if n.direct and n.name and n.zoneUID and n.mapID and not SameAsPlayer(n.name) then
+            list[#list + 1] = n
+        end
+    end
+    if #list == 0 then
+        return
+    end
+    table.sort(list, function(a, b)
+        if (a.beacon and true) ~= (b.beacon and true) then
+            return a.beacon and true or false -- beacons first (most useful to share)
+        end
+        return (a.t or 0) > (b.t or 0) -- then most-recently heard
+    end)
+    local parts, used = {}, 0
+    for i = 1, #list do
+        if #parts >= LayerNet.GOSSIP_MAX then
+            break
+        end
+        local n = list[i]
+        -- name:mapID:zoneUID:beacon (WoW names are letters only -> ':' / ';' are safe)
+        local entry = table.concat({
+            n.name, tostring(n.mapID), tostring(n.zoneUID), n.beacon and "1" or "0",
+        }, ":")
+        local add = #entry + (used > 0 and 1 or 0) -- +1 for the ';' separator
+        if used + add > 220 then -- keep the whole channel line under the ~255 limit
+            break
+        end
+        parts[#parts + 1] = entry
+        used = used + add
+    end
+    if #parts > 0 then
+        Net.Realm(LayerNet.PREFIX,
+            table.concat({ LayerNet.NET_PROTO, "SD", table.concat(parts, ";") }, "|"),
+            LayerNet.PREFIX .. ":SD")
+    end
+end
+
 -- Merge a comma-separated zoneUID list into our shared set (numbering convergence).
 local function MergeCSV(partyLens, mapID, csv)
     if not mapID or mapID <= 0 or not csv or csv == "" then
@@ -508,13 +562,24 @@ end
 
 -- Record a heard mesh peer. Ordinals are computed in OUR frame from the zoneUID
 -- (Stats/matching) — we never trust the peer's own numbering.
-local function RecordNode(partyLens, sender, mapID, zoneUID, isBeacon)
-    RT(partyLens).nodes[Key(sender)] = {
+-- `via` is "direct" (we heard the peer's own S) or "gossip" (another peer relayed
+-- them). Second-hand gossip never overwrites a fresh first-hand record, and only
+-- first-hand records get re-gossiped (see GossipNodes) so gossip can't amplify.
+local function RecordNode(partyLens, sender, mapID, zoneUID, isBeacon, via)
+    local key = Key(sender)
+    local nodes = RT(partyLens).nodes
+    local existing = nodes[key]
+    if via == "gossip" and existing and existing.direct
+        and (time() - (existing.t or 0)) < LayerNet.NODE_TTL then
+        return -- a fresher first-hand record wins over hearsay
+    end
+    nodes[key] = {
         name = Utils.PlayerShortName(sender),
         zoneUID = zoneUID,
         mapID = mapID,
         beacon = isBeacon and true or false,
         t = time(),
+        direct = via ~= "gossip",
     }
 end
 
@@ -536,7 +601,7 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
     end
     if kind == "S" then
         MergeCSV(partyLens, mapID, f6) -- full set -> convergence
-        RecordNode(partyLens, sender, mapID, zoneUID, f5 == "1")
+        RecordNode(partyLens, sender, mapID, zoneUID, f5 == "1", "direct")
         LayerNet.Refresh(partyLens)
     elseif kind == "R" then
         local req = ReqFromSpec(f5)
@@ -560,12 +625,28 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
         if targetZone then
             Layer.MergeSeen(partyLens, mapID, { targetZone }) -- learn the wanted layer's id
         end
-        RecordNode(partyLens, sender, mapID, zoneUID, false)
+        RecordNode(partyLens, sender, mapID, zoneUID, false, "direct")
         RT(partyLens).requests[Key(sender)] = {
             name = Utils.PlayerShortName(sender), req = req, t = time(),
             source = "net", targetZone = targetZone, mapID = mapID,
         }
         LayerNet.Refresh(partyLens)
+    elseif kind == "SD" then
+        -- Presence gossip: "SD|name:map:zone:beacon;..." — merge the second-hand nodes
+        -- a peer relayed, so one flush from anyone makes many peers visible. Re-split
+        -- the raw text (the digest sits where mapID/zoneUID would be, now nil'd above).
+        local _, _, digest = strsplit("|", text or "")
+        if digest and digest ~= "" then
+            for item in string.gmatch(digest, "[^;]+") do
+                local nm, mp, zn, bc = strsplit(":", item)
+                mp, zn = tonumber(mp), tonumber(zn)
+                if nm and nm ~= "" and mp and zn and mp > 0 and zn > 0 and not SameAsPlayer(nm) then
+                    Layer.MergeSeen(partyLens, mp, { zn }) -- learn the relayed layer's id
+                    RecordNode(partyLens, nm, mp, zn, bc == "1", "gossip")
+                end
+            end
+            LayerNet.Refresh(partyLens)
+        end
     elseif kind == "W" then
         -- World-boss sighting: W|mapID|bossZoneUID|npcID|hp. The boss's zoneUID was
         -- already merged above, so its layer can be numbered in our frame.
@@ -748,6 +829,12 @@ function LayerNet.Tick(partyLens)
             rt.lastSync = time()
             LayerNet.BroadcastSighting(partyLens)
         end
+    end
+    -- Gossip the nodes we've heard first-hand realm-wide (1-hop epidemic spread), so
+    -- one flush makes many peers visible even though the realm bus is sparse.
+    if cfg.shareLayer ~= false and (time() - (rt.lastGossip or 0)) >= LayerNet.GOSSIP_INTERVAL then
+        rt.lastGossip = time()
+        GossipNodes(partyLens)
     end
     -- Keep my own layer request alive on the mesh (invisible) until it's served
     -- or expires, so a beacon that arrives on my wanted layer later still pulls me.

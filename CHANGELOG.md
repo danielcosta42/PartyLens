@@ -5,7 +5,28 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
-## [0.19.2]
+## [0.20.0]
+
+Visibilidade da rede de layer (o "nunca tem nodes" com ~200 usuários era, na real,
+**propagação**, não escassez — a presença realm-wide anda por um canal click-flushed e
+esparso, e os nodes sumiam rápido demais):
+
+- **Gossip de presença (espalhamento epidêmico de 1 salto)**: cada cliente agora
+  espalha realm-wide, periodicamente, um **digest dos nodes que ouviu de primeira mão**
+  (`SD|nome:mapa:zona:beacon;...`). Assim **um** flush de **uma** pessoa ensina a rede
+  inteira sobre vários nodes de uma vez — em vez de cada um só enxergar quem descarregou
+  no seu raio nos últimos segundos. Só pelo bus realm (guild/proximidade já entregam
+  direto), coalescido, com orçamento de bytes pra caber na linha do canal. Gossip só
+  repassa registros de primeira mão (nunca re-gossipa hearsay), então não amplifica em
+  loop; e um registro de segunda mão nunca sobrescreve um de primeira mão fresco.
+- **`NODE_TTL` 150s → 10 min**: um node ouvido uma vez conta como "online" por muito mais
+  tempo, então peers reais param de piscar/sumir entre os flushes raros do bus realm.
+- Efeito combinado: "Nodes online" e a ocupação por layer passam a refletir a rede de
+  verdade (com adoção de ~200, deve subir bastante), e mais beacons ficam visíveis +
+  alcançáveis pra hop (o sussurro direto + pin de 0.19.x já entrega neles).
+
+Próximo (Camada 2, quando você quiser): beacon sempre-ligado sem custo + recompensa
+(trust/vouch por hop + rank "hops served") pra aumentar a OFERTA de beacons.
 
 Sequência do hop de layer (o pedido chegava no beacon — mesma guild = entrega
 instantânea — mas nenhum convite saía; então o problema é match ou guarda no beacon):
