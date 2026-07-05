@@ -1,108 +1,151 @@
 # PartyLens
 
-PartyLens is a lightweight TBC Anniversary addon that watches the `LookingForGroup`
-chat channel and the built-in group finder, then gives you one searchable panel
-with quick whisper templates.
+**Your group radar — and a live player network — for the WoW TBC Anniversary client.**
 
-**Now with multi-language support!** 🌍 The addon automatically detects your game language
-and displays in: English, Portuguese, German, French, Spanish, Italian, Russian, 
-Simplified Chinese, Traditional Chinese, and Korean.
+PartyLens started as a better LookingForGroup: it watches the LFG chat channel **and**
+the built-in Group Finder at once and puts every group in one clean, searchable panel.
+It has since grown into a **realm-wide PartyLens network** — layer hopping, a world-boss
+radar, community reputation, and a cross-layer group broker — all powered by other people
+running the addon. The more players use it, the more it does for you.
 
-## Use
+Built for the **TBC Anniversary (Interface 2.5.x)** client, no dependencies, 10 languages.
 
-- `/partylens` toggles the window.
-- `/partylens show` opens it.
-- `/partylens hide` closes it.
-- `/partylens join` joins `LookingForGroup`.
+---
 
-Click **Atualizar Masmorras** / **Update Dungeons** or **Atualizar Raides** / **Update Raids** 
-to refresh the official group finder. The game requires those searches to happen from a hardware click,
-so PartyLens does not auto-query that API in the background.
+## 🔎 Group finder (the core)
 
-The quick whisper message uses a template:
+- **Two sources, one panel** — scans the LFG chat channel *and* the Group Finder together,
+  deduplicated. Most addons do only one.
+- **Role-need pips (Tank / Heal / DPS)** — color-coded, showing exactly what each group
+  still needs; a healer can filter to "groups that need a healer" instantly.
+- **Class + level filters** — icon toggles per class and a minimum-level field. Class is a
+  hard filter (almost always known); the real level of PartyLens users comes free over the
+  mesh, and a click **Who** resolves it for anyone else.
+- **One-click whisper** — auto-fills a friendly message from your class, spec(s) and role:
+  `Hi! {class} {spec} {role} here. {comment}` — fully editable.
+- **Rich result cards** — LFG/LFM badge, a **PL** badge for fellow PartyLens users,
+  class-colored leader name, group-fill bar (`3/5`, `24/25`), freshness dot, and the message.
+- **Create a listing in two clicks** — pick the dungeon/raid from a live list with real
+  names and correct IDs (with search, level range, and a max-level filter).
+- **Modern "dark glass" interface** — translucent layered panels, no default WoW widgets,
+  draggable, Escape-to-close, stays on screen.
 
-`Oi! {class} {spec} {role} aqui. {comment}`
+## 🤖 Autopilot — hands-off recruiting & joining
 
-You can edit `spec`, `role`, and `comment` in the panel. The message adapts to your game language.
+- **Build a group**: define the composition you want on a **class + spec grid** (it derives
+  how many Tank/Heal/DPS you need), and Autopilot auto-invites matching players and
+  re-announces your LFM.
+- **Find a group**: it reads what a group actually asks for and only answers the ones that
+  need **your** role/class — with anti-spam caps and a per-name cooldown.
+- **Multi-spec**: your roles are derived from the spec(s) you play (Resto + Balance → heal /
+  dps), so you match anything you can fill.
 
-## Architecture
+## ✨ Summon coordination
 
-PartyLens uses a **modular component-based architecture** with:
+A shared "summon stone" screen for the group: mark who needs a port, see who's ready, and
+coordinate warlock summons without spamming chat.
 
-- **Utils** - Common utility functions
-- **Localization** - Multi-language support (10 languages)
-- **LocalizedKeywords** - Language-aware keyword detection
-- **Activity** - Dungeon/Raid recognition
-- **Needs** - Role detection (tank, heal, dps)
-- **Database** - Persistent data storage
-- **Entry** - Group entry management
-- **Chat** - LFG channel monitoring
-- **LFGTool** - Built-in group finder integration
-- **Messaging** - Message templates
-- **UIElements** - Reusable UI components
-- **UIMain** - Main interface
-- **Search** - Filtering and scoring
-- **Roster** - Party composition tracking
-- **Comm** - PartyLens-to-PartyLens mesh (hidden addon messages)
-- **Autopilot** - Auto-recruit / auto-join + summon coordination
+---
 
-## Version
+## 🌐 The PartyLens Network
 
-**0.8.0** - Badge polish + activity picker:
+PartyLens users quietly form a network on your realm. Presence, sightings, vouches and
+group needs sync between people running the addon; realm-wide calls to action go out as one
+**signed** public line that every PartyLens beacon reads. (See *How the network reaches
+people* below.)
 
-- Result badges restyled: the **LFG/LFM** badge is now a solid filled pill (the key info),
-  the content tag is an outlined chip with a small status dot — clearer visual hierarchy.
-- **Create a listing by picking the dungeon/raid from a list**, not by typing a numeric
-  activity ID. The list is built live from `C_LFGList` (real names, correct IDs for the
-  client) and scrolls; it refreshes when the activity data loads.
+### 🌀 Layer hopping + silent beacon
 
-**0.7.0** - Streamlined, smarter filtering (far fewer controls):
+- **Standalone layer detection** — reads your layer from nearby NPC GUIDs (no NWB/AutoLayer
+  needed) and **converges the numbering across the network**, so "my Layer 5" is your
+  Layer 5 (and tends to match NWB).
+- **Beacon** (right-click the minimap or the Beacon button): you become a silent node that
+  **auto-invites anyone asking for your layer** in chat — no party spam, no whisper popups,
+  party frame hidden — and sends one signed `/w`. Invites fire **the instant** a matching
+  request appears, to win the client before other layer addons.
+- **Get pulled**: a visual layer picker shows the layers the network actually knows about —
+  a dot marks the ones with a **live beacon**, gold marks yours. Tap one (or "Any") and the
+  network pulls you there. Match is by **exact zone identity + same map**, so it never sends
+  you to the wrong layer.
 
-- **No more tab/chip rows.** Create & Settings became small header icons (✚ / ⚙),
-  freeing the entire mode bar; Browse is the default view.
-- **Category is now one compact dropdown** (All · Dungeons · Raids · Guild · Quests · Other)
-  instead of six chips — custom glass dropdown, no Blizzard widgets.
-- **Role-need filter**: clickable T/H/D pips (same visual language as the cards) — e.g. a
-  healer clicks **H** to see only groups that still need a healer.
-- **LFG/LFM** is a small inline toggle. The result list gained ~40% more height.
+### 🐉 World Boss Radar
 
-**0.6.0** - Navigation/structure overhaul (less clutter, clearer mental model):
+- Recognises world bosses & rares by NPC id (Doom Lord Kazzak, Doomwalker, Fel Reaver —
+  expandable) the moment you target / mouse-over / see one.
+- **Alerts** you (chat + sound) and **shares the sighting across the network** with its layer.
+- A dedicated **Radar** tab lists active sightings with **Hop** (pulls you to the boss's
+  exact layer, even on another map) and **Shout** (a signed public rally that also spreads
+  the addon's name).
 
-- **3 modes** — *Browse · Create · Settings* — replace the old 4-tab bar that mixed
-  content views (Dungeons/Raids) with actions (Create/Settings).
-- **One unified Category filter** (All · Dungeons · Raids · Guild · Quests · Other)
-  replaces both the Dungeons/Raids tabs and the separate content-type row, so there is
-  now a single, obvious way to filter content.
-- The toolbar drops the duplicate "Raids" search button for one **Refresh** button that
-  queries the game finder for whatever category is selected (both, when "All").
-- Filter rows are explicitly labeled **Category** and **Looking for**; redundant
-  "Players/Groups" toggles were removed from Settings (the Browse filter covers them).
+### ⭐ Reputation (positive-only vouches)
 
-**0.5.0** - "Dark glass" interface redesign:
+- **Vouch** for players you grouped with; each vouch spreads over the network and everyone
+  tallies "N players vouched for this person". No downvotes (no toxicity/defamation), and
+  it's resistant to self-vouching.
+- Groupmates become automatic vouch suggestions; a periodic digest keeps the web in sync.
 
-- Translucent, layered glass panels with a frosted header, soft sheen and hairline
-  edges — no default WoW widgets.
-- **Rich result cards** instead of flat rows: a content-type tag (Dungeon/Raid/HC/…),
-  an LFG/LFM badge, a class-colored leader name with class, a group-fill bar (e.g. `24/25`),
-  a freshness dot + time, and **role-need pips** (T/H/D, color-coded) showing exactly
-  what each group is looking for, plus the raw message.
-- Filters and tabs now show a clear filled "selected" state; the result count is a glass
-  pill; cards lift on hover; and an empty-state message replaces the blank void.
+### 🤝 Group broker
 
-**0.4.0** - Reliability pass for the TBC Anniversary (2.5.x) client:
+- A live list of **PartyLens users looking for group right now**, cross-layer, with one-click
+  **Invite** and **whisper** — the network's own LFG, full of coordinated addon users.
 
-- Auto-joins the `LookingForGroup` channel on login so chat scanning actually works.
-- `Who` button now uses `C_FriendList.SendWho` (the bare `SendWho` global is gone on 2.5.x).
-- Native listing creation uses the correct positional `C_LFGList.CreateListing`, no longer
-  wipes the title field, and reports real success/failure. An activity **Pick** dropdown
-  removes the need to know raw numeric activity IDs.
-- Real raid sizes from the activity info (25-man raids are no longer mis-flagged as full),
-  class-colored leader names, leader dedup across chat + group finder, and tool results that
-  expire instead of lingering.
-- Smarter classification: heroic 5-mans stay under Dungeons, and stray `q`/`h`/`more`
-  substrings no longer hide legitimate listings.
-- Escape closes the window, it stays clamped on-screen, the search box has a placeholder and
-  is debounced, and all 10 locales are fully translated.
+### 📊 Network dashboard
 
-**0.3.0** - Multi-language support with 10 locales ✨
+- Live counters — **Nodes · Layers · Bosses · Hops · Requests · Your rep** — plus the broker
+  and your vouch list, so the "living network" is always visible.
 
+---
+
+## How the network reaches people
+
+Hidden addon messages over the **CHANNEL** distribution are blocked on this client, so
+PartyLens does **not** rely on a silent realm-wide bus. Instead:
+
+- The **hidden mesh** (presence, layer numbering, world-boss sightings, vouches, broker)
+  syncs over **guild, party and nearby players** — transports that actually deliver here.
+- **Realm-wide reach** for a call to action (a "get me to layer N" request, a boss shout)
+  is one **signed, visible** line, sent from a real click, that every PartyLens beacon scans.
+- Because those posts are signed, PartyLens users **recognise each other realm-wide** — the
+  **PL** badge — with no extra traffic.
+- Every send is instrumented, so the mesh can never fail silently again. Check it with
+  `/partylens netdiag` (what each transport delivers) and `/partylens netstat` (mesh health).
+
+---
+
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `/partylens` | Toggle the window |
+| `/partylens show` · `hide` | Open / close |
+| `/partylens join` | Join the LookingForGroup channel |
+| `/partylens auto` | Open Autopilot; `arm` / `disarm` to start/stop |
+| `/partylens summon` | Open the summon coordination screen |
+| `/partylens layer` · `radar` · `network` | Open the Layer / Radar / Network tabs |
+| `/partylens beacon` | Toggle the layer beacon |
+| `/partylens reqlayer <n\|any>` | Request a hop to a layer |
+| `/partylens vouch <name>` | Vouch for a player |
+| `/partylens netdiag` · `netstat` | Network transport diagnostics / health |
+
+## Install
+
+Drop the `PartyLens` folder into `Interface/AddOns/` and restart the client (or `/reload`).
+No dependencies. PartyLens auto-joins LookingForGroup on login so chat scanning works right
+away. The game requires the Group Finder search to come from a real click, so PartyLens
+never spams that API in the background.
+
+## Languages
+
+Auto-detected from your game client: English, Português, Deutsch, Français, Español,
+Italiano, Русский, 简体中文, 繁體中文, 한국어.
+
+---
+
+## Created by Chehul
+
+PartyLens is made by **Chehul (danielcosta42)**. If it saves you time, you can support
+development:
+
+**[Donate via PayPal](https://www.paypal.com/donate/?business=daniel.cfdutra13@gmail.com&currency_code=USD)**
+
+Source, issues and full changelog on **[GitHub](https://github.com/danielcosta42/PartyLens)**.
