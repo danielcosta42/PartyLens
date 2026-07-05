@@ -299,20 +299,34 @@ function LayerNet.Engage(partyLens, name, req)
     if not name or name == "" or SameAsPlayer(name) then
         return
     end
+    -- Diagnostic: with `/partylens hopdebug` on, log WHY an invite doesn't fire, so a
+    -- beacon's otherwise-silent guards (party full, cooldown, no rights...) are visible
+    -- while testing. No-op when hopdebug is off.
+    local function bail(reason)
+        if CFG(partyLens).hopdebug then
+            LayerNet.Log(partyLens, "skip " .. Utils.PlayerShortName(name) .. ": " .. reason)
+        end
+    end
     if InCombatLockdown and InCombatLockdown() then
-        return
+        return bail("combat")
     end
     -- Party already full: a name-invite would be silently rejected by the server.
     -- Bail BEFORE spending a cooldown/rate slot or logging a phantom "invited" —
     -- CleanParty frees hopper slots and the tick retry re-engages once there's room.
     if ((GetNumGroupMembers and GetNumGroupMembers()) or 0) >= 5 then
-        return
+        return bail("party full")
     end
-    if not Roster.CanInvite() or Roster.IsInGroup(name) then
-        return
+    if not Roster.CanInvite() then
+        return bail("no invite rights (not group leader)")
     end
-    if not CanContact(rt, name) or not WithinRate(rt) then
-        return
+    if Roster.IsInGroup(name) then
+        return bail("already in my group")
+    end
+    if not CanContact(rt, name) then
+        return bail("per-name cooldown")
+    end
+    if not WithinRate(rt) then
+        return bail("rate cap")
     end
 
     -- INVITE FIRST — literally the first action after the guards, before ANY other
@@ -531,8 +545,16 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
             targetZone = nil
         end
         -- OPTIMISTIC INVITE FIRST — before merging sets / recording nodes / repaint.
-        if CFG(partyLens).beacon and RequestMatches(partyLens, req, targetZone, mapID, true) then
-            LayerNet.Engage(partyLens, sender, req)
+        if CFG(partyLens).beacon then
+            if RequestMatches(partyLens, req, targetZone, mapID, true) then
+                LayerNet.Engage(partyLens, sender, req)
+            elseif CFG(partyLens).hopdebug then
+                -- Show the numbering both sides see, so a wrong-layer request is obvious.
+                local mine = Layer.Current(partyLens)
+                LayerNet.Log(partyLens, "no-match " .. Utils.PlayerShortName(sender)
+                    .. ": wants z=" .. tostring(targetZone or "any") .. " map=" .. tostring(mapID)
+                    .. " | me z=" .. tostring(mine.zoneUID or "?") .. " map=" .. tostring(mine.mapID or "?"))
+            end
         end
         -- Post-invite bookkeeping.
         if targetZone then
@@ -914,6 +936,10 @@ function LayerNet.SendMyRequest(partyLens, includeVisible)
             end
         end
     end
+    if CFG(partyLens).hopdebug then
+        LayerNet.Log(partyLens, "sending req: want z=" .. tostring(target) .. " map=" .. tostring(reqMap)
+            .. " (I'm on z=" .. tostring(cur.zoneUID or "?") .. ")")
+    end
     mr.lastNet = time()
     if includeVisible then
         local num = LFGChannelNumber()
@@ -1030,13 +1056,19 @@ function LayerNet.KnownLayers(partyLens)
     -- zone), so matching raw zoneUIDs against ZoneUIDAt(i) missed their dot even
     -- though Stats counted them. OrdinalOf is map-agnostic under NWB, so drop the
     -- n.mapID filter too.
-    local beaconAt, nodeCount = {}, {}
+    local beaconAt, nodeCount, beaconZone, beaconMap = {}, {}, {}, {}
     for _, n in pairs(rt.nodes) do
         if n.zoneUID then
             local ord = Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID)
             if ord then
                 nodeCount[ord] = (nodeCount[ord] or 0) + 1
-                if n.beacon then beaconAt[ord] = true end
+                if n.beacon then
+                    beaconAt[ord] = true
+                    -- Remember the beacon's EXACT zoneUID/mapID so a hop request can
+                    -- pin it (match by identity, immune to number disagreements).
+                    beaconZone[ord] = n.zoneUID
+                    beaconMap[ord] = n.mapID
+                end
             end
         end
     end
@@ -1059,6 +1091,8 @@ function LayerNet.KnownLayers(partyLens)
                 isCurrent = (z == cur.zoneUID),
                 hasBeacon = beaconAt[i] == true,
                 nodes = nodeCount[i] or 0,
+                beaconZoneUID = beaconZone[i],
+                beaconMapID = beaconMap[i],
             }
         end
     end

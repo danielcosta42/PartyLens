@@ -2105,13 +2105,22 @@ local function RefreshHopChips(partyLens)
         idx = idx + 1
         local ord = ly.ordinal
         local peers = ly.nodes or 0
+        local bZone, bMap = ly.beaconZoneUID, ly.beaconMapID
         local chip = HopChip(ln, panel, idx)
         -- Live occupancy: how many PartyLens peers we've heard on this layer, so the
         -- picker doubles as a "which layer is busy / quiet" map. Muted so the layer
         -- number stays the focus.
         chip:SetText(peers > 0 and ("L" .. ord .. "  |cff8a94a4" .. peers .. "|r") or ("L" .. ord))
         chip:SetScript("OnClick", function()
-            if LayerNet then LayerNet.RequestLayer(partyLens, tostring(ord)) end
+            if not LayerNet then return end
+            -- If a beacon is live on this layer, request its EXACT zoneUID (pin it) so
+            -- the match can't miss on a number disagreement between the two clients;
+            -- otherwise fall back to the ordinal (broadcast + hope a beacon appears).
+            if bZone and bMap and LayerNet.RequestLayerFor then
+                LayerNet.RequestLayerFor(partyLens, bMap, bZone)
+            else
+                LayerNet.RequestLayer(partyLens, tostring(ord))
+            end
         end)
         if ly.hasBeacon then chip.dot:Show() else chip.dot:Hide() end
         if ly.isCurrent then

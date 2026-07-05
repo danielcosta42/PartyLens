@@ -362,6 +362,14 @@ function PartyLens:OnAddonLoaded(name)
             NetDiag.Run(self)
         elseif msg == "netstat" then
             Utils.Print("mesh: " .. Net.HealthLine())
+        elseif msg == "hopdebug" then
+            -- Toggle layer-hop tracing: the beacon logs why it does/doesn't invite
+            -- (no-match with both zoneUIDs, party full, cooldown, no rights) into its
+            -- Layer-net activity log, so a silent non-invite is diagnosable.
+            self.db.layer = self.db.layer or {}
+            self.db.layer.hopdebug = not self.db.layer.hopdebug
+            Utils.Print("PartyLens hop debug: " .. (self.db.layer.hopdebug and "|cff66ff66ON|r" or "|cffff5555OFF|r")
+                .. " (watch the Layer Net activity log)")
         else
             self:Toggle()
         end

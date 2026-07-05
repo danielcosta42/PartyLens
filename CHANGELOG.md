@@ -5,6 +5,25 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.19.2]
+
+Sequência do hop de layer (o pedido chegava no beacon — mesma guild = entrega
+instantânea — mas nenhum convite saía; então o problema é match ou guarda no beacon):
+
+- **Clicar num chip com beacon fixa o zoneUID EXATO do beacon** (não o número da layer).
+  A causa mais provável de "pedi e não veio" com entrega funcionando é **desacordo de
+  numeração**: você vê "Layer 1" no char do beacon, mas o char que pede pode numerar a
+  MESMA layer física diferente — aí "L1" aponta pra outra zoneUID e o match falha de
+  propósito. Agora, se o chip tem beacon (bolinha teal), o clique manda a **identidade
+  exata** daquele beacon (via `RequestLayerFor`), então o match é garantido e o sussurro
+  direto (0.19.1) entrega na hora. Dica: **clique no chip que tem a bolinha**, não no
+  número que o outro char mostra.
+- **`/partylens hopdebug`** — liga um trace: o beacon passa a registrar no log de
+  atividade do Layer Net **por que** não convida — `no-match` (mostrando o z= que o
+  pedidor quer vs o z= que o beacon está), `party full`, `cooldown`, `no invite rights`,
+  etc. O pedidor também loga o `want z=` que está mandando. Compare os dois lados pra ver
+  exatamente onde quebra. Desligado por padrão.
+
 ## [0.19.1]
 
 - **Hop de layer para um beacon conhecido agora é confiável (entrega direta)**: um
