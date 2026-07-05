@@ -999,15 +999,24 @@ function LayerNet.KnownLayers(partyLens)
     if CFG(partyLens).beacon and cur.zoneUID then
         beaconOn[cur.zoneUID] = true -- I'm a live beacon on my own layer
     end
+    -- Number the picker with the SAME scheme as the big "Your layer" display:
+    -- Layer.CountOnMap / Layer.ZoneUIDAt defer to NWB when installed, so chip "L6" is
+    -- NWB's layer 6 and the gold current-layer chip lands on Layer.Current().ordinal
+    -- (fixing "I'm on Layer 6 but the picker golds L5"). Falls back to our own sorted
+    -- set when NWB is absent.
     local out = {}
-    for i, z in ipairs(Layer.KnownZones(partyLens, mapID)) do
-        out[i] = {
-            ordinal = i,
-            zoneUID = z,
-            isCurrent = (z == cur.zoneUID),
-            hasBeacon = beaconOn[z] == true,
-            nodes = nodeCount[z] or 0,
-        }
+    local count = Layer.CountOnMap(partyLens, mapID)
+    for i = 1, count do
+        local z = Layer.ZoneUIDAt(partyLens, mapID, i)
+        if z then
+            out[#out + 1] = {
+                ordinal = i,
+                zoneUID = z,
+                isCurrent = (z == cur.zoneUID),
+                hasBeacon = beaconOn[z] == true,
+                nodes = nodeCount[z] or 0,
+            }
+        end
     end
     return out
 end

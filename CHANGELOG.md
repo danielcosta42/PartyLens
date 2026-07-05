@@ -5,6 +5,13 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.18.1]
+
+- **Seletor de layer alinhado ao display**: os chips agora usam a MESMA numeração do
+  "Sua layer" (o NWB quando instalado), então o chip dourado bate com a sua layer de
+  verdade — corrige o caso de estar na **Layer 6** e o seletor marcar a **L5** (o
+  conjunto visto pelo PL e o do NWB diferiam, e os chips usavam o índice do PL).
+
 ## [0.18.0]
 
 - **Comunicações realm-wide de verdade**: toda a malha estruturada — sincronização de
