@@ -125,7 +125,7 @@ function WorldBoss.Observe(partyLens, unit)
         if ln and ln.Broadcast and mapID and zoneUID and mapID > 0 and zoneUID > 0 then
             ln.Broadcast(table.concat({
                 ln.NET_PROTO, "W", tostring(mapID), tostring(zoneUID), tostring(npcID), tostring(hp),
-            }, "|"))
+            }, "|"), "W:" .. npcID) -- realm-wide too, coalesced per boss (latest sighting)
         end
     end
 end

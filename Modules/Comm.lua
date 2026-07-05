@@ -99,6 +99,12 @@ function Comm.Broadcast(partyLens)
     local payload = Comm.BuildPayload(partyLens)
     local sentGuild = Net.Guild(Comm.PREFIX, payload)
     local sentNear = Net.Proximity(Comm.PREFIX, payload)
+    -- Also realm-wide (coalesced to my latest LFG state) so a random PartyLens user
+    -- gets the STRUCTURED, trusted class/level entry — not just the text-guessed one
+    -- reconstructed from the visible LFG post.
+    if Net.Realm then
+        Net.Realm(Comm.PREFIX, payload, Comm.PREFIX .. ":lfg")
+    end
     return sentGuild or sentNear
 end
 

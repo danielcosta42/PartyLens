@@ -218,7 +218,9 @@ function Reputation.BroadcastDigest(partyLens)
         used = used + add
     end
     if #out > 0 then
-        ln.Broadcast(table.concat({ ln.NET_PROTO, "VD", table.concat(out, ",") }, "|"))
+        -- Realm-wide too, coalesced to my single latest digest (VD subsumes the
+        -- individual V vouches, so only the digest needs the realm-wide bus).
+        ln.Broadcast(table.concat({ ln.NET_PROTO, "VD", table.concat(out, ",") }, "|"), "VD")
     end
 end
 

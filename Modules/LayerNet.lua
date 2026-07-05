@@ -329,7 +329,8 @@ function LayerNet.Engage(partyLens, name, req)
     end
     RecordContact(rt, name)
     rt.party[Key(name)] = time()
-    cfg.hops = (cfg.hops or 0) + 1
+    -- hops is counted on the actual JOIN (CleanParty), not here — an invite that's
+    -- declined / never accepted shouldn't inflate "hops served".
     LayerNet.Log(partyLens, L("LAYER_LOG_INVITED", short, cur.ordinal or "?"))
 end
 
@@ -395,13 +396,18 @@ end
 -- on this client, so route over the buses that deliver from a timer: GUILD
 -- (guildmates) + SAY proximity (same area / same layer neighbours). Instrumented
 -- via Net.Stats so it can never fail silently again.
-local function SendNet(payload)
-    -- Guild + current party/raid + SAY proximity. Group is included so vouches,
-    -- world-boss sightings and layer sync reach groupmates who are on a different
-    -- layer (out of ~40yd SAY range) but not in your guild.
+-- Guild + current party/raid + SAY proximity = the fast, automatic LOCAL delivery.
+-- When `realmKey` is given, ALSO queue the same payload on the realm-wide bus
+-- (dedicated addon channel, click-flushed) coalesced under LayerNet.PREFIX..realmKey
+-- so a random PartyLens user across the realm eventually gets it too. Only the
+-- LATEST payload per key is kept, so this can't flood the channel.
+local function SendNet(payload, realmKey)
     local sentGuild = Net.Guild(LayerNet.PREFIX, payload)
     local sentGroup = Net.Group(LayerNet.PREFIX, payload)
     local sentNear = Net.Proximity(LayerNet.PREFIX, payload)
+    if realmKey and Net.Realm then
+        Net.Realm(LayerNet.PREFIX, payload, LayerNet.PREFIX .. ":" .. realmKey)
+    end
     return sentGuild or sentGroup or sentNear
 end
 
@@ -412,10 +418,10 @@ function LayerNet.RegisterPrefix()
     end
 end
 
--- Public broadcast over the hidden mesh (guild + nearby; not realm-wide — CHANNEL
--- is blocked). Used by sibling features (e.g. the world-boss radar).
-function LayerNet.Broadcast(payload)
-    return SendNet(payload)
+-- Public broadcast over the mesh. Pass a realmKey to also reach realm-wide (the
+-- world-boss radar passes "W:<npc>", reputation passes "VD"). Without it, local only.
+function LayerNet.Broadcast(payload, realmKey)
+    return SendNet(payload, realmKey)
 end
 
 -- Encode a parsed request { any, exclude, layers } to a compact spec string.
@@ -471,7 +477,7 @@ function LayerNet.BroadcastSighting(partyLens)
     SendNet(table.concat({
         LayerNet.NET_PROTO, "S", tostring(cur.mapID or 0), tostring(cur.zoneUID or 0),
         cfg.beacon and "1" or "0", Layer.SeenCSV(partyLens, cur.mapID),
-    }, "|"))
+    }, "|"), "S") -- realm-wide too (coalesced to my latest seen-set)
 end
 
 -- Merge a comma-separated zoneUID list into our shared set (numbering convergence).
@@ -569,6 +575,7 @@ local function CleanParty(partyLens)
         return
     end
     local rt = RT(partyLens)
+    local cfg = CFG(partyLens)
     local now = time()
     rt.pendingKick = rt.pendingKick or {}
     -- rt.party[key] is +invitedAt while pending, then flipped to -joinedAt the
@@ -578,6 +585,10 @@ local function CleanParty(partyLens)
         if Roster.IsInGroup(key) then
             if ts >= 0 then
                 rt.party[key] = -now -- just joined: start the hold clock now
+                -- A REAL hop: count it (once, on join) and log it. key is a lowercased
+                -- short name — capitalise it for the log line.
+                cfg.hops = (cfg.hops or 0) + 1
+                LayerNet.Log(partyLens, L("LAYER_LOG_HOPPED", key:sub(1, 1):upper() .. key:sub(2)))
             elseif (now - (-ts)) >= LayerNet.PARTY_HOLD then
                 rt.party[key] = nil
                 rt.pendingKick[key] = true -- drained on a hardware event
@@ -867,7 +878,7 @@ function LayerNet.SendMyRequest(partyLens, includeVisible)
     SendNet(table.concat({
         LayerNet.NET_PROTO, "R", tostring(reqMap), tostring(cur.zoneUID or 0),
         mr.spec, tostring(target),
-    }, "|"))
+    }, "|"), "R") -- realm-wide too, so a beacon anywhere on the realm can answer
     mr.lastNet = time()
     if includeVisible then
         local num = LFGChannelNumber()
@@ -1075,6 +1086,12 @@ end
 -- coordination rides hidden addon messages (OnAddonMessage), not visible chat.
 function LayerNet.OnChannelChat(partyLens, msg, sender, baseName)
     local lname = Utils.SafeLower(baseName or "")
+    -- The dedicated ChehulMesh realm-wide channel carries structured mesh posts,
+    -- routed to OnAddonMessage by LibChehulMesh (Mesh:Register). Never treat it as a
+    -- human layer channel — its "layer" substring would otherwise mis-parse posts.
+    if string.find(lname, "chehulmesh", 1, true) then
+        return
+    end
     local source
     -- A dedicated layer channel (named "Layer"/"Camada") is where hopping happens;
     -- flag it so ParseRequest accepts bare "5" / "inv 4" without the word "layer".

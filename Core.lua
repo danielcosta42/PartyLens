@@ -218,6 +218,19 @@ function PartyLens:OnAddonLoaded(name)
     LayerNet.Start(self)
     Reputation.Start(self) -- periodic vouch-digest sync
 
+    -- Receive: route both the hidden addon buses AND the realm-wide channel posts of
+    -- our prefixes through the shared mesh's dispatcher. (We therefore no longer
+    -- handle CHAT_MSG_ADDON directly for these prefixes — that would double-process.)
+    local Mesh = _G.ChehulMesh
+    if Mesh and Mesh.Register then
+        Mesh:Register(LayerNet.PREFIX, function(payload, sender, dist)
+            LayerNet.OnAddonMessage(self, LayerNet.PREFIX, payload, dist, sender)
+        end)
+        Mesh:Register(Comm.PREFIX, function(payload, sender, dist)
+            Comm.OnMessage(self, Comm.PREFIX, payload, dist, sender)
+        end)
+    end
+
     SLASH_PARTYLENS1 = "/partylens"
     SlashCmdList.PARTYLENS = function(msg)
         msg = Utils.SafeLower(Utils.Trim(msg))
@@ -377,11 +390,9 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
         if UIMain.RefreshSummon then
             UIMain.RefreshSummon(self)
         end
-    elseif event == "CHAT_MSG_ADDON" then
-        -- args: prefix, text, channel, sender
-        -- Layer mesh FIRST (invite-critical), then the Browse mesh.
-        LayerNet.OnAddonMessage(self, ...) -- own prefix; ignores others
-        Comm.OnMessage(self, ...)
+    -- CHAT_MSG_ADDON is now handled by the shared mesh's dispatcher (see the
+    -- Mesh:Register calls in OnAddonLoaded), which routes both hidden addon messages
+    -- and realm-wide channel posts of our prefixes to Comm/LayerNet.
     elseif event == "WHO_LIST_UPDATE" then
         Who.OnWhoList(self)
     end
@@ -399,7 +410,7 @@ PartyLens:RegisterEvent("GROUP_ROSTER_UPDATE")
 PartyLens:RegisterEvent("PLAYER_TARGET_CHANGED")
 PartyLens:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 pcall(PartyLens.RegisterEvent, PartyLens, "NAME_PLATE_UNIT_ADDED")
-PartyLens:RegisterEvent("CHAT_MSG_ADDON")
+-- CHAT_MSG_ADDON is handled by the shared mesh (Mesh:Register), not here.
 PartyLens:RegisterEvent("WHO_LIST_UPDATE")
 -- Talent/spec events aren't guaranteed to exist on every client build, and an
 -- unknown event name raises an error — register them defensively.

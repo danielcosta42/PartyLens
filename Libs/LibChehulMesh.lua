@@ -17,7 +17,7 @@
 -- RECEIVE: :Register(prefix, handler) - handler(payload, sender, dist) fires for
 -- both hidden addon messages and realm-wide channel posts of that prefix.
 
-local VERSION = 1
+local VERSION = 2
 if _G.ChehulMesh and (_G.ChehulMesh.version or 0) >= VERSION then
     return
 end
@@ -205,6 +205,32 @@ if not M._booted then
 
     if C_Timer and C_Timer.After then
         C_Timer.After(6, EnsureChannel)
+    end
+end
+
+-- v2 hardening — runs even when upgrading a live v1 singleton (its _booted is set,
+-- so this uses its own version-specific flag). The realm-wide bus silently dies if
+-- the dedicated channel never joins (JoinPermanentChannel no-ops at the 10-channel
+-- cap and the boot triggers may all miss), so retry the join until it sticks; and
+-- flush on mouse-UP too for a bit more click coverage of the queue.
+if not M._bootedV2 then
+    M._bootedV2 = true
+    if C_Timer and C_Timer.NewTicker then
+        local tries = 0
+        C_Timer.NewTicker(12, function(t)
+            tries = tries + 1
+            if ChannelNumber() then
+                M.channelReady = true
+                t:Cancel()
+            elseif tries >= 20 then
+                t:Cancel() -- give up (~4 min); channel list likely full
+            else
+                EnsureChannel()
+            end
+        end)
+    end
+    if WorldFrame and WorldFrame.HookScript then
+        WorldFrame:HookScript("OnMouseUp", FlushChannel)
     end
 end
 

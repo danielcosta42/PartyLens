@@ -36,6 +36,15 @@ function Net.Whisper(prefix, payload, target)
     return (Mesh and Mesh:Whisper(prefix, payload, target)) or false
 end
 
+-- Realm-wide bus (dedicated addon-only channel, click-flushed, coalesced by key).
+-- Use a STABLE per-message-type/per-source key so the queue holds only the latest
+-- of each, instead of piling up.
+function Net.Realm(prefix, payload, coalesceKey)
+    if Mesh and Mesh.Realm then
+        Mesh:Realm(prefix, payload, coalesceKey)
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- Visible LookingForGroup posting (autopilot LFM). Hardware-gated: queue + flush
 -- one on the user's next WorldFrame click. Coalesced by key, time-gated.

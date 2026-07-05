@@ -5,6 +5,23 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.18.0]
+
+- **Comunicações realm-wide de verdade**: toda a malha estruturada — sincronização de
+  layer, pedido de layer, radar de world boss, digest de reputação e as listagens do
+  Browse — agora também sai pelo bus **realm-wide** da LibChehulMesh (canal dedicado
+  só-addon, **coalescido por tipo** pra não entupir), além do envio local instantâneo
+  (guild/grupo/proximidade). O recebimento foi unificado pelo `Mesh:Register`, então
+  posts do canal e mensagens ocultas caem no mesmo handler. *Limite do cliente: no
+  reino o alcance é **eventual** (dispara no clique, throttle 1.5s) — beacons da
+  guild/perto respondem na hora, o resto do reino converge aos poucos.*
+- **Canal realm-wide mais robusto** (LibChehulMesh v2): **retry do join** do canal
+  (não morre mais calado se o cap de 10 canais estava cheio no login) + flush no
+  mouse-up. ⚠️ lib compartilhada — espelhar no GuildOS/ProfessionHelper.
+- **"Hops served" conta na ENTRADA, não no convite**: o contador (e um log novo
+  "Fulano entrou - hop feito!") só sobe quando a pessoa **realmente entra na party**,
+  então convites recusados não inflam mais o número.
+
 ## [0.17.1]
 
 - **Toda a malha do PartyLens agora fala pela LibChehulMesh**: o Browse, a rede de
