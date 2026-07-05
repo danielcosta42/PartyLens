@@ -5,6 +5,14 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.16.4]
+
+- **Beacon 100% silencioso — agora inclui os SONS**: além do texto e da voz de erro
+  (0.16.1), o beacon agora **muta os efeitos sonoros** de convite/entrada na party
+  (o "boop" de convite aceito, o som de alguém entrando, os sons de voz de erro) via
+  `MuteSoundFile` enquanto está ligado, restaurando ao desligar. Também some com as
+  linhas de **método de loot** ("Loot method set to...") que aparecem ao formar party.
+
 ## [0.16.3]
 
 - **Numeração alinhada ao NWB (quando instalado)**: se você roda o NovaWorldBuffs,

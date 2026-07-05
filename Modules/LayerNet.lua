@@ -760,23 +760,44 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Beacon toggle (bound to a right-click on the Layer tab / button)
+-- Party/invite/join SOUND EFFECTS to silence while beaconing — the invite-accepted
+-- "boop", the sound when someone joins, and the race/gender error voice sounds. The
+-- error-speech CVar (below) doesn't cover the invite/join notification sounds, so we
+-- also MuteSoundFile these specific ids (the tested set for exactly this scenario).
+-- MuteSoundFile is per-session (cleared on reload), so it's re-applied from Start.
+local MUTE_SOUNDS = {
+    567490, 567451, -- invite sent / invite accepted
+    539839, 540356, 540778, 540941, 540984, 542585, 542862, 540287, 540579,
+    541222, 542952, 542659, 539901, 541298, 543146, 543174, -- join / "they can't join our group"
+    539218, 539307, 539481, 539729, -- ...AlreadyInGroup (BE/Draenei)
+    539272, 539274, 539663, 539503, 539844, 539947, 540320, 540404, 540798,
+    540559, 540933, 540967, 541188, 541258, 542828, 542912, 543102, -- ...CantInvite (all races)
+}
+
 -- ---------------------------------------------------------------------------
--- Mute the error voice-over ("they can't join our group") while beaconing — the
--- party churn triggers it constantly. Save the player's original setting in the DB
--- (survives /reload) so we restore exactly what they had when the beacon goes off.
+-- Silence the beacon's party churn: mute the error voice-over ("they can't join
+-- our group") AND the invite/join sound effects while beaconing. The error-speech
+-- CVar original is saved in the DB (survives /reload) so we restore exactly what
+-- the player had; the sound-file mutes are per-session, re-applied on load.
+-- ---------------------------------------------------------------------------
 function LayerNet.ApplyErrorSpeech(partyLens)
-    if not (SetCVar and GetCVar) then
-        return
-    end
     local cfg = CFG(partyLens)
-    if cfg.beacon then
-        if cfg.errorSpeechSaved == nil then
-            cfg.errorSpeechSaved = GetCVar("Sound_EnableErrorSpeech") or "1"
+    if SetCVar and GetCVar then
+        if cfg.beacon then
+            if cfg.errorSpeechSaved == nil then
+                cfg.errorSpeechSaved = GetCVar("Sound_EnableErrorSpeech") or "1"
+            end
+            pcall(SetCVar, "Sound_EnableErrorSpeech", "0")
+        elseif cfg.errorSpeechSaved ~= nil then
+            pcall(SetCVar, "Sound_EnableErrorSpeech", cfg.errorSpeechSaved)
+            cfg.errorSpeechSaved = nil
         end
-        pcall(SetCVar, "Sound_EnableErrorSpeech", "0")
-    elseif cfg.errorSpeechSaved ~= nil then
-        pcall(SetCVar, "Sound_EnableErrorSpeech", cfg.errorSpeechSaved)
-        cfg.errorSpeechSaved = nil
+    end
+    if MuteSoundFile and UnmuteSoundFile then
+        local fn = cfg.beacon and MuteSoundFile or UnmuteSoundFile
+        for _, id in ipairs(MUTE_SOUNDS) do
+            pcall(fn, id)
+        end
     end
 end
 
@@ -1115,6 +1136,9 @@ local function BuildSystemPatterns()
         -- Difficulty reset spam from party form/disband
         "ERR_DUNGEON_DIFFICULTY_CHANGED_S", "ERR_RAID_DIFFICULTY_CHANGED_S",
         "ERR_LEGACY_RAID_DIFFICULTY_CHANGED", "ERR_SHARED_DIFFICULTY_CHANGED_S",
+        -- Loot method announced when a party forms
+        "ERR_SET_LOOT_FREEFORALL", "ERR_SET_LOOT_GROUP", "ERR_SET_LOOT_ROUNDROBIN",
+        "ERR_SET_LOOT_NBG", "ERR_SET_LOOT_THRESHOLD_S", "ERR_SET_LOOT_MASTER",
     }
     local patterns = {}
     for _, g in ipairs(names) do
