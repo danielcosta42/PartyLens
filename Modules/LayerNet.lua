@@ -43,6 +43,26 @@ LayerNet.REQUEST_TTL = 60             -- an inbound request stays "open" this lo
 LayerNet.MY_REQUEST_TTL = 120         -- my own layer request stays active/re-broadcast this long
 LayerNet.PARTY_HOLD = 40              -- auto-uninvite an invitee still around after this (they hop fast)
 LayerNet.LOG_MAX = 20                 -- recent-activity log lines kept
+LayerNet.PARK_GRACE = 90             -- keep auto-beacon on this long after the last "parked/idle"
+                                      -- signal, so it doesn't flicker between e.g. fishing casts
+
+-- Beacon-service ranks by LIFETIME hops served — a visible status reward for running
+-- a node (and the signal a requester carries to earn hop priority under contention).
+LayerNet.RANKS = {
+    { min = 1000, key = "LAYER_RANK_LEGEND" },
+    { min = 250,  key = "LAYER_RANK_WARDEN" },
+    { min = 75,   key = "LAYER_RANK_GUARDIAN" },
+    { min = 20,   key = "LAYER_RANK_GUIDE" },
+    { min = 1,    key = "LAYER_RANK_HELPER" },
+}
+function LayerNet.Rank(hops)
+    for _, r in ipairs(LayerNet.RANKS) do
+        if (hops or 0) >= r.min then
+            return L(r.key), r.min
+        end
+    end
+    return nil -- no rank until the first hop served
+end
 
 local function CFG(partyLens)
     partyLens.db.layer = partyLens.db.layer or {}
@@ -50,6 +70,8 @@ local function CFG(partyLens)
     c.channels = c.channels or { trade = true, general = true, lookingforgroup = true, world = true }
     if c.whisper == nil then c.whisper = true end -- default on (marketing); backfills old saves
     if c.hideParty == nil then c.hideParty = true end -- hide the party frame while beaconing
+    if c.autoBeacon == nil then c.autoBeacon = true end -- park-and-help ON by default (opt-out);
+                                                        -- maximizes node supply, painless + silent
     c.hops = c.hops or 0
     return c
 end
@@ -68,6 +90,7 @@ local function RT(partyLens)
             myRequest = nil,    -- { req, spec, t, lastNet } my own active layer request
             lastSync = 0,       -- last time we broadcast our sighting to the mesh
             lastGossip = 0,     -- last time we gossiped our directly-heard nodes realm-wide
+            lastParked = nil,   -- last time we looked "parked/idle" (auto-beacon grace window)
             ticker = nil,
         }
     end
@@ -590,7 +613,7 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
     if prefix ~= LayerNet.PREFIX or not sender or sender == "" or SameAsPlayer(sender) then
         return
     end
-    local proto, kind, mapID, zoneUID, f5, f6 = strsplit("|", text or "")
+    local proto, kind, mapID, zoneUID, f5, f6, f7 = strsplit("|", text or "")
     if proto ~= LayerNet.NET_PROTO then
         return
     end
@@ -629,6 +652,7 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
         RT(partyLens).requests[Key(sender)] = {
             name = Utils.PlayerShortName(sender), req = req, t = time(),
             source = "net", targetZone = targetZone, mapID = mapID,
+            hops = tonumber(f7) or 0, -- their served-hops, for reciprocity priority
         }
         LayerNet.Refresh(partyLens)
     elseif kind == "SD" then
@@ -798,6 +822,96 @@ function LayerNet.OnRosterUpdate(partyLens)
     LayerNet.Refresh(partyLens)
 end
 
+-- Am I "parked / semi-idle" — a natural moment to donate my char as a hop node?
+--   IsResting()      -> in ANY capital city or inn (rested area) — the main park spot.
+--   UnitIsAFK()      -> flagged away anywhere.
+--   channeling Fish  -> fishing, the canonical semi-idle activity.
+local function ParkedIdle(partyLens)
+    if IsResting and IsResting() then
+        return true
+    end
+    if UnitIsAFK and UnitIsAFK("player") then
+        return true
+    end
+    if UnitChannelInfo then
+        local nm = UnitChannelInfo("player")
+        if nm and nm ~= "" and nm == (PROFESSIONS_FISHING or "Fishing") then
+            return true
+        end
+    end
+    return false
+end
+
+-- Auto-beacon ("park and help"): whenever I'm parked in a city/inn or idle (fishing,
+-- AFK), automatically become a hop node — zero effort, fully silenced. Starts only when
+-- SOLO (never hijacks a real group I formed) but stays on through its own transient
+-- hopper party; a grace window smooths brief idle drops (e.g. between fishing casts).
+-- Driven from the tick, so SetBeacon runs `quiet`.
+local function AutoBeaconApply(partyLens)
+    local cfg = CFG(partyLens)
+    if not cfg.autoBeacon then
+        return
+    end
+    local rt = RT(partyLens)
+    local now = time()
+    if ParkedIdle(partyLens) then
+        rt.lastParked = now
+    end
+    local parked = (rt.lastParked and (now - rt.lastParked) <= LayerNet.PARK_GRACE) and true or false
+
+    local groupSize = (GetNumGroupMembers and GetNumGroupMembers()) or 0
+    local beaconing = cfg.beacon and true or false
+    -- Stay on through a grown group ONLY if the extra members are hoppers WE invited
+    -- (tracked in rt.party) — not a real group we formed while parked. Otherwise
+    -- auto-beacon would start pulling strangers into your real party.
+    local onlyHoppers = groupSize <= 1
+    if not onlyHoppers and beaconing then
+        onlyHoppers = true
+        for i = 1, groupSize - 1 do
+            local nm = UnitName("party" .. i)
+            if nm and not rt.party[Key(nm)] then
+                onlyHoppers = false
+                break
+            end
+        end
+    end
+
+    local want = (parked and onlyHoppers) and true or false
+    if want ~= beaconing then
+        -- ON by default, so tell the user ONCE (the first time it actually kicks in)
+        -- what's happening and how to opt out — then never again.
+        if want and not cfg.autoBeaconNoticed then
+            cfg.autoBeaconNoticed = true
+            Utils.Print(L("LAYER_AUTOBEACON_NOTICE"))
+        end
+        LayerNet.SetBeacon(partyLens, want, true) -- quiet: no chat spam, no re-tick
+    end
+end
+
+-- I was just pulled by a beacon (my group grew while a hop request was active): vouch
+-- the group leader that helped me. Beaconing thus earns real, corroborated, hard-to-fake
+-- trust — the supply-side reward. Once per target (Reputation.Vouch guards re-vouch).
+-- Opt-out: db.layer.autoVouch = false.
+local function ThankHelper(partyLens)
+    if CFG(partyLens).autoVouch == false then
+        return
+    end
+    local leader
+    for i = 1, 4 do
+        local u = "party" .. i
+        if UnitExists(u) and UnitIsGroupLeader and UnitIsGroupLeader(u) then
+            leader = UnitName(u)
+            break
+        end
+    end
+    if leader and leader ~= "" and not SameAsPlayer(leader) then
+        local Rep = _G[ADDON_NAME .. "_Reputation"]
+        if Rep and Rep.Vouch then
+            Rep.Vouch(partyLens, leader)
+        end
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- Tick: prune, (beacon) announce + clean.
 -- ---------------------------------------------------------------------------
@@ -816,6 +930,7 @@ function LayerNet.Tick(partyLens)
     local cfg = CFG(partyLens)
     Prune(rt)
     Layer.PruneSeen(partyLens) -- age out dead layers on a fixed cadence (keeps ordinals aligned)
+    AutoBeaconApply(partyLens) -- park-and-help: (de)activate the beacon by location
     -- Presence / numbering sync: broadcast our sighting (a hidden ADDON message,
     -- which is NOT hardware-gated — unlike a visible SendChatMessage to a CHANNEL)
     -- so everyone's layer NUMBERS converge AND the realm-wide occupancy map can see
@@ -843,8 +958,10 @@ function LayerNet.Tick(partyLens)
     -- requester who was already grouped isn't dropped on the very next tick.)
     if rt.myRequest then
         local sz = (GetNumGroupMembers and GetNumGroupMembers()) or 0
-        if sz > (rt.myRequest.size0 or 0)
-            or (time() - (rt.myRequest.t or 0)) > LayerNet.MY_REQUEST_TTL then
+        if sz > (rt.myRequest.size0 or 0) then
+            rt.myRequest = nil
+            ThankHelper(partyLens) -- pulled: vouch the beacon that helped me hop
+        elseif (time() - (rt.myRequest.t or 0)) > LayerNet.MY_REQUEST_TTL then
             rt.myRequest = nil
         elseif (time() - (rt.myRequest.lastNet or 0)) >= LayerNet.SYNC_INTERVAL then
             LayerNet.SendMyRequest(partyLens, false)
@@ -857,7 +974,14 @@ function LayerNet.Tick(partyLens)
         -- cooldown, no invite rights, momentarily-full party) drops the invite while
         -- the request stays "open" for REQUEST_TTL, so retry here until it clears or
         -- expires. Engage is idempotent (its own cooldown/rate/in-group guards).
+        -- Under contention (rate cap / limited slots), serve requesters who have served
+        -- more hops themselves FIRST — the reciprocity reward for running a beacon.
+        local pending = {}
         for _, r in pairs(rt.requests) do
+            pending[#pending + 1] = r
+        end
+        table.sort(pending, function(a, b) return (a.hops or 0) > (b.hops or 0) end)
+        for _, r in ipairs(pending) do
             if RequestMatches(partyLens, r.req, r.targetZone, r.mapID, r.source == "net") then
                 LayerNet.Engage(partyLens, r.name, r.req)
             end
@@ -924,7 +1048,7 @@ function LayerNet.ApplyErrorSpeech(partyLens)
     end
 end
 
-function LayerNet.SetBeacon(partyLens, on)
+function LayerNet.SetBeacon(partyLens, on, quiet)
     local cfg = CFG(partyLens)
     cfg.beacon = on and true or false
     local rt = RT(partyLens)
@@ -932,9 +1056,13 @@ function LayerNet.SetBeacon(partyLens, on)
     LayerNet.ApplyErrorSpeech(partyLens)
 
     if cfg.beacon then
-        Utils.Print(L("LAYER_BEACON_ON"))
-        LayerNet.Tick(partyLens)
-    else
+        -- `quiet` = driven by auto-beacon from inside a tick: skip the chat line and the
+        -- immediate re-Tick (the ongoing tick already runs the beacon block below).
+        if not quiet then
+            Utils.Print(L("LAYER_BEACON_ON"))
+            LayerNet.Tick(partyLens)
+        end
+    elseif not quiet then
         Utils.Print(L("LAYER_BEACON_OFF"))
     end
     LayerNet.RefreshPartyHide(partyLens) -- hide/restore the party frames
@@ -942,7 +1070,18 @@ function LayerNet.SetBeacon(partyLens, on)
 end
 
 function LayerNet.ToggleBeacon(partyLens)
+    CFG(partyLens).autoBeacon = false -- pressing the beacon button = take manual control
     LayerNet.SetBeacon(partyLens, not CFG(partyLens).beacon)
+end
+
+-- Toggle "auto-beacon in the capital" (park-and-help). Applies immediately so the user
+-- sees it take effect without waiting for the next tick.
+function LayerNet.ToggleAutoBeacon(partyLens)
+    local cfg = CFG(partyLens)
+    cfg.autoBeacon = not cfg.autoBeacon
+    Utils.Print(cfg.autoBeacon and L("LAYER_AUTOBEACON_ON") or L("LAYER_AUTOBEACON_OFF"))
+    AutoBeaconApply(partyLens)
+    LayerNet.Refresh(partyLens)
 end
 
 -- ---------------------------------------------------------------------------
@@ -996,6 +1135,9 @@ function LayerNet.SendMyRequest(partyLens, includeVisible)
     local payload = table.concat({
         LayerNet.NET_PROTO, "R", tostring(reqMap), tostring(myZoneOnReqMap),
         mr.spec, tostring(target),
+        -- Append-only: my lifetime hops served, so a contended beacon can serve
+        -- contributors first (reciprocity). Self-reported (low-value perk to spoof).
+        tostring(CFG(partyLens).hops or 0),
     }, "|")
     SendNet(payload, "R") -- realm-wide too, so a beacon anywhere on the realm can answer
 

@@ -294,6 +294,8 @@ function PartyLens:OnAddonLoaded(name)
             Autopilot.Disarm(self)
         elseif msg == "beacon" then
             LayerNet.ToggleBeacon(self)
+        elseif msg == "autobeacon" then
+            LayerNet.ToggleAutoBeacon(self)
         elseif msg:sub(1, 8) == "reqlayer" then
             -- "/partylens reqlayer 5" (or "reqlayer any" / just "reqlayer").
             -- Triggered by the Enter key, so the visible chat post is allowed.

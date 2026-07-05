@@ -5,6 +5,35 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.21.0]
+
+Camada 2 — incentivos de OFERTA (agora que os beacons ficam visíveis, aumentar quantos
+existem). As 3 de uma vez:
+
+- **Auto-beacon "park and help" (LIGADO por padrão, opt-out)**: sempre que você está
+  parado/ocioso **solo** — em **qualquer cidade ou estalagem** (via `IsResting`), **AFK**,
+  ou **pescando** — seu char vira um beacon de hop automaticamente, 100% silencioso (sem
+  spam de party/erro/som, frame de party escondido). Desliga sozinho quando você volta a se
+  mexer/sai do estado ocioso (com uma janela de graça pra não piscar entre lançamentos de
+  pesca) ou entra num grupo de verdade. É o multiplicador de oferta: se ajudar não custa
+  nada, todo mundo deixa ligado. Um aviso único explica na primeira ativação; desliga com o
+  toggle no painel ou `/partylens autobeacon`. (Só continua ligado se os membros extras da
+  party forem hoppers que o próprio beacon convidou — nunca sequestra um grupo que você
+  formou parado.)
+- **Recompensa = trust + rank**: quando um beacon te puxa pra sua layer, você **voucha ele
+  automaticamente** (uma vez por pessoa — então a reputação de um beacon = quantas pessoas
+  distintas ele realmente ajudou, difícil de forjar). E os "hops served" viram um **rank
+  visível** (Ajudante → Guia → Guardião → Sentinela → Lenda de Layer) no painel. Trust é
+  moeda real nesse servidor (anti-scam, entra em grupo mais fácil), então beaconar passa a
+  valer a pena de verdade.
+- **Prioridade por reciprocidade**: seu pedido de hop agora carrega quantos hops VOCÊ já
+  serviu; quando um beacon está concorrido (rate limit / vagas), ele **serve primeiro quem
+  mais contribuiu**. Freeloader não fica sem hop, só entra depois de quem ajuda a rede.
+
+Técnico: `db.layer.autoBeacon` default on; auto-vouch via `ThankHelper` no pull (opt-out
+`db.layer.autoVouch=false`); campo 7 append-only no payload R (`hops`) + sort do retry por
+hops desc; `LayerNet.Rank`. Camada 1 (visibilidade) foi o 0.20.0.
+
 ## [0.20.0]
 
 Visibilidade da rede de layer (o "nunca tem nodes" com ~200 usuários era, na real,

@@ -1960,10 +1960,25 @@ local function CreateLayerPanel(partyLens, host)
     ln.beaconBtn:SetScript("OnClick", function()
         if LayerNet then LayerNet.ToggleBeacon(partyLens) end
     end)
+    -- Auto-beacon toggle ("park and help") sits directly UNDER the beacon button, then
+    -- the hint below it — stacked so nothing overlaps in the tight space above "Network".
+    ln.autoBeaconBtn = UIElements.CreateButton(panel, "", 210, 16, P.teal)
+    ln.autoBeaconBtn:SetPoint("TOPRIGHT", ln.beaconBtn, "BOTTOMRIGHT", 0, -4)
+    ln.autoBeaconBtn:SetScript("OnClick", function()
+        if LayerNet then LayerNet.ToggleAutoBeacon(partyLens) end
+    end)
+
     local bhint = UIElements.CreateLabel(panel, L("LAYER_BEACON_HINT"), 9, P.faint)
-    bhint:SetPoint("TOPRIGHT", ln.beaconBtn, "BOTTOMRIGHT", 0, -4)
+    bhint:SetPoint("TOPRIGHT", ln.autoBeaconBtn, "BOTTOMRIGHT", 0, -3)
     bhint:SetWidth(210)
     bhint:SetJustifyH("RIGHT")
+
+    -- Your beacon-service rank (from lifetime hops served) — the status reward. On the
+    -- LEFT column (under the current-layer readout), clear of the right-side buttons.
+    ln.rankLabel = UIElements.CreateLabel(panel, "", 11, P.gold)
+    ln.rankLabel:SetPoint("TOPLEFT", PAD, -128)
+    ln.rankLabel:SetJustifyH("LEFT")
+    ln.rankLabel:Hide()
 
     -- Live network stats (marketing: the "living network" feel).
     Section(panel, L("LAYER_NETWORK"), PAD, -146)
@@ -2167,6 +2182,22 @@ function UIMain.RefreshLayer(partyLens)
     local on = partyLens.db.layer and partyLens.db.layer.beacon
     ln.beaconBtn:SetText(L("LAYER_BEACON") .. ":  " .. (on and L("LAYER_ON") or L("LAYER_OFF")))
     ln.beaconBtn:SetActive(on and true or false)
+
+    if ln.autoBeaconBtn then
+        local auto = partyLens.db.layer and partyLens.db.layer.autoBeacon
+        ln.autoBeaconBtn:SetText(L("LAYER_AUTOBEACON") .. ":  " .. (auto and L("LAYER_ON") or L("LAYER_OFF")))
+        ln.autoBeaconBtn:SetActive(auto and true or false)
+    end
+    if ln.rankLabel then
+        local hops = (partyLens.db.layer and partyLens.db.layer.hops) or 0
+        local title = LayerNet.Rank and LayerNet.Rank(hops)
+        if title then
+            ln.rankLabel:SetText("|cffffd200" .. title .. "|r  ·  " .. L("LAYER_HOPS_SERVED", hops))
+            ln.rankLabel:Show()
+        else
+            ln.rankLabel:Hide()
+        end
+    end
 
     ln.stats.nodes:SetText(stats.nodes)
     ln.stats.covered:SetText(stats.layersCovered)
