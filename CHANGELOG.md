@@ -5,6 +5,16 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.16.1]
+
+- **Beacon silencioso de verdade**: enquanto o beacon está ligado, o vai-e-vem de
+  party (convida → não entra → party desfaz) não polui mais a tela. Filtra o **chat**
+  ("You aren't in a party.", reset de dificuldade, "já está em grupo", convite
+  recusado, etc.), some com o **texto de erro vermelho** no centro da tela (hook no
+  `UIErrorsFrame`) e **muta a voz de erro** ("they can't join our group") via a CVar
+  `Sound_EnableErrorSpeech` — restaurando exatamente a sua config quando o beacon
+  desliga (sobrevive a /reload).
+
 ## [0.16.0]
 
 - **Correção crítica — a malha voltou a entregar de verdade.** As mensagens de rede

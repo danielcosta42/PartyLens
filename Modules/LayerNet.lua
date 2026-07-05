@@ -755,16 +755,38 @@ function LayerNet.Start(partyLens)
     end
     LayerNet.Tick(partyLens)
     LayerNet.RefreshPartyHide(partyLens) -- honor a persisted beacon state on load
+    LayerNet.ApplyErrorSpeech(partyLens) -- ...and re-mute the error voice if beaconing
 end
 
 -- ---------------------------------------------------------------------------
 -- Beacon toggle (bound to a right-click on the Layer tab / button)
 -- ---------------------------------------------------------------------------
+-- Mute the error voice-over ("they can't join our group") while beaconing — the
+-- party churn triggers it constantly. Save the player's original setting in the DB
+-- (survives /reload) so we restore exactly what they had when the beacon goes off.
+function LayerNet.ApplyErrorSpeech(partyLens)
+    if not (SetCVar and GetCVar) then
+        return
+    end
+    local cfg = CFG(partyLens)
+    if cfg.beacon then
+        if cfg.errorSpeechSaved == nil then
+            cfg.errorSpeechSaved = GetCVar("Sound_EnableErrorSpeech") or "1"
+        end
+        pcall(SetCVar, "Sound_EnableErrorSpeech", "0")
+    elseif cfg.errorSpeechSaved ~= nil then
+        pcall(SetCVar, "Sound_EnableErrorSpeech", cfg.errorSpeechSaved)
+        cfg.errorSpeechSaved = nil
+    end
+end
+
 function LayerNet.SetBeacon(partyLens, on)
     local cfg = CFG(partyLens)
     cfg.beacon = on and true or false
     local rt = RT(partyLens)
     rt.lastSync = 0 -- announce our presence to the mesh on the next tick
+    LayerNet.ApplyErrorSpeech(partyLens)
+
     if cfg.beacon then
         Utils.Print(L("LAYER_BEACON_ON"))
         LayerNet.Tick(partyLens)
@@ -1072,10 +1094,27 @@ end
 -- Silencing filters (registered once; each no-ops while the beacon is off)
 -- ---------------------------------------------------------------------------
 local function BuildSystemPatterns()
+    -- A generous set of party/invite/instance churn strings the beacon generates by
+    -- forming + disbanding groups. Missing globals are simply skipped, so listing
+    -- candidates that don't exist on this client is safe (and keeps it localised).
     local names = {
+        -- Invite / join / leave / disband
         "ERR_INVITE_PLAYER_S", "ERR_JOINED_GROUP_S", "ERR_DECLINE_GROUP_S",
         "ERR_LEFT_GROUP_S", "ERR_LEFT_GROUP_YOU", "ERR_GROUP_DISBANDED",
-        "ERR_ALREADY_IN_GROUP_S", "ERR_RAID_MEMBER_ADDED_S", "ERR_RAID_MEMBER_REMOVED_S",
+        "ERR_ALREADY_IN_GROUP_S", "ERR_ALREADY_IN_GROUP",
+        "ERR_RAID_MEMBER_ADDED_S", "ERR_RAID_MEMBER_REMOVED_S",
+        "ERR_UNINVITE_PLAYER_S", "ERR_INVITED_TO_GROUP_SS",
+        -- "You aren't in a party." and friends
+        "ERR_NOT_IN_GROUP", "ERR_NOT_IN_RAID", "ERR_NOT_IN_INSTANCE_GROUP",
+        "ERR_NOT_LEADER", "ERR_TARGET_NOT_IN_GROUP_S", "ERR_TARGET_NOT_IN_PARTY_S",
+        "ERR_TARGET_NOT_IN_RAID_S",
+        -- Invite failures (offline / wrong faction / full / self / restricted)
+        "ERR_BAD_PLAYER_NAME_S", "ERR_PLAYER_WRONG_FACTION", "ERR_PLAYER_NOT_FOUND_S",
+        "ERR_PARTY_FULL", "ERR_GROUP_FULL", "ERR_RAID_FULL",
+        "ERR_CANNOT_INVITE_SELF", "ERR_INVITE_RESTRICTED", "ERR_INVITE_IN_COMBAT",
+        -- Difficulty reset spam from party form/disband
+        "ERR_DUNGEON_DIFFICULTY_CHANGED_S", "ERR_RAID_DIFFICULTY_CHANGED_S",
+        "ERR_LEGACY_RAID_DIFFICULTY_CHANGED", "ERR_SHARED_DIFFICULTY_CHANGED_S",
     }
     local patterns = {}
     for _, g in ipairs(names) do
@@ -1097,9 +1136,9 @@ function LayerNet.InstallFilters(partyLens)
     LayerNet._filtersInstalled = true
     local sysPatterns = BuildSystemPatterns()
 
-    -- Party join/leave/decline spam.
-    ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg)
-        if not CFG(partyLens).beacon then
+    -- Shared matcher for the party-churn system strings.
+    local function isChurn(msg)
+        if not msg then
             return false
         end
         for _, p in ipairs(sysPatterns) do
@@ -1108,7 +1147,25 @@ function LayerNet.InstallFilters(partyLens)
             end
         end
         return false
+    end
+
+    -- Party join/leave/decline/"you aren't in a party"/difficulty spam in the chat frame.
+    ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", function(_, _, msg)
+        return CFG(partyLens).beacon and isChurn(msg) or false
     end)
+
+    -- The SAME churn also flashes as red center-screen error text (UIErrorsFrame) and
+    -- fires the error voice-over. Swallow the red text here while beaconing; the voice
+    -- is muted via the Sound_EnableErrorSpeech CVar toggled in SetBeacon.
+    if UIErrorsFrame and UIErrorsFrame.AddMessage then
+        local origAddMessage = UIErrorsFrame.AddMessage
+        UIErrorsFrame.AddMessage = function(self, msg, ...)
+            if CFG(partyLens).beacon and isChurn(msg) then
+                return
+            end
+            return origAddMessage(self, msg, ...)
+        end
+    end
 
     -- Our own outgoing instruction whispers: hide the sender-side echo when it's
     -- our signed "[PartyLens]:" line OR simply addressed to someone we invited.
