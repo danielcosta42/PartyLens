@@ -5,6 +5,17 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.17.0]
+
+- **Malha compartilhada entre addons (LibChehulMesh) + presença realm-wide**: o
+  transporte de rede virou uma **lib única** (`_G.ChehulMesh`) usada por toda a
+  família Chehul (PartyLens, ProfessionHelper, GuildOS). Além dos buses ocultos
+  (guild/grupo/proximidade), ela adiciona um **bus realm-wide** por um canal
+  dedicado "ChehulMesh" — só usuários dos addons entram (sem spam a terceiros),
+  filtrado do chat, disparado no clique (post em canal é hardware-gated). O
+  handshake de presença **ChehulNet** agora alcança o **reino inteiro**, não só a
+  guild/proximidade.
+
 ## [0.16.4]
 
 - **Beacon 100% silencioso — agora inclui os SONS**: além do texto e da voz de erro

@@ -10,6 +10,7 @@
 ## X-Website: https://github.com/danielcosta42/PartyLens
 ## X-License: MIT
 
+Libs/LibChehulMesh.lua
 Modules/Utils.lua
 Modules/Localization.lua
 Modules/LocalizedKeywords.lua
