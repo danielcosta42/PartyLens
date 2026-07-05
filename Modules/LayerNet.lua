@@ -29,7 +29,7 @@ LayerNet.PREFIX = "PLLnet"            -- addon-message prefix for the layer mesh
 LayerNet.NET_PROTO = "PLL1"           -- payload protocol tag
 LayerNet.TICK = 5
 LayerNet.SYNC_INTERVAL = 30           -- presence/sighting broadcast cadence (numbering sync)
-LayerNet.MAX_PER_MINUTE = 4           -- invite/whisper cap (mirrors autopilot)
+LayerNet.MAX_PER_MINUTE = 10          -- invites/min (racing to win clients; still bounded)
 LayerNet.CONTACT_COOLDOWN = 90        -- per-name cooldown
 LayerNet.NODE_TTL = 150               -- a node counts as "online" if heard within this
 LayerNet.REQUEST_TTL = 60             -- an inbound request stays "open" this long
@@ -312,18 +312,19 @@ function LayerNet.Engage(partyLens, name, req)
         return
     end
 
-    local cfg = CFG(partyLens)
+    -- INVITE FIRST — literally the first action after the guards, before ANY other
+    -- work (layer lookup, whisper, logging), so we beat other layer addons reacting
+    -- to the same line. Every millisecond here decides who gets the client.
     local short = Utils.PlayerShortName(name)
-    local cur = Layer.Current(partyLens)
     DoInvite(short)
-    -- Instruction whisper is opt-in (default off). Whispering at all opens a chat
-    -- tab on the beacon's client, so silence-first we skip it; when enabled, the
-    -- signed echo is filtered AND the conversation window is closed.
+
+    -- Everything below is post-invite bookkeeping (doesn't gate the invite).
+    local cfg = CFG(partyLens)
+    local cur = Layer.Current(partyLens)
     if cfg.whisper then
         Utils.SendChat(L("LAYER_WHISPER", cur.ordinal or "?"), "WHISPER", nil, short)
         SilenceWhisperFor(short)
     end
-
     RecordContact(rt, name)
     rt.party[Key(name)] = time()
     cfg.hops = (cfg.hops or 0) + 1
@@ -346,28 +347,27 @@ function LayerNet.OnRequest(partyLens, msg, sender, source)
     if not req then
         return
     end
+
+    -- OPTIMISTIC INVITE FIRST: the moment we have a matching request, fire the invite
+    -- BEFORE any bookkeeping or UI repaint. The UI refresh (chips/stats/log) is the
+    -- slow part; running it before the invite is exactly what let other layer addons
+    -- beat us to the client. Public-chat/whisper requests have no mesh target zoneUID,
+    -- so matching falls back to the ordinal compare.
+    local cfg = CFG(partyLens)
+    if cfg.beacon and RequestMatches(partyLens, req, nil, nil, false) then
+        LayerNet.Engage(partyLens, sender, req)
+    end
+
+    -- Post-invite bookkeeping: record the request, log it once, silence the whisper.
     local rt = RT(partyLens)
     local key = Key(sender)
     local isNew = rt.requests[key] == nil
-    -- Public-chat / whisper requests carry no resolved target zoneUID (the sender
-    -- isn't on our mesh), so matching for these falls back to the ordinal compare.
     rt.requests[key] = { name = Utils.PlayerShortName(sender), req = req, t = time(), source = source }
-
-    -- Log every NEWLY-seen request (deduped per sender for REQUEST_TTL) so the
-    -- operator can SEE the addon reading the channel — even when the beacon is off
-    -- or the request is for a layer we're not on (so no invite fires).
+    if cfg.beacon and source == "whisper" then
+        SilenceWhisperFor(sender)
+    end
     if isNew then
         LayerNet.Log(partyLens, L("LAYER_LOG_SEEN", Utils.PlayerShortName(sender), LayerNet.RequestText(req)))
-    end
-
-    local cfg = CFG(partyLens)
-    if cfg.beacon then
-        if source == "whisper" then
-            SilenceWhisperFor(sender) -- close the incoming whisper window too
-        end
-        if RequestMatches(partyLens, req, nil, nil, false) then
-            LayerNet.Engage(partyLens, sender, req)
-        end
     end
     LayerNet.Refresh(partyLens)
 end
@@ -519,22 +519,24 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
         RecordNode(partyLens, sender, mapID, zoneUID, f5 == "1")
         LayerNet.Refresh(partyLens)
     elseif kind == "R" then
+        local req = ReqFromSpec(f5)
         local targetZone = tonumber(f6)
-        if targetZone and targetZone > 0 then
-            Layer.MergeSeen(partyLens, mapID, { targetZone }) -- learn the wanted layer's id
-        else
+        if not (targetZone and targetZone > 0) then
             targetZone = nil
         end
-        RecordNode(partyLens, sender, mapID, zoneUID, false)
-        local req = ReqFromSpec(f5)
-        local rt = RT(partyLens)
-        rt.requests[Key(sender)] = {
-            name = Utils.PlayerShortName(sender), req = req, t = time(),
-            source = "net", targetZone = targetZone, mapID = mapID,
-        }
+        -- OPTIMISTIC INVITE FIRST — before merging sets / recording nodes / repaint.
         if CFG(partyLens).beacon and RequestMatches(partyLens, req, targetZone, mapID, true) then
             LayerNet.Engage(partyLens, sender, req)
         end
+        -- Post-invite bookkeeping.
+        if targetZone then
+            Layer.MergeSeen(partyLens, mapID, { targetZone }) -- learn the wanted layer's id
+        end
+        RecordNode(partyLens, sender, mapID, zoneUID, false)
+        RT(partyLens).requests[Key(sender)] = {
+            name = Utils.PlayerShortName(sender), req = req, t = time(),
+            source = "net", targetZone = targetZone, mapID = mapID,
+        }
         LayerNet.Refresh(partyLens)
     elseif kind == "W" then
         -- World-boss sighting: W|mapID|bossZoneUID|npcID|hp. The boss's zoneUID was

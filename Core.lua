@@ -332,9 +332,11 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
             UIMain.DetectAndApplySpec(self)
         end
     elseif event == "CHAT_MSG_CHANNEL" then
-        Chat.HandleChatMessage(self, ...)
+        -- Layer net FIRST: a layer request must reach the invite as fast as possible
+        -- (before the Browse chat parsing) so we beat other addons to the client.
         -- args: text(1), sender(2), ..., channelBaseName(9)
         LayerNet.OnChannelChat(self, (select(1, ...)), (select(2, ...)), (select(9, ...)))
+        Chat.HandleChatMessage(self, ...)
     elseif event == "PLAYER_TARGET_CHANGED" then
         LayerNet.Observe(self, "target")
         WorldBoss.Observe(self, "target")
@@ -370,8 +372,9 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "CHAT_MSG_ADDON" then
         -- args: prefix, text, channel, sender
+        -- Layer mesh FIRST (invite-critical), then the Browse mesh.
+        LayerNet.OnAddonMessage(self, ...) -- own prefix; ignores others
         Comm.OnMessage(self, ...)
-        LayerNet.OnAddonMessage(self, ...) -- layer mesh (own prefix; ignores others)
     elseif event == "WHO_LIST_UPDATE" then
         Who.OnWhoList(self)
     end

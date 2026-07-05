@@ -5,6 +5,14 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.15.1]
+
+- **Convite otimista (ganhar a corrida)**: o beacon agora dispara o convite como a
+  **primeira ação** ao bater um pedido compatível — antes de qualquer gravação, log
+  ou repaint da UI (o repaint era o que atrasava e deixava outros addons convidarem
+  primeiro). A rede também é processada **antes** do Browse nos eventos de chat, e o
+  teto de convites subiu de 4 para 10/min pra não segurar rajadas até o próximo tick.
+
 ## [0.15.0]
 
 - **Radar de World Boss (aba nova)**: o addon reconhece world bosses / rares pelo
