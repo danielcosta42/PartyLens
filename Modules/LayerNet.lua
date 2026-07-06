@@ -42,7 +42,13 @@ LayerNet.GOSSIP_MAX = 8               -- nodes per gossip digest (fits the ~255-
 LayerNet.BRIDGE_COOLDOWN = 20         -- min gap between party-bridge bursts (cross-layer seeding)
 LayerNet.REQUEST_TTL = 60             -- an inbound request stays "open" this long
 LayerNet.MY_REQUEST_TTL = 120         -- my own layer request stays active/re-broadcast this long
-LayerNet.PARTY_HOLD = 40              -- auto-uninvite an invitee still around after this (they hop fast)
+-- Kick timing for hoppers. Blizzard throttles repeated layer changes with an INCREASING
+-- cooldown (up to "several minutes or longer"), so a hopper can sit in my party WAITING to
+-- be pulled — a short fixed kick would abort a legit delayed hop. So: kick promptly once
+-- we CONFIRM (via mesh presence) they've landed on my layer, else hold for a long backstop.
+LayerNet.PARTY_HOLD_DONE = 20         -- confirmed on my layer -> grace before freeing the slot
+LayerNet.PARTY_HOLD_MAX = 240         -- unconfirmed backstop (covers a cooldown-delayed transfer)
+LayerNet.INVITE_EXPIRY = 45           -- invited but never accepted -> stop tracking (no uninvite)
 LayerNet.LOG_MAX = 20                 -- recent-activity log lines kept
 LayerNet.PARK_GRACE = 90             -- keep auto-beacon on this long after the last "parked/idle"
                                       -- signal, so it doesn't flicker between e.g. fishing casts
@@ -778,6 +784,7 @@ local function CleanParty(partyLens)
     local cfg = CFG(partyLens)
     local now = time()
     rt.pendingKick = rt.pendingKick or {}
+    local myZone = Layer.Current(partyLens).zoneUID
     -- rt.party[key] is +invitedAt while pending, then flipped to -joinedAt the
     -- first tick we see them in-group. The hold clock runs from JOIN, so a slow
     -- accept can't get auto-uninvited the instant they finally arrive.
@@ -789,12 +796,25 @@ local function CleanParty(partyLens)
                 -- short name — capitalise it for the log line.
                 cfg.hops = (cfg.hops or 0) + 1
                 LayerNet.Log(partyLens, L("LAYER_LOG_HOPPED", key:sub(1, 1):upper() .. key:sub(2)))
-            elseif (now - (-ts)) >= LayerNet.PARTY_HOLD then
-                rt.party[key] = nil
-                rt.pendingKick[key] = true -- drained on a hardware event
+            else
+                -- They're in my party, but the LAYER TRANSFER may not have happened yet.
+                -- Blizzard throttles repeated layer changes with an increasing cooldown
+                -- (up to several minutes), so a hopper can sit here waiting to be pulled;
+                -- kicking too early aborts a legit delayed hop. Free the slot only once we
+                -- CONFIRM via mesh presence they've landed on my layer (+ a short grace),
+                -- OR a long backstop elapses (covers a cooldown-delayed transfer we can't
+                -- see, and non-addon hoppers with no presence to check).
+                local joinedAgo = now - (-ts)
+                local node = rt.nodes[key]
+                local landed = myZone and node and node.zoneUID == myZone
+                if (landed and joinedAgo >= LayerNet.PARTY_HOLD_DONE)
+                    or (joinedAgo >= LayerNet.PARTY_HOLD_MAX) then
+                    rt.party[key] = nil
+                    rt.pendingKick[key] = true -- drained on a hardware event
+                end
             end
-        elseif ts >= 0 and (now - ts) >= LayerNet.PARTY_HOLD then
-            rt.party[key] = nil -- never showed up; stop tracking (no uninvite needed)
+        elseif ts >= 0 and (now - ts) >= LayerNet.INVITE_EXPIRY then
+            rt.party[key] = nil -- invited but never accepted; stop tracking (no uninvite needed)
         end
     end
 end
@@ -941,12 +961,12 @@ local function AutoBeaconApply(partyLens)
     local beaconing = cfg.beacon and true or false
     -- Are the OTHER group members all our own transient hoppers? A member counts as a
     -- hopper if we invited them (rt.party) OR we're mid-removal of them (rt.pendingKick —
-    -- they linger in the group until the hardware-gated uninvite lands, ~PARTY_HOLD after
-    -- they hopped, and could be much longer if we're AFK-parked and never click). If ANY
+    -- they linger in the group until the hardware-gated uninvite lands, which can be a
+    -- while: a hop isn't kicked until confirmed-landed or the long backstop). If ANY
     -- member is neither, it's a real group we formed, so we bow out.
     -- CRUCIAL: this runs whether or not we're currently beaconing, so a spurious disarm
-    -- (a hopper lingering past PARTY_HOLD with rt.party cleared but not yet kicked, or a
-    -- brief parked gap) SELF-HEALS instead of latching the beacon off for as long as the
+    -- (a hopper lingering after its kick was queued but not yet drained, or a brief
+    -- parked gap) SELF-HEALS instead of latching the beacon off for as long as the
     -- hopper stays. Real-group protection is unchanged: real members aren't ours -> off.
     local kick = rt.pendingKick or {}
     local onlyHoppers = true

@@ -5,6 +5,25 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.24.2]
+
+O kick de hopper agora respeita o cooldown de troca de layer da Blizzard — não expulsa
+mais ninguém no meio de um hop atrasado.
+
+- **Contexto** (pesquisa): a Blizzard limita trocas de layer repetidas com um **cooldown
+  crescente** (hotfix de 2019, carregado pro TBC Anniversary): cada troca empilha, e quem
+  troca várias vezes em pouco tempo espera "vários minutos ou mais" pela próxima. A Blizzard
+  não publica os números. Ou seja: o 1º hop é rápido (segundos), mas hoppers em série ficam
+  na sua party **esperando serem puxados** — e o kick fixo de 40s cortava esse hop legítimo.
+- **Correção**: em vez de um tempo fixo curto, o beacon agora libera a vaga quando **(a)
+  confirma pela malha que o hopper pousou na SUA layer** (`node.zoneUID == minha`) + uma
+  graça curta de 20s (hop concluído → vaga liberada rápido, bom pro throughput), **ou (b)**
+  um backstop longo de **240s** vence (cobre uma transferência atrasada pelo cooldown que a
+  gente não consegue confirmar, e hoppers sem o addon). Convite nunca aceito para de ser
+  rastreado em 45s (sem uninvite). Antes: 40s fixo pra tudo.
+- Efeito: quem tem o addon e pousa é liberado em ~20s; quem está preso no cooldown da
+  Blizzard não é mais expulso no meio do hop.
+
 ## [0.24.1]
 
 Conserta o auto-beacon desarmar sozinho quando um hopper fica no grupo.
