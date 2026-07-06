@@ -939,15 +939,22 @@ local function AutoBeaconApply(partyLens)
 
     local groupSize = (GetNumGroupMembers and GetNumGroupMembers()) or 0
     local beaconing = cfg.beacon and true or false
-    -- Stay on through a grown group ONLY if the extra members are hoppers WE invited
-    -- (tracked in rt.party) — not a real group we formed while parked. Otherwise
-    -- auto-beacon would start pulling strangers into your real party.
-    local onlyHoppers = groupSize <= 1
-    if not onlyHoppers and beaconing then
-        onlyHoppers = true
-        for i = 1, groupSize - 1 do
-            local nm = UnitName("party" .. i)
-            if nm and not rt.party[Key(nm)] then
+    -- Are the OTHER group members all our own transient hoppers? A member counts as a
+    -- hopper if we invited them (rt.party) OR we're mid-removal of them (rt.pendingKick —
+    -- they linger in the group until the hardware-gated uninvite lands, ~PARTY_HOLD after
+    -- they hopped, and could be much longer if we're AFK-parked and never click). If ANY
+    -- member is neither, it's a real group we formed, so we bow out.
+    -- CRUCIAL: this runs whether or not we're currently beaconing, so a spurious disarm
+    -- (a hopper lingering past PARTY_HOLD with rt.party cleared but not yet kicked, or a
+    -- brief parked gap) SELF-HEALS instead of latching the beacon off for as long as the
+    -- hopper stays. Real-group protection is unchanged: real members aren't ours -> off.
+    local kick = rt.pendingKick or {}
+    local onlyHoppers = true
+    for i = 1, groupSize - 1 do
+        local nm = UnitName("party" .. i)
+        if nm then
+            local k = Key(nm)
+            if not (rt.party[k] or kick[k]) then
                 onlyHoppers = false
                 break
             end

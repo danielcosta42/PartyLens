@@ -5,6 +5,24 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.24.1]
+
+Conserta o auto-beacon desarmar sozinho quando um hopper fica no grupo.
+
+- **Causa**: o `rt.party` misturava "quem eu convidei" com o timer de kick. Um hopper que
+  passa de `PARTY_HOLD` (40s) no grupo — ou que simplesmente não sai — tem sua entrada em
+  `rt.party` apagada e o kick enfileirado; mas o `UninviteUnit` é hardware-gated, então ele
+  **continua no grupo** até você clicar no mundo (e se você está AFK/parado, isso pode não
+  acontecer). Nesse meio-tempo o auto-beacon via um membro que já não estava em `rt.party`,
+  concluía "grupo real" e **desarmava** — e o gate `and beaconing` travava o re-arm enquanto
+  o hopper ficasse ali (uma vez off, off pra sempre no grupo). (Não era a velocidade do
+  accept: o convite grava `rt.party` de forma síncrona, antes de o accept ser possível.)
+- **Correção**: um membro conta como hopper nosso se está em `rt.party` **ou** em
+  `rt.pendingKick` (estamos removendo ele, ainda no grupo). E a checagem passa a rodar
+  **mesmo com o beacon desligado**, então qualquer desarme transitório se auto-cura no tick
+  seguinte em vez de travar. A proteção contra sequestrar um grupo real fica igual — um
+  membro que não é nosso continua desligando o beacon.
+
 ## [0.24.0]
 
 Ponte cross-layer via party de hop — usa quem entra pra trocar de layer como "carteiro"
