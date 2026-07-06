@@ -5,6 +5,34 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.23.0]
+
+Gossip de presença agora é **multi-hop (anti-entropy)** — alcance realm-wide de verdade,
+cross-zona, sem depender de estar na mesma cidade que o beacon.
+
+- **Antes** o gossip de nós era 1-hop: cada cliente só retransmitia os nós que ouviu
+  em **primeira mão** (`direct`), então você só via quem estava a um salto de você. Com a
+  malha esparsa (só ~1/3 yella por ciclo, YELL é layer-local), muita gente nunca
+  aparecia mesmo com ~200 usuários online.
+- **Agora** cada cliente retransmite **todos** os nós que conhece — os de primeira mão E
+  os que ouviu de outros — cada um carimbado com sua **idade** (há quantos segundos a
+  origem foi vista de fato). A idade cresce ~um ciclo de gossip a cada salto, então um
+  item **morre sozinho** ao passar do `NODE_TTL` (10min) — sem loop infinito.
+- **Merge "mais fresco vence"**: um registro só é atualizado quando a informação recebida
+  é estritamente mais recente que a que você já tem. Um "ouvi ele agora" (direct) sempre
+  ganha; um gossip antigo de uma layer velha não ressuscita sobre um direct fresco de
+  outra layer. Isso torna a rede convergente e à prova de loop.
+- **Imune a relógio dessincronizado**: propagamos a idade **relativa** (segundos-atrás),
+  não um timestamp absoluto, então diferenças de horário entre clientes não corrompem o
+  merge — cada um aplica `agora - idade` no próprio relógio.
+- **Efeito**: presença agora se espalha por **saltos** — alcança gente que você nunca
+  ouve direto, inclusive cross-zona quando um guildmate retransmite adiante (GUILD é
+  cross-layer/cross-zona). Estacionar em cidades diferentes deixa de fragmentar a rede.
+- **Rollout misto seguro**: o formato do digest ganhou um 5º campo (idade); clientes
+  antigos (0.20.x/0.22.x) que não conhecem o campo continuam lendo os 4 primeiros e
+  tratam como fresco — sem quebrar nada. Mudança contida no `LayerNet.lua`; a lib
+  compartilhada `LibChehulMesh` não mudou (nada a re-espelhar).
+
 ## [0.22.0]
 
 Reescrita do transporte da malha (LibChehulMesh v3) — conserta a rede realm-wide.

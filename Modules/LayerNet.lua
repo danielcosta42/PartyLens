@@ -37,7 +37,7 @@ LayerNet.CONTACT_COOLDOWN = 90        -- per-name cooldown
 LayerNet.NODE_TTL = 600               -- a node counts as "online" if heard within this (long,
                                       -- because realm-wide presence is sparse/click-flushed —
                                       -- otherwise real peers flicker out between rare flushes)
-LayerNet.GOSSIP_INTERVAL = 120        -- how often to gossip our directly-heard nodes realm-wide
+LayerNet.GOSSIP_INTERVAL = 120        -- how often to gossip known nodes realm-wide (multi-hop, aged)
 LayerNet.GOSSIP_MAX = 8               -- nodes per gossip digest (fits the ~255-char channel line)
 LayerNet.REQUEST_TTL = 60             -- an inbound request stays "open" this long
 LayerNet.MY_REQUEST_TTL = 120         -- my own layer request stays active/re-broadcast this long
@@ -530,9 +530,15 @@ local function GossipNodes(partyLens)
     if not Net.Realm then
         return
     end
+    local now = time()
     local list = {}
     for _, n in pairs(RT(partyLens).nodes) do
-        if n.direct and n.name and n.zoneUID and n.mapID and not SameAsPlayer(n.name) then
+        -- Share ALL known nodes — first-hand AND relayed — so data spreads MULTI-HOP
+        -- (anti-entropy gossip), not just 1 hop. Each entry carries the node's AGE; the
+        -- age grows ~one gossip cycle per relay, so an item dies once it's older than
+        -- NODE_TTL. Combined with "freshest wins" on receive, this can't loop forever.
+        if n.name and n.zoneUID and n.mapID and not SameAsPlayer(n.name)
+            and (now - (n.t or 0)) < LayerNet.NODE_TTL then
             list[#list + 1] = n
         end
     end
@@ -551,9 +557,10 @@ local function GossipNodes(partyLens)
             break
         end
         local n = list[i]
-        -- name:mapID:zoneUID:beacon (WoW names are letters only -> ':' / ';' are safe)
+        -- name:mapID:zoneUID:beacon:ageSeconds (names are letters-only -> ':'/';' safe)
+        local age = math.max(0, math.min(now - (n.t or now), 99999))
         local entry = table.concat({
-            n.name, tostring(n.mapID), tostring(n.zoneUID), n.beacon and "1" or "0",
+            n.name, tostring(n.mapID), tostring(n.zoneUID), n.beacon and "1" or "0", tostring(age),
         }, ":")
         local add = #entry + (used > 0 and 1 or 0) -- +1 for the ';' separator
         if used + add > 220 then -- keep the whole channel line under the ~255 limit
@@ -586,22 +593,27 @@ end
 -- Record a heard mesh peer. Ordinals are computed in OUR frame from the zoneUID
 -- (Stats/matching) — we never trust the peer's own numbering.
 -- `via` is "direct" (we heard the peer's own S) or "gossip" (another peer relayed
--- them). Second-hand gossip never overwrites a fresh first-hand record, and only
--- first-hand records get re-gossiped (see GossipNodes) so gossip can't amplify.
-local function RecordNode(partyLens, sender, mapID, zoneUID, isBeacon, via)
+-- them). For gossip, `age` is how many seconds ago the ORIGIN was actually seen (it
+-- grew by ~one gossip cycle at each relay hop), so the peer's effective last-seen is
+-- now-age, NOT now. Anti-entropy merge: keep whichever record is FRESHEST. A direct
+-- hear (last-seen = now) always wins; a gossip only updates when it's strictly fresher
+-- than what we already hold. That's what bounds the epidemic — you never accept, nor
+-- re-share (see GossipNodes), a version older than one you have — so it can't loop, and
+-- once age passes NODE_TTL the item is dropped everywhere.
+local function RecordNode(partyLens, sender, mapID, zoneUID, isBeacon, via, age)
     local key = Key(sender)
     local nodes = RT(partyLens).nodes
     local existing = nodes[key]
-    if via == "gossip" and existing and existing.direct
-        and (time() - (existing.t or 0)) < LayerNet.NODE_TTL then
-        return -- a fresher first-hand record wins over hearsay
+    local seenAt = (via == "gossip") and (time() - (tonumber(age) or 0)) or time()
+    if via == "gossip" and existing and (existing.t or 0) >= seenAt then
+        return -- we already hold an equal-or-fresher record; don't age it backwards
     end
     nodes[key] = {
         name = Utils.PlayerShortName(sender),
         zoneUID = zoneUID,
         mapID = mapID,
         beacon = isBeacon and true or false,
-        t = time(),
+        t = seenAt,
         direct = via ~= "gossip",
     }
 end
@@ -656,17 +668,20 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
         }
         LayerNet.Refresh(partyLens)
     elseif kind == "SD" then
-        -- Presence gossip: "SD|name:map:zone:beacon;..." — merge the second-hand nodes
-        -- a peer relayed, so one flush from anyone makes many peers visible. Re-split
-        -- the raw text (the digest sits where mapID/zoneUID would be, now nil'd above).
+        -- Presence gossip: "SD|name:map:zone:beacon:age;..." — merge the second-hand
+        -- nodes a peer relayed, so one flush from anyone makes many peers visible, and
+        -- they keep relaying onward (multi-hop anti-entropy). `age` (5th field) is how
+        -- long ago the origin was seen; it grows per hop so items die past NODE_TTL.
+        -- Re-split the raw text (digest sits where mapID/zoneUID would be, now nil'd).
+        -- Missing age (older-format senders) is treated as fresh (age 0).
         local _, _, digest = strsplit("|", text or "")
         if digest and digest ~= "" then
             for item in string.gmatch(digest, "[^;]+") do
-                local nm, mp, zn, bc = strsplit(":", item)
+                local nm, mp, zn, bc, ag = strsplit(":", item)
                 mp, zn = tonumber(mp), tonumber(zn)
                 if nm and nm ~= "" and mp and zn and mp > 0 and zn > 0 and not SameAsPlayer(nm) then
                     Layer.MergeSeen(partyLens, mp, { zn }) -- learn the relayed layer's id
-                    RecordNode(partyLens, nm, mp, zn, bc == "1", "gossip")
+                    RecordNode(partyLens, nm, mp, zn, bc == "1", "gossip", tonumber(ag) or 0)
                 end
             end
             LayerNet.Refresh(partyLens)
@@ -945,8 +960,10 @@ function LayerNet.Tick(partyLens)
             LayerNet.BroadcastSighting(partyLens)
         end
     end
-    -- Gossip the nodes we've heard first-hand realm-wide (1-hop epidemic spread), so
-    -- one flush makes many peers visible even though the realm bus is sparse.
+    -- Gossip every node we know (first-hand AND relayed) realm-wide, each tagged with
+    -- its age, so presence spreads MULTI-HOP (anti-entropy) — reaching peers we never
+    -- hear directly, even cross-zone via guildmates who relay onward. Age grows per hop
+    -- so items self-expire past NODE_TTL; "freshest wins" on receive stops any loop.
     if cfg.shareLayer ~= false and (time() - (rt.lastGossip or 0)) >= LayerNet.GOSSIP_INTERVAL then
         rt.lastGossip = time()
         GossipNodes(partyLens)
