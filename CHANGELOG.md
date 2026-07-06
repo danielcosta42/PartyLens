@@ -5,6 +5,18 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.30.2]
+
+O operador agora vê o próprio alerta (dá pra testar sozinho).
+
+- **ChehulNet v6**: removido o self-skip — quando você dispara um alerta, o popup também
+  aparece no SEU cliente (via o self-echo do YELL/SAY), como confirmação de que saiu e pra
+  permitir teste solo. Continua deduplicado por id (não re-estoura a cada re-broadcast) e
+  gateado pela allowlist (só Chehul).
+- Nota: com os 3 addons instalados no mesmo char, o popup aparece no **PartyLens** (maior
+  prioridade, teal), não no GuildOS — é o comportamento "um popup só". `ChehulNet.lua`
+  re-espelhado idêntico nos 3.
+
 ## [0.30.1]
 
 Trava os popups de alerta: só remetentes autorizados aparecem.
