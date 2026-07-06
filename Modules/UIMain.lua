@@ -827,7 +827,7 @@ local function UpdateAutopilotRole(partyLens)
     ap.roleBuildBtn:SetActive(role == "build")
     ap.roleFindBtn:SetActive(role == "find")
     if ap.roleSection then
-        ap.roleSection:SetText(role == "build" and L("AP_NEEDS_LABEL") or L("AP_MYROLE_LABEL"))
+        ap.roleSection:SetText(role == "build" and L("AP_WHO_BUILD") or L("AP_WHO_FIND"))
     end
     if role == "build" then
         ShowFrame(ap.buildBox)
@@ -838,11 +838,50 @@ local function UpdateAutopilotRole(partyLens)
     end
 end
 
+local AP_TIER_DESC = {
+    advisor = "AP_TIER_ADVISOR_DESC",
+    assisted = "AP_TIER_ASSISTED_DESC",
+    full = "AP_TIER_FULL_DESC",
+}
+
 local function UpdateAutopilotTier(partyLens)
     local ap = partyLens.ap
     if not ap then return end
+    local tier = partyLens.db.autopilot.tier or "assisted"
     for key, btn in pairs(ap.tierBtns) do
-        btn:SetActive(key == partyLens.db.autopilot.tier)
+        btn:SetActive(key == tier)
+    end
+    if ap.tierDesc then
+        ap.tierDesc:SetText(L(AP_TIER_DESC[tier] or "AP_TIER_ASSISTED_DESC"))
+    end
+end
+
+-- Collapse/expand the "Advanced" strip (progressive disclosure). The whole lower group
+-- (summary -> arm/status -> operations -> log) shifts down by ADV_SHIFT when it's open, so
+-- nothing overlaps. goBtn/status/announce ride their relative anchors (arm/opsHeader).
+local AP_ADV_SHIFT = 40
+local function LayoutAP(partyLens)
+    local ap = partyLens.ap
+    if not ap or not ap.summary then return end
+    local open = partyLens.db.autopilot.advOpen and true or false
+    if ap.advToggle then ap.advToggle:SetText((open and "-  " or "+  ") .. L("AP_ADVANCED")) end
+    if ap.advBox then ap.advBox:SetShown(open) end
+    local s = open and AP_ADV_SHIFT or 0
+    local function put(frame, y, keepWidth)
+        frame:ClearAllPoints()
+        frame:SetPoint("TOPLEFT", PAD, y - s)
+        if not keepWidth then frame:SetPoint("RIGHT", -PAD, 0) end
+    end
+    put(ap.summary, -258)
+    put(ap.armBtn, -280, true) -- fixed-width button: no RIGHT anchor
+    put(ap.opsHeader, -330)
+    put(ap.rosterLabel, -350)
+    put(ap.needLabel, -368)
+    put(ap.logHeader, -392, true)
+    for i, line in ipairs(ap.logLines) do
+        line:ClearAllPoints()
+        line:SetPoint("TOPLEFT", PAD, (-412 - (i - 1) * 14) - s)
+        line:SetPoint("RIGHT", -PAD, 0)
     end
 end
 
@@ -882,21 +921,6 @@ local function ApplyComp(partyLens, t, h, d)
         if ap.needD then ap.needD:SetText(tostring(d)) end
     end
     if UIMain.RefreshAutopilot then UIMain.RefreshAutopilot(partyLens) end
-end
-
--- A grouping card: subtle filled panel with a small title at its top-left, so
--- related controls read as one block instead of floating loose.
-local function Card(parent, titleText, y, h)
-    local P = UIElements.PALETTE
-    local card = UIElements.CreatePanel(parent, nil, { 0.082, 0.096, 0.120, 0.55 }, P.stroke, true)
-    card:SetPoint("TOPLEFT", PAD, y)
-    card:SetPoint("TOPRIGHT", -PAD, y)
-    card:SetHeight(h)
-    if titleText then
-        card.title = UIElements.CreateLabel(card, titleText, 11, P.teal)
-        card.title:SetPoint("TOPLEFT", 12, -9)
-    end
-    return card
 end
 
 -- A spec chip inside the composition popup: shows the spec name and, once you
@@ -1040,47 +1064,58 @@ local function CreateAutopilotPanel(partyLens, host)
     local ap = {}
     partyLens.ap = ap
 
-    -- Mesh count (top-right) + short hint (top-left).
+    -- Layout: a small caps step-label on the left, controls on the right — a clean
+    -- top-to-bottom form (Goal -> Content -> Who -> Automation), advanced tucked away,
+    -- a plain-language summary, then a prominent Arm + live operations.
+    local LX, CX = PAD, PAD + 88
+
+    -- Header: what it does (left) + live mesh count (right).
     ap.meshLabel = UIElements.CreateLabel(panel, "", 11, P.teal)
     ap.meshLabel:SetPoint("TOPRIGHT", -PAD, -PAD)
     ap.meshLabel:SetJustifyH("RIGHT")
-
     local hint = UIElements.CreateLabel(panel, L("AP_HINT"), 10, P.muted)
     hint:SetPoint("TOPLEFT", PAD, -PAD)
     hint:SetPoint("RIGHT", ap.meshLabel, "LEFT", -10, 0)
     hint:SetJustifyH("LEFT")
 
-    -- Goal: build vs find (big segmented).
-    ap.roleBuildBtn = UIElements.CreateButton(panel, L("AP_ROLE_BUILD"), 290, 30, P.teal)
-    ap.roleBuildBtn:SetPoint("TOPLEFT", PAD, -38)
+    local function StepLabel(text, y)
+        local l = UIElements.CreateLabel(panel, text, 10, P.muted)
+        l:SetPoint("TOPLEFT", LX, y)
+        return l
+    end
+
+    -- 1) GOAL — build a group (LFM) vs find one (LFG).
+    StepLabel(L("AP_GOAL_LABEL"), -46)
+    ap.roleBuildBtn = UIElements.CreateButton(panel, L("AP_ROLE_BUILD"), 176, 26, P.teal)
+    ap.roleBuildBtn:SetPoint("TOPLEFT", CX, -42)
     ap.roleBuildBtn:SetScript("OnClick", function()
         partyLens.db.autopilot.role = "build"
         UpdateAutopilotRole(partyLens)
         UIMain.RefreshAutopilot(partyLens)
     end)
-    ap.roleFindBtn = UIElements.CreateButton(panel, L("AP_ROLE_FIND"), 290, 30, P.gold)
-    ap.roleFindBtn:SetPoint("LEFT", ap.roleBuildBtn, "RIGHT", 8, 0)
+    ap.roleFindBtn = UIElements.CreateButton(panel, L("AP_ROLE_FIND"), 176, 26, P.gold)
+    ap.roleFindBtn:SetPoint("LEFT", ap.roleBuildBtn, "RIGHT", 6, 0)
     ap.roleFindBtn:SetScript("OnClick", function()
         partyLens.db.autopilot.role = "find"
         UpdateAutopilotRole(partyLens)
         UIMain.RefreshAutopilot(partyLens)
     end)
 
-    -- ---- Content card -----------------------------------------------------
-    local contentCard = Card(panel, L("AP_CONTENT_LABEL"), -78, 64)
+    -- 2) CONTENT — dungeon / raid / any + a specific activity.
+    StepLabel(L("AP_CONTENT_LABEL"), -84)
     ap.contentBtns = {}
     local contentOrder = {
-        { key = "dungeon", labelKey = "TAB_DUNGEONS", color = P.teal, width = 92 },
-        { key = "raid", labelKey = "TAB_RAIDS", color = P.blue, width = 72 },
-        { key = "any", labelKey = "FILTER_ALL", color = P.purple, width = 56 },
+        { key = "dungeon", labelKey = "TAB_DUNGEONS", color = P.teal, width = 84 },
+        { key = "raid", labelKey = "TAB_RAIDS", color = P.blue, width = 64 },
+        { key = "any", labelKey = "FILTER_ALL", color = P.purple, width = 52 },
     }
     local prevContent
     for _, c in ipairs(contentOrder) do
-        local btn = UIElements.CreateButton(contentCard, L(c.labelKey), c.width, 28, c.color)
+        local btn = UIElements.CreateButton(panel, L(c.labelKey), c.width, 26, c.color)
         if prevContent then
             btn:SetPoint("LEFT", prevContent, "RIGHT", 6, 0)
         else
-            btn:SetPoint("TOPLEFT", 12, -26)
+            btn:SetPoint("TOPLEFT", CX, -80)
         end
         local key = c.key
         btn:SetScript("OnClick", function()
@@ -1096,19 +1131,20 @@ local function CreateAutopilotPanel(partyLens, host)
                     ApplyComp(partyLens, ComfortableComp(25))
                 end
             end
+            UIMain.RefreshAutopilot(partyLens)
         end)
         ap.contentBtns[c.key] = btn
         prevContent = btn
     end
 
-    local activityDropdown = UIElements.CreateDropdown(contentCard, 340, 28, P.purple)
+    local activityDropdown = UIElements.CreateDropdown(panel, 200, 26, P.purple)
     ap.activityDropdown = activityDropdown
     activityDropdown.placeholder = L("AP_ANY_ACTIVITY")
     activityDropdown.searchPlaceholder = L("SEARCH_ACTIVITY")
     activityDropdown.levelShort = L("LEVEL_SHORT")
     activityDropdown:EnableSearch(true)
-    activityDropdown:SetPoint("TOPLEFT", 260, -26)
-    activityDropdown:SetPoint("RIGHT", -12, 0)
+    activityDropdown:SetPoint("LEFT", prevContent, "RIGHT", 10, 0)
+    activityDropdown:SetPoint("RIGHT", -PAD, 0)
     activityDropdown.onSelect = function(value)
         if value == "__retry__" then
             LFGTool.RequestActivities()
@@ -1117,6 +1153,7 @@ local function CreateAutopilotPanel(partyLens, host)
         elseif value == "__any__" then
             partyLens.db.autopilot.activityFilter = ""
             partyLens.db.autopilot.activityID = nil
+            UIMain.RefreshAutopilot(partyLens)
             return
         end
         partyLens.db.autopilot.activityID = tonumber(value)
@@ -1134,17 +1171,16 @@ local function CreateAutopilotPanel(partyLens, host)
         if maxp and partyLens.db.autopilot.role == "build" and not CompActive(partyLens) then
             ApplyComp(partyLens, ComfortableComp(maxp))
         end
+        UIMain.RefreshAutopilot(partyLens)
     end
 
-    -- ---- Role card (composition for build / role for find) ----------------
-    local roleCard = Card(panel, L("AP_NEEDS_LABEL"), -152, 92)
-    ap.roleSection = roleCard.title
-
-    -- Build box fills the role card below its title.
-    local buildBox = CreateFrame("Frame", nil, roleCard)
+    -- 3) WHO — contextual: for BUILD, the comp to recruit; for FIND, your role(s).
+    -- The label swaps (Recruit / Your role) in UpdateAutopilotRole.
+    ap.roleSection = StepLabel("", -126)
+    local buildBox = CreateFrame("Frame", nil, panel)
     ap.buildBox = buildBox
-    buildBox:SetPoint("TOPLEFT", 12, -26)
-    buildBox:SetPoint("TOPRIGHT", -12, -26)
+    buildBox:SetPoint("TOPLEFT", CX, -122)
+    buildBox:SetPoint("RIGHT", -PAD, 0)
     buildBox:SetHeight(58)
 
     -- Row 1: composition editor (opens the class/spec popup) + derived need
@@ -1184,11 +1220,11 @@ local function CreateAutopilotPanel(partyLens, host)
         partyLens.db.autopilot.autoAnnounce = check:GetChecked()
     end)
 
-    -- Find box fills the role card below its title.
-    local findBox = CreateFrame("Frame", nil, roleCard)
+    -- Find box occupies the same WHO slot (only one of build/find is shown at a time).
+    local findBox = CreateFrame("Frame", nil, panel)
     ap.findBox = findBox
-    findBox:SetPoint("TOPLEFT", 12, -26)
-    findBox:SetPoint("TOPRIGHT", -12, -26)
+    findBox:SetPoint("TOPLEFT", CX, -122)
+    findBox:SetPoint("RIGHT", -PAD, 0)
     findBox:SetHeight(58)
 
     -- The roles the player answers for come from their spec(s) — the same picker
@@ -1213,8 +1249,9 @@ local function CreateAutopilotPanel(partyLens, host)
         partyLens.db.autopilot.findStrict = check:GetChecked()
     end)
 
-    -- ---- Automation card (tier + safety) ----------------------------------
-    local autoCard = Card(panel, L("AP_TIER_LABEL"), -254, 64)
+    -- 4) AUTOMATION — how much it does on its own, with a plain-language description
+    -- of the selected level (set by UpdateAutopilotTier).
+    StepLabel(L("AP_TIER_LABEL"), -172)
     ap.tierBtns = {}
     local tierOrder = {
         { key = "advisor", labelKey = "AP_TIER_ADVISOR", color = P.blue },
@@ -1223,76 +1260,97 @@ local function CreateAutopilotPanel(partyLens, host)
     }
     local prevTier
     for _, t in ipairs(tierOrder) do
-        local btn = UIElements.CreateButton(autoCard, L(t.labelKey), 108, 28, t.color)
+        local btn = UIElements.CreateButton(panel, L(t.labelKey), 100, 26, t.color)
         if prevTier then
             btn:SetPoint("LEFT", prevTier, "RIGHT", 6, 0)
         else
-            btn:SetPoint("TOPLEFT", 12, -26)
+            btn:SetPoint("TOPLEFT", CX, -168)
         end
         local key = t.key
         btn:SetScript("OnClick", function()
             partyLens.db.autopilot.tier = key
             UpdateAutopilotTier(partyLens)
+            UIMain.RefreshAutopilot(partyLens)
         end)
         ap.tierBtns[t.key] = btn
         prevTier = btn
     end
+    ap.tierDesc = UIElements.CreateLabel(panel, "", 10, P.muted)
+    ap.tierDesc:SetPoint("TOPLEFT", CX, -198)
+    ap.tierDesc:SetPoint("RIGHT", -PAD, 0)
+    ap.tierDesc:SetJustifyH("LEFT")
 
-    -- Safety inputs share the card's top line (right side).
-    local cdLabel = UIElements.CreateLabel(autoCard, L("AP_COOLDOWN_LABEL"), 9, P.muted)
-    cdLabel:SetPoint("TOPLEFT", 372, -10)
-    local cdBox, cdShell = UIElements.CreateEditBox(autoCard, "PartyLensAPCooldown", 46, 28)
-    cdShell:SetPoint("TOPLEFT", 372, -26)
+    -- ADVANCED — collapsed by default (progressive disclosure): the safety knobs.
+    ap.advToggle = UIElements.CreateButton(panel, L("AP_ADVANCED"), 128, 22, P.blue)
+    ap.advToggle:SetPoint("TOPLEFT", PAD, -226)
+    ap.advToggle:SetScript("OnClick", function()
+        partyLens.db.autopilot.advOpen = not partyLens.db.autopilot.advOpen
+        LayoutAP(partyLens)
+    end)
+    local advBox = CreateFrame("Frame", nil, panel)
+    ap.advBox = advBox
+    advBox:SetPoint("TOPLEFT", PAD, -252)
+    advBox:SetPoint("RIGHT", -PAD, 0)
+    advBox:SetHeight(30)
+    local cdLabel = UIElements.CreateLabel(advBox, L("AP_COOLDOWN_LABEL"), 9, P.muted)
+    cdLabel:SetPoint("LEFT", 4, 0)
+    local cdBox, cdShell = UIElements.CreateEditBox(advBox, "PartyLensAPCooldown", 46, 26)
+    cdShell:SetPoint("LEFT", cdLabel, "RIGHT", 8, 0)
     cdBox:SetText(tostring(partyLens.db.autopilot.whisperCooldown or 20))
     cdBox:SetScript("OnTextChanged", function(editBox) SaveAutopilotNumber(editBox, "whisperCooldown", partyLens, 5) end)
-
-    local ilvlLabel = UIElements.CreateLabel(autoCard, L("LISTING_ILVL_LABEL"), 9, P.muted)
-    ilvlLabel:SetPoint("TOPLEFT", 470, -10)
-    local ilvlBox, ilvlShell = UIElements.CreateEditBox(autoCard, "PartyLensAPIlvl", 46, 28)
-    ilvlShell:SetPoint("TOPLEFT", 470, -26)
+    local ilvlLabel = UIElements.CreateLabel(advBox, L("LISTING_ILVL_LABEL"), 9, P.muted)
+    ilvlLabel:SetPoint("LEFT", cdShell, "RIGHT", 22, 0)
+    local ilvlBox, ilvlShell = UIElements.CreateEditBox(advBox, "PartyLensAPIlvl", 46, 26)
+    ilvlShell:SetPoint("LEFT", ilvlLabel, "RIGHT", 8, 0)
     ilvlBox:SetText(tostring(partyLens.db.autopilot.minIlvl or 0))
     ilvlBox:SetScript("OnTextChanged", function(editBox) SaveAutopilotNumber(editBox, "minIlvl", partyLens, 0) end)
+    advBox:Hide()
 
-    -- ---- Arm / GO / status ------------------------------------------------
-    ap.armBtn = UIElements.CreateButton(panel, L("AP_ARM"), 220, 34, P.teal)
-    ap.armBtn:SetPoint("TOPLEFT", PAD, -330)
+    -- ---- Lower group: plain-language summary -> prominent Arm/GO/status -> live
+    -- operations (roster / need / summon) -> activity log. All positioned by LayoutAP
+    -- so it shifts down cleanly when Advanced expands. ----------------------------------
+    ap.summary = UIElements.CreateLabel(panel, "", 11, P.gold)
+    ap.summary:SetPoint("TOPLEFT", PAD, -258)
+    ap.summary:SetPoint("RIGHT", -PAD, 0)
+    ap.summary:SetJustifyH("LEFT")
+
+    ap.armBtn = UIElements.CreateButton(panel, L("AP_ARM"), 210, 36, P.teal)
+    ap.armBtn:SetPoint("TOPLEFT", PAD, -280)
     ap.armBtn:SetScript("OnClick", function()
         Autopilot.Toggle(partyLens)
         UIMain.RefreshAutopilot(partyLens)
     end)
-
-    ap.goBtn = UIElements.CreateButton(panel, L("AP_GO"), 70, 34, P.gold)
+    ap.goBtn = UIElements.CreateButton(panel, L("AP_GO"), 60, 36, P.gold)
     ap.goBtn:SetPoint("LEFT", ap.armBtn, "RIGHT", 8, 0)
     ap.goBtn:SetScript("OnClick", function() Autopilot.PressGo(partyLens) end)
     ap.goBtn:Hide()
-
     ap.statusLabel = UIElements.CreateLabel(panel, "", 12, P.text)
     ap.statusLabel:SetPoint("LEFT", ap.goBtn, "RIGHT", 12, 0)
     ap.statusLabel:SetPoint("RIGHT", -PAD, 0)
     ap.statusLabel:SetJustifyH("LEFT")
 
-    -- ---- Ready to summon --------------------------------------------------
-    ap.announceBtn = UIElements.CreateButton(panel, L("AP_ANNOUNCE_BTN"), 104, 26, P.gold)
-    ap.announceBtn:SetPoint("TOPRIGHT", -PAD, -374)
+    ap.opsHeader = UIElements.CreateLabel(panel, L("AP_SUMMON_SECTION"), 10, P.muted)
+    ap.opsHeader:SetPoint("TOPLEFT", PAD, -330)
+    ap.announceBtn = UIElements.CreateButton(panel, L("AP_ANNOUNCE_BTN"), 104, 24, P.gold)
+    ap.announceBtn:SetPoint("RIGHT", -PAD, 0)
+    ap.announceBtn:SetPoint("TOP", ap.opsHeader, "TOP", 0, 6)
     ap.announceBtn:SetScript("OnClick", function() Autopilot.AnnounceReady(partyLens) end)
 
-    Section(panel, L("AP_SUMMON_SECTION"), PAD, -380, 400)
     ap.rosterLabel = UIElements.CreateLabel(panel, "", 11, P.text)
-    ap.rosterLabel:SetPoint("TOPLEFT", PAD, -400)
+    ap.rosterLabel:SetPoint("TOPLEFT", PAD, -350)
     ap.rosterLabel:SetPoint("RIGHT", -PAD, 0)
     ap.rosterLabel:SetJustifyH("LEFT")
-
     ap.needLabel = UIElements.CreateLabel(panel, "", 11, P.gold)
-    ap.needLabel:SetPoint("TOPLEFT", PAD, -418)
+    ap.needLabel:SetPoint("TOPLEFT", PAD, -368)
     ap.needLabel:SetPoint("RIGHT", -PAD, 0)
     ap.needLabel:SetJustifyH("LEFT")
 
-    -- ---- Activity log -----------------------------------------------------
-    Section(panel, L("AP_LOG_TITLE"), PAD, -442)
+    ap.logHeader = UIElements.CreateLabel(panel, L("AP_LOG_TITLE"), 10, P.muted)
+    ap.logHeader:SetPoint("TOPLEFT", PAD, -392)
     ap.logLines = {}
     for i = 1, 5 do
         local line = UIElements.CreateLabel(panel, "", 10, P.faint)
-        line:SetPoint("TOPLEFT", PAD, -462 - (i - 1) * 14)
+        line:SetPoint("TOPLEFT", PAD, -412 - (i - 1) * 14)
         line:SetPoint("RIGHT", -PAD, 0)
         line:SetJustifyH("LEFT")
         line:Hide()
@@ -1304,6 +1362,7 @@ local function CreateAutopilotPanel(partyLens, host)
     UpdateAutopilotRole(partyLens)
     UpdateAutopilotTier(partyLens)
     UpdateAutopilotContent(partyLens)
+    LayoutAP(partyLens)
     UIMain.RefreshAutopilotActivities(partyLens, true)
     UIMain.RefreshComp(partyLens)
     -- Re-sync the spec pickers now that the find-box picker exists too.
@@ -1601,6 +1660,22 @@ function UIMain.RefreshAutopilot(partyLens)
 
     local state = armed and ((rt and rt.state) or "searching") or "idle"
     ap.statusLabel:SetText(L("AP_STATE_LABEL") .. ": " .. L(AP_STATE_LABEL[state] or "AP_STATUS_IDLE"))
+
+    -- Plain-language preview of what arming will do (so the config reads as a sentence).
+    if ap.summary then
+        local tierKey = { advisor = "AP_TIER_ADVISOR", assisted = "AP_TIER_ASSISTED", full = "AP_TIER_FULL" }
+        local tierLabel = L(tierKey[cfg.tier] or "AP_TIER_ASSISTED")
+        local contentLabel = (cfg.activityFilter and cfg.activityFilter ~= "" and cfg.activityFilter)
+            or L(cfg.activityType == "raid" and "TAB_RAIDS"
+                or cfg.activityType == "any" and "FILTER_ALL" or "TAB_DUNGEONS")
+        if cfg.role == "build" then
+            ap.summary:SetText(L("AP_SUMMARY_BUILD", contentLabel, tierLabel, cfg.inviteKeyword or "inv"))
+        else
+            local rolesText = (UIMain.RolesText and UIMain.RolesText(partyLens)) or ""
+            if rolesText == "" then rolesText = "dps" end
+            ap.summary:SetText(L("AP_SUMMARY_FIND", contentLabel, rolesText, tierLabel))
+        end
+    end
 
     if rt and rt.pendingAction then
         ap.goBtn:Show()

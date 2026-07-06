@@ -5,6 +5,23 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.32.0]
+
+Redesenho completo da tela de Autopilot — muito mais legível e num fluxo claro.
+
+- **Fluxo em passos** com rótulos à esquerda + controles à direita, de cima pra baixo:
+  **Goal → Content → Who → Automation** — em vez da pilha de cards solta de antes.
+- **Descrição de automação**: ao escolher Advisor/Assisted/Full, uma linha explica em
+  português claro o que aquele nível faz (chega de adivinhar o que "tier" significa).
+- **Resumo do que vai acontecer**: uma frase (ex: "Montar Karazhan · Full auto · convite
+  no 'inv'") aparece logo acima do botão, então dá pra conferir antes de armar.
+- **Ação principal em destaque**: botão **Arm** maior, com o status e o GO ao lado.
+- **Avançado recolhido** (progressive disclosure): cooldown de whisper e ilvl mínimo ficam
+  num "Advanced" fechado por padrão — não poluem mais a tela principal.
+- **Operações** (party, need, summon, log) reorganizadas embaixo, alinhadas. Baseado em
+  padrões de group-finder/automação pesquisados (essencial-primeiro, não-wizard pra config
+  inter-relacionada). Só reorganização visual — todas as funções e ajustes são os mesmos.
+
 ## [0.31.0]
 
 Contador de players nos chips de layer mais sutil + tooltip explicando.
