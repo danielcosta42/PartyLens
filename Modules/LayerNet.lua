@@ -753,11 +753,14 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, dist, sender)
             end
         end
     elseif kind == "W" then
-        -- World-boss sighting: W|mapID|bossZoneUID|npcID|hp. The boss's zoneUID was
-        -- already merged above, so its layer can be numbered in our frame.
+        -- Sighting: W|mapID|zoneUID|npcID|hp|name. Its zoneUID was already merged above,
+        -- so its layer can be numbered in our frame. `name` (f7, optional) lets a
+        -- crowd-sourced flag of a NON-catalog creature show up; older senders omit it.
         local WB = _G[ADDON_NAME .. "_WorldBoss"]
         if WB and WB.OnMeshSighting then
-            WB.OnMeshSighting(partyLens, mapID, zoneUID, tonumber(f5), tonumber(f6), Utils.PlayerShortName(sender))
+            local nm = (f7 and f7 ~= "") and f7 or nil
+            WB.OnMeshSighting(partyLens, mapID, zoneUID, tonumber(f5), tonumber(f6),
+                Utils.PlayerShortName(sender), nm)
         end
     elseif kind == "V" or kind == "VD" then
         -- Reputation: V|targetName (one vouch) or VD|name1,name2,... (voter's digest).

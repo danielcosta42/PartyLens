@@ -374,6 +374,10 @@ function PartyLens:OnAddonLoaded(name)
             UIMain.CreateMainUI(self)
             self.frame:Show()
             UIMain.SetMode(self, "radar")
+        elseif msg == "flag" then
+            -- "/partylens flag" — crowd-source: put my current target (any rare/boss/event
+            -- mob) on the realm live feed with its name + layer.
+            if WorldBoss and WorldBoss.FlagTarget then WorldBoss.FlagTarget(self) end
         elseif msg == "network" or msg == "net" then
             UIMain.CreateMainUI(self)
             self.frame:Show()

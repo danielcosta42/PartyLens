@@ -5,6 +5,24 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.26.0]
+
+Feed de eventos ao vivo do realm — o radar de world boss vira um mural de "o que tá
+rolando agora", crowd-sourced.
+
+- **Sinalizar alvo** (`Flag target` no radar + `/partylens flag`): mira QUALQUER criatura
+  — rare, boss, mob de evento/invasão — e joga no feed do realm com o **nome** dela, a
+  layer e um hop de um toque. Antes só 3 npcIDs fixos do catálogo eram detectados; agora
+  qualquer coisa que alguém aponte aparece pra todo mundo.
+- O nome do avistamento agora viaja na malha (7º campo do `W`), então criaturas fora do
+  catálogo aparecem certinho pra quem recebe. Retrocompatível: clientes antigos ignoram o
+  nome e seguem vendo os do catálogo; novos veem tudo.
+- Avistamentos flagados aparecem em **teal** no radar (world boss = dourado, elite/rare =
+  coral), com botões de Hop e Gritar iguais.
+- Só **world boss** dispara o som alto (RaidWarning) — elites e flags ganham só a linha de
+  chat, pra um flag aleatório não estourar o alto-falante de todo mundo.
+- Contido no WorldBoss/LayerNet/UI; a lib compartilhada não mudou.
+
 ## [0.25.0]
 
 Recomendador de layer mais vazia — pra farmar/quest com menos concorrência.

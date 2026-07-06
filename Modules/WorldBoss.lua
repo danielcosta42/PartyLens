@@ -55,34 +55,51 @@ function WorldBoss.Refresh(partyLens)
     end
 end
 
--- Record a sighting (local or from the mesh) and alert if it's newly up.
+-- Record a sighting (local or from the mesh) and alert if it's newly up. A creature in
+-- the CATALOG is auto-recognised (kind boss/elite); anything else is accepted only when a
+-- NAME is supplied — a crowd-sourced "flag" (kind "flag"), so any rare/boss/event a user
+-- points at can populate the realm feed without a hardcoded npcID.
 local function Record(partyLens, npcID, mapID, zoneUID, hp, spotter, name)
-    local cat = WorldBoss.CATALOG[npcID]
-    if not cat then
+    if not npcID then
         return
     end
     local rt = RT(partyLens)
-    if mapID and zoneUID and mapID > 0 and zoneUID > 0 then
-        Layer.MergeSeen(partyLens, mapID, { zoneUID }) -- so the boss's layer can be numbered
-    end
+    local cat = WorldBoss.CATALOG[npcID]
     local prev = rt.sightings[npcID]
+    local kind, dispName
+    if cat then
+        kind = cat.kind
+        dispName = (name and name ~= "" and name) or (prev and prev.name) or cat.name
+    elseif name and name ~= "" then
+        kind = "flag" -- crowd-sourced sighting of a non-catalog creature/event
+        dispName = name
+    elseif prev then
+        kind, dispName = prev.kind, prev.name -- re-heard, no name this time: keep what we had
+    else
+        return -- unknown creature and nothing to show
+    end
+    if mapID and zoneUID and mapID > 0 and zoneUID > 0 then
+        Layer.MergeSeen(partyLens, mapID, { zoneUID }) -- so the sighting's layer can be numbered
+    end
     local isNew = not prev or (time() - (prev.t or 0)) > WorldBoss.SIGHTING_TTL
     rt.sightings[npcID] = {
         npcID = npcID,
-        name = (name and name ~= "" and name) or (prev and prev.name) or cat.name,
-        kind = cat.kind,
+        name = dispName,
+        kind = kind,
         mapID = mapID,
         zoneUID = zoneUID,
         hp = hp,
         t = time(),
         spotter = spotter,
     }
-    -- Chat + sound alert, throttled, on a genuinely fresh sighting.
+    -- Chat + sound alert, throttled, on a genuinely fresh sighting. Only a world BOSS
+    -- earns the loud RaidWarning (a realm rally); elites and crowd-sourced flags get just
+    -- the chat line, so a random flag can't blast everyone's speakers.
     if isNew and (time() - (rt.lastAlert[npcID] or 0)) >= WorldBoss.ALERT_COOLDOWN then
         rt.lastAlert[npcID] = time()
         local ord = Ordinal(partyLens, mapID, zoneUID)
         Utils.Print(L("WB_ALERT", rt.sightings[npcID].name, ord or "?"))
-        if PlaySound then
+        if PlaySound and kind == "boss" then
             pcall(PlaySound, 8959) -- RaidWarning
         end
     end
@@ -117,25 +134,60 @@ function WorldBoss.Observe(partyLens, unit)
     end
     Record(partyLens, npcID, mapID, zoneUID, hp, Utils.PlayerShortName(UnitName("player") or ""), UnitName(unit))
 
-    -- Share it with the mesh (throttled) so the whole network learns where it is.
+    -- Share it with the mesh (throttled) so the whole network learns where it is. The
+    -- live name rides as the 7th field (older clients ignore it; catalog gives the name).
     local rt = RT(partyLens)
     if (time() - (rt.lastCast[npcID] or 0)) >= WorldBoss.BROADCAST_THROTTLE then
         rt.lastCast[npcID] = time()
-        local ln = LN()
-        if ln and ln.Broadcast and mapID and zoneUID and mapID > 0 and zoneUID > 0 then
-            ln.Broadcast(table.concat({
-                ln.NET_PROTO, "W", tostring(mapID), tostring(zoneUID), tostring(npcID), tostring(hp),
-            }, "|"), "W:" .. npcID) -- realm-wide too, coalesced per boss (latest sighting)
-        end
+        WorldBoss.Cast(partyLens, npcID, mapID, zoneUID, hp, UnitName(unit))
     end
 end
 
--- A sighting heard from another PartyLens user over the mesh.
-function WorldBoss.OnMeshSighting(partyLens, mapID, zoneUID, npcID, hp, spotter)
-    if not npcID or not WorldBoss.CATALOG[npcID] then
+-- Broadcast a sighting to the mesh: W|mapID|zoneUID|npcID|hp|name (name = 7th field, so
+-- a crowd-sourced flag of a non-catalog creature shows for everyone; older clients that
+-- only know the catalog simply ignore names they can't place).
+function WorldBoss.Cast(partyLens, npcID, mapID, zoneUID, hp, name)
+    local ln = LN()
+    if ln and ln.Broadcast and mapID and zoneUID and mapID > 0 and zoneUID > 0 then
+        ln.Broadcast(table.concat({
+            ln.NET_PROTO, "W", tostring(mapID), tostring(zoneUID), tostring(npcID),
+            tostring(hp or 0), (name and name ~= "" and name) or "",
+        }, "|"), "W:" .. npcID) -- realm-wide too, coalesced per creature (latest sighting)
+    end
+end
+
+-- Explicitly flag the player's current target as a live sighting and broadcast it WITH
+-- its name — so ANY creature/event (rare, boss, invasion mob) a user points at populates
+-- the realm feed, not just the hardcoded catalog. Call from a button / slash (hardware ok).
+function WorldBoss.FlagTarget(partyLens)
+    local unit = "target"
+    local npcID = (UnitExists(unit) and not UnitIsPlayer(unit) and Layer.NpcIDFromUnit)
+        and Layer.NpcIDFromUnit(unit) or nil
+    local name = UnitExists(unit) and UnitName(unit) or nil
+    if not npcID or not name or name == "" then
+        Utils.Print(L("WB_FLAG_NOTARGET"))
         return
     end
-    Record(partyLens, npcID, mapID, zoneUID, hp, spotter, nil)
+    local zoneUID = Layer.ZoneUIDFromUnit(unit)
+    local mapID = Layer.CurrentMap()
+    local hp = 0
+    if UnitHealthMax then
+        local mx = UnitHealthMax(unit) or 0
+        if mx > 0 then
+            hp = math.floor((UnitHealth(unit) or 0) / mx * 100 + 0.5)
+        end
+    end
+    Record(partyLens, npcID, mapID, zoneUID, hp, Utils.PlayerShortName(UnitName("player") or ""), name)
+    RT(partyLens).lastCast[npcID] = time()
+    WorldBoss.Cast(partyLens, npcID, mapID, zoneUID, hp, name)
+    Utils.Print(L("WB_FLAG_DONE", name, Ordinal(partyLens, mapID, zoneUID) or "?"))
+    WorldBoss.Refresh(partyLens)
+end
+
+-- A sighting heard from another PartyLens user over the mesh. `name` (may be nil for old
+-- catalog-only senders) lets non-catalog crowd-sourced flags show up.
+function WorldBoss.OnMeshSighting(partyLens, mapID, zoneUID, npcID, hp, spotter, name)
+    Record(partyLens, npcID, mapID, zoneUID, hp, spotter, name)
 end
 
 -- Active sightings, newest first (for the UI), each with its ordinal in OUR frame.

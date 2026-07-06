@@ -2312,8 +2312,15 @@ local function CreateRadarPanel(partyLens, host)
 
     local hint = UIElements.CreateLabel(panel, L("WB_HINT"), 10, P.muted)
     hint:SetPoint("TOPLEFT", PAD, -PAD)
-    hint:SetPoint("RIGHT", -PAD, 0)
+    hint:SetPoint("RIGHT", -110, 0)
     hint:SetJustifyH("LEFT")
+
+    -- Crowd-source: flag whatever I'm targeting (rare, boss, invasion) to the realm feed.
+    rd.flagBtn = UIElements.CreateButton(panel, L("WB_FLAG"), 96, 22, P.teal)
+    rd.flagBtn:SetPoint("TOPRIGHT", -PAD, -PAD + 2)
+    rd.flagBtn:SetScript("OnClick", function()
+        if WorldBoss and WorldBoss.FlagTarget then WorldBoss.FlagTarget(partyLens) end
+    end)
 
     Section(panel, L("WB_ACTIVE"), PAD, -46)
 
@@ -2359,7 +2366,9 @@ function UIMain.RefreshRadar(partyLens)
         local s = list[i]
         if s then
             card.sighting = s
-            local c = (s.kind == "boss") and P.gold or P.coral
+            local c = (s.kind == "boss") and P.gold
+                or (s.kind == "flag") and P.teal -- crowd-sourced flag
+                or P.coral                        -- elite / rare
             card.name:SetTextColor(c[1], c[2], c[3], 1)
             card.name:SetText(s.name)
             local hp = (s.hp and s.hp > 0) and (s.hp .. "%") or "?"
