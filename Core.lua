@@ -372,6 +372,22 @@ function PartyLens:OnAddonLoaded(name)
             self.db.layer.hopdebug = not self.db.layer.hopdebug
             Utils.Print("PartyLens hop debug: " .. (self.db.layer.hopdebug and "|cff66ff66ON|r" or "|cffff5555OFF|r")
                 .. " (watch the Layer Net activity log)")
+        elseif msg == "layerdebug" then
+            -- One-shot dump of what PartyLens vs NWB think the current layer is — so a
+            -- "PL shows L1, NWB shows L5" divergence is diagnosable (NWB found? current
+            -- num? does NWB know our zoneUID?).
+            local cur = Layer.Current(self)
+            local nwbNum, nwbZone = Layer.NWBCurrent()
+            local nwbKnows = cur.zoneUID and Layer.NWBNumber(cur.zoneUID) or nil
+            Utils.Print("|cff88ccffPartyLens layer debug|r")
+            Utils.Print(("  our: |cffffd100L%s|r  zoneUID=%s  map=%s  of %s")
+                :format(tostring(cur.ordinal), tostring(cur.zoneUID), tostring(cur.mapID), tostring(cur.count)))
+            Utils.Print(("  NWB installed: %s   NWB current: |cffffd100L%s|r  zone=%s")
+                :format(Layer.HasNWB() and "|cff66ff66yes|r" or "|cffff5555NO (standalone numbering)|r",
+                    tostring(nwbNum), tostring(nwbZone)))
+            Utils.Print(("  NWB.GetLayerNum(ourZoneUID) = %s  %s")
+                :format(tostring(nwbKnows),
+                    nwbKnows and "" or "|cffff5555(our zoneUID not in NWB's validated set)|r"))
         else
             self:Toggle()
         end

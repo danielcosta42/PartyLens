@@ -5,6 +5,31 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.23.1]
+
+Conserta a numeração de layer voltar a divergir do NWB (mostrava "Layer 1" enquanto o
+NWB mostrava "Layer 5").
+
+- **Causa**: nosso número de layer era calculado como `NWB:GetLayerNum(nossoZoneUID)` —
+  ou seja, dependia de o NWB ter EXATAMENTE o zoneUID que a gente detectou no set validado
+  dele. Mas o PartyLens colhe o zoneUID de QUALQUER criatura, enquanto o NWB só valida
+  NPCs de cidade; quando a nossa leitura vinha de uma criatura que o NWB filtra (ou de uma
+  leitura antiga), o `GetLayerNum` devolvia 0 e a gente caía no nosso próprio índice
+  ("Layer 1"), sem bater com o número que o jogador vê no NWB.
+- **Correção**: para a MINHA layer atual, agora deferimos direto ao `getCurrentLayerNum()`
+  do NWB — o número idêntico ao do minimapa do NWB, vindo do set validado dele — e
+  **prendemos** nossa identidade no zoneID exato do NWB (`getLayerZoneID`). Assim (a) o
+  display bate com o NWB, (b) nossas broadcasts do mesh carregam o mesmo zoneUID que um
+  usuário sem NWB leria do mesmo NPC validado (continuam casando), e (c) nossa numeração
+  não desliza mais para um zoneUID "lixo" de uma criatura fora-de-cidade. Sem NWB
+  instalado, nada muda (numeração standalone própria).
+- **Anti-thrash**: o harvest cru (`Record`) não sobrescreve mais a layer "atual" com um
+  zoneUID que discorde do NWB, então mirar nameplates numa cidade cheia não reseta o
+  "nesta layer há X min" a cada frame.
+- Novo diagnóstico **`/partylens layerdebug`**: dumpa o que o PartyLens vs o NWB acham da
+  layer atual (NWB instalado? número atual? o NWB conhece nosso zoneUID?) — pra diagnosticar
+  divergências na hora.
+
 ## [0.23.0]
 
 Gossip de presença agora é **multi-hop (anti-entropy)** — alcance realm-wide de verdade,

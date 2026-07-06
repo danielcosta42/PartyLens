@@ -103,6 +103,14 @@ local function Record(partyLens, mapID, zoneUID)
     if mapID ~= Layer.CurrentMap() then
         return false
     end
+    -- When NWB has an authoritative current-layer reading, it OWNS `currentZoneUID`
+    -- (Layer.Current latches it). Our raw harvest still fills the seen set above, but we
+    -- must NOT overwrite `current` with a possibly-junk zoneUID from a non-city creature
+    -- — that would fight the NWB latch and thrash `currentSince` on every nameplate.
+    local _, nwbZone = Layer.NWBCurrent()
+    if nwbZone and zoneUID ~= nwbZone then
+        return false
+    end
     local prevZone = layerDB.currentZoneUID
     layerDB.currentMap = mapID
     layerDB.currentZoneUID = zoneUID
@@ -171,6 +179,11 @@ local function GetNWB()
     return nil
 end
 
+-- Is NovaWorldBuffs installed and exposing the API we defer to? (diagnostics/UI hint)
+function Layer.HasNWB()
+    return GetNWB() ~= nil
+end
+
 -- NWB's layer number for a zoneUID (nil if NWB absent or it doesn't know it).
 function Layer.NWBNumber(zoneUID)
     local nwb = GetNWB()
@@ -182,6 +195,30 @@ function Layer.NWBNumber(zoneUID)
         return n
     end
     return nil
+end
+
+-- NWB's OWN reading of the layer the player is standing on RIGHT NOW: returns
+-- (layerNumber, zoneID) — the exact number shown on NWB's minimap plus that layer's
+-- zoneID. This is the authoritative source for MY current layer, because NWB derives
+-- it from its VALIDATED, realm-shared layer set (only real capital-city NPCs), whereas
+-- our own detection harvests from ANY creature and can latch onto a junk/stale zoneUID
+-- that isn't in NWB's set — which is exactly why `GetLayerNum(ourZoneUID)` was
+-- returning 0 and we fell back to our own "Layer 1". Returns nil when NWB is absent or
+-- hasn't resolved a layer yet (e.g. no city NPC targeted since the last zone change).
+function Layer.NWBCurrent()
+    local nwb = GetNWB()
+    if not nwb or not nwb.getCurrentLayerNum or not nwb.getLayerZoneID then
+        return nil
+    end
+    local ok, num = pcall(nwb.getCurrentLayerNum, nwb)
+    if not ok or type(num) ~= "number" or num <= 0 then
+        return nil
+    end
+    local ok2, zone = pcall(nwb.getLayerZoneID, nwb, num)
+    if ok2 and type(zone) == "number" and zone > 0 then
+        return num, zone
+    end
+    return num, nil
 end
 
 -- Ordinal (1-based) of a zoneUID — NWB's number when it knows this layer, else our
@@ -229,11 +266,25 @@ end
 function Layer.Current(partyLens)
     local layerDB = DB(partyLens)
     local mapID = layerDB.currentMap or Layer.CurrentMap()
+    -- Defer to NWB's OWN current-layer reading when it has one — it's the number the
+    -- player sees on NWB, from NWB's validated set — so we never disagree with NWB about
+    -- "which layer am I on". We also LATCH our identity onto NWB's exact zoneID so (a) our
+    -- mesh broadcasts carry the same zoneUID a non-NWB PartyLens user reads from the same
+    -- validated NPC (they still match), and (b) our numbering can't drift onto a junk
+    -- zoneUID harvested from a non-city creature NWB filters out (the "Layer 1" bug).
+    local nwbNum, nwbZone = Layer.NWBCurrent()
+    if nwbNum and nwbZone and layerDB.currentZoneUID ~= nwbZone then
+        layerDB.currentMap = mapID
+        layerDB.currentZoneUID = nwbZone
+        layerDB.seen[mapID] = layerDB.seen[mapID] or {}
+        layerDB.seen[mapID][nwbZone] = time()
+        layerDB.currentSince = time() -- real layer change: reset the "on this layer since"
+    end
     local zoneUID = layerDB.currentZoneUID
     return {
         mapID = mapID,
         zoneUID = zoneUID,
-        ordinal = Layer.OrdinalOf(partyLens, mapID, zoneUID),
+        ordinal = nwbNum or Layer.OrdinalOf(partyLens, mapID, zoneUID),
         count = Layer.CountOnMap(partyLens, mapID),
         since = layerDB.currentSince,
         isCapital = mapID == Layer.CAPITAL_MAP,
