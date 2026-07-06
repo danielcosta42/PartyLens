@@ -2091,6 +2091,27 @@ local function HopChip(ln, panel, i)
         chip.dot:SetPoint("TOPRIGHT", -3, -3)
         UIElements.SetTextureColor(chip.dot, P.teal)
         chip.dot:Hide()
+        -- Subtle player-count badge: a tiny, faint number in the bottom-right corner
+        -- (instead of inline "L1 2"), so the layer number stays the focus. What it means
+        -- is spelled out on hover.
+        chip.count = UIElements.CreateLabel(chip, "", 8, P.faint)
+        chip.count:ClearAllPoints()
+        chip.count:SetPoint("BOTTOMRIGHT", -3, 3)
+        chip.count:Hide()
+        -- Tooltip (hooked so the button's own hover effect still runs): explain that the
+        -- little number is how many mesh players we've heard on that layer.
+        chip:HookScript("OnEnter", function(self)
+            if self.tipPeers == nil then return end
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(self.tipTitle or "")
+            if self.tipPeers > 0 then
+                GameTooltip:AddLine(L("LAYER_CHIP_TIP_COUNT", self.tipPeers), 0.55, 0.60, 0.66, true)
+            else
+                GameTooltip:AddLine(L("LAYER_CHIP_TIP_EMPTY"), 0.45, 0.49, 0.54, true)
+            end
+            GameTooltip:Show()
+        end)
+        chip:HookScript("OnLeave", function() GameTooltip:Hide() end)
         ln.chipPool[i] = chip
     end
     return chip
@@ -2143,6 +2164,8 @@ local function RefreshHopChips(partyLens)
     idx = idx + 1
     local anyChip = HopChip(ln, panel, idx)
     anyChip.dot:Hide()
+    anyChip.count:Hide()
+    anyChip.tipPeers = nil -- no count tooltip on "Any"
     anyChip:SetText(L("LAYER_REQ_ANY"))
     anyChip.label:SetTextColor(P.text[1], P.text[2], P.text[3], 1)
     anyChip:SetScript("OnClick", function()
@@ -2160,10 +2183,18 @@ local function RefreshHopChips(partyLens)
         local peers = ly.nodes or 0
         local bZone, bMap = ly.beaconZoneUID, ly.beaconMapID
         local chip = HopChip(ln, panel, idx)
-        -- Live occupancy: how many PartyLens peers we've heard on this layer, so the
-        -- picker doubles as a "which layer is busy / quiet" map. Muted so the layer
-        -- number stays the focus.
-        chip:SetText(peers > 0 and ("L" .. ord .. "  |cff8a94a4" .. peers .. "|r") or ("L" .. ord))
+        -- Live occupancy: how many PartyLens peers we've heard on this layer, so the picker
+        -- doubles as a "which layer is busy / quiet" map. Shown as a tiny faint corner badge
+        -- (subtle — the layer number stays the focus); its meaning is on hover.
+        chip:SetText("L" .. ord)
+        if peers > 0 then
+            chip.count:SetText(peers)
+            chip.count:Show()
+        else
+            chip.count:Hide()
+        end
+        chip.tipPeers = peers
+        chip.tipTitle = L("LAYER_N", ord)
         chip:SetScript("OnClick", function()
             if not LayerNet then return end
             -- If a beacon is live on this layer, request its EXACT zoneUID (pin it) so
@@ -2191,7 +2222,7 @@ local function RefreshHopChips(partyLens)
             -- full opacity; only dim empty known-but-quiet layers.
             chip:SetAlpha((ly.hasBeacon or ly.isCurrent or isQuietest or peers > 0) and 1 or 0.5)
         end
-        place(chip, peers > 0 and 58 or 44)
+        place(chip, 44) -- uniform width now that the count is a corner badge, not inline
     end
 
     -- Park any leftover pooled chips.

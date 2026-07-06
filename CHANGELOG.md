@@ -5,6 +5,16 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.31.0]
+
+Contador de players nos chips de layer mais sutil + tooltip explicando.
+
+- O número de players na layer saiu de inline (`L1 2`) pra um **badge pequeno e apagado no
+  canto do chip** — o número da layer volta a ser o foco. Chips agora têm largura uniforme.
+- **Hover** em qualquer chip de layer mostra um tooltip: "Layer N" + "%d players ouvidos na
+  malha nesta layer" (ou "nenhum player ouvido nesta layer ainda") — deixa claro que aquele
+  número é a contagem de players.
+
 ## [0.30.3]
 
 O alerta agora é um banner discreto e persistente, não um popup gritante.
