@@ -5,6 +5,31 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.28.0]
+
+Reforço lógico da comunicação da rede — garante que você comece a VER as pessoas na
+malha, sem depender de sorte de layer. Foco no caminho que dá pra validar com a guilda
+(o bus GUILD do AceComm: confiável, não-probabilístico, cross-layer).
+
+- **Presença mesmo SEM layer detectada.** Antes, se você logasse e não mirasse nenhum NPC,
+  o addon não transmitia NADA — você ficava invisível pra rede até detectar sua layer.
+  Agora manda um ping "estou aqui" (zone 0) desde o início; o receptor já tolera isso
+  (não polui o conjunto de layers) e sobrescreve quando sua layer real chega. Guildmate
+  aparece como **online** na hora, mesmo antes de ter uma layer.
+- **Re-emissão imediata ao entrar no mundo** (`KickPresence`): no load, a guilda/canais
+  podem não estar prontos e o primeiro broadcast erra o bus GUILD; agora reforçamos uma
+  emissão assim que o mundo (e `IsInGuild`) está vivo — guildmates te veem em segundos, não
+  no próximo ciclo de 60s.
+- **Usuários idle também empurram presença ao trocar de layer** (não só beacons/requesters),
+  com throttle leve — sua ocupação de layer propaga na hora que você detecta/hopa, não em
+  até 60s.
+- **Diagnóstico `/partylens nodes`**: lista quem você está ouvindo na malha agora (online,
+  layer, beacon, direto/gossip) — a forma mais rápida de confirmar, testando com a guilda,
+  que a presença está chegando de verdade.
+- O gossip multi-hop agora pula nós sem layer (zone 0) no digest — não gasta bytes com
+  entradas que o receptor descartaria. Contido no LayerNet/Core; a lib compartilhada não
+  mudou.
+
 ## [0.27.0]
 
 Círculo — o grafo social da malha. Uma aba nova que mostra teu círculo pessoal e quem

@@ -404,6 +404,18 @@ function PartyLens:OnAddonLoaded(name)
             self.db.layer.hopdebug = not self.db.layer.hopdebug
             Utils.Print("PartyLens hop debug: " .. (self.db.layer.hopdebug and "|cff66ff66ON|r" or "|cffff5555OFF|r")
                 .. " (watch the Layer Net activity log)")
+        elseif msg == "nodes" then
+            -- List the mesh peers I've heard right now — the quickest check, during guild
+            -- testing, that presence is actually arriving over the network.
+            local nodes = (LayerNet.HeardNodes and LayerNet.HeardNodes(self)) or {}
+            Utils.Print(("|cff88ccffMesh peers heard: %d|r"):format(#nodes))
+            for _, n in ipairs(nodes) do
+                local where = n.beacon and ("|cff58d6b0beacon L" .. (n.ordinal or "?") .. "|r")
+                    or n.layerUnknown and "|cff8a94a4layer ?|r"
+                    or ("L" .. (n.ordinal or "?"))
+                local src = n.direct and "" or " |cff8a94a4(gossip)|r"
+                Utils.Print(("  %s - %s - %ds ago%s"):format(n.name or "?", where, n.ago or 0, src))
+            end
         elseif msg == "layerdebug" then
             -- One-shot dump of what PartyLens vs NWB think the current layer is — so a
             -- "PL shows L1, NWB shows L5" divergence is diagnosable (NWB found? current
@@ -436,6 +448,9 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
         -- Pre-load the group-finder activity catalog so the Create picker is
         -- populated by the time the player opens it.
         LFGTool.RequestActivities()
+        -- Push presence now that the world (guild roster / channels) is live, so
+        -- guildmates/peers see us within seconds instead of waiting for the cadence.
+        LayerNet.KickPresence(self)
         if UIMain.DetectAndApplySpec then
             UIMain.DetectAndApplySpec(self)
         end

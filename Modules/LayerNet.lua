@@ -509,22 +509,37 @@ local function ReqFromSpec(spec)
     return { any = false, exclude = exclude, layers = layers }
 end
 
--- Broadcast our current layer sighting to the mesh (presence + numbering sync +
--- occupancy). No-op until we've detected a zoneUID. Callers gate the cadence:
+-- Broadcast our presence to the mesh (presence + numbering sync + occupancy). We send
+-- EVEN BEFORE our layer is detected (zone 0) so guildmates/peers see we're online right
+-- away — the receiver tolerates 0/0 (OnAddonMessage won't merge it into the shared set,
+-- and it's overwritten the moment our real layer arrives). Callers gate the cadence:
 -- active participants (beacon/requester) chatter fast; idle users share slower.
 function LayerNet.BroadcastSighting(partyLens)
     local cur = Layer.Current(partyLens)
-    if not cur.zoneUID then
-        return
-    end
     local cfg = CFG(partyLens)
-    -- S|mapID|curZoneUID|beacon|<full sorted zoneUID set> — sharing the WHOLE set
-    -- (not just our current layer) is what actually makes numbering converge across
-    -- clients: everyone ends up with the union of active layers, so ordinals agree.
+    local mapID = cur.mapID or 0
+    local haveLayer = cur.zoneUID and cur.zoneUID > 0
+    -- S|mapID|curZoneUID|beacon|<full sorted zoneUID set> — sharing the WHOLE set (not
+    -- just our current layer) is what makes numbering converge across clients: everyone
+    -- ends up with the union of active layers, so ordinals agree. With no layer yet we
+    -- send 0/0 + an empty set (a pure "I'm here" ping), still delivered over guild/group/
+    -- proximity/realm so we're visible on the network before we've targeted an NPC.
     SendNet(table.concat({
-        LayerNet.NET_PROTO, "S", tostring(cur.mapID or 0), tostring(cur.zoneUID or 0),
-        cfg.beacon and "1" or "0", Layer.SeenCSV(partyLens, cur.mapID),
+        LayerNet.NET_PROTO, "S", tostring(mapID), tostring(haveLayer and cur.zoneUID or 0),
+        cfg.beacon and "1" or "0", (haveLayer and Layer.SeenCSV(partyLens, mapID)) or "",
     }, "|"), "S") -- realm-wide too (coalesced to my latest seen-set)
+end
+
+-- Force a prompt presence re-broadcast. Called on PLAYER_ENTERING_WORLD: at ADDON_LOADED
+-- the guild roster / LFG channel may not be live yet, so the very first login broadcast
+-- can miss the guild bus and leave us invisible until the next cadence tick (up to a full
+-- PRESENCE_INTERVAL). Zeroing lastSync makes the next 5s tick re-send once the world (and
+-- IsInGuild) is ready; an 8s follow-up covers a slow guild-roster load. Cheap and safe.
+function LayerNet.KickPresence(partyLens)
+    RT(partyLens).lastSync = 0
+    if C_Timer and C_Timer.After then
+        C_Timer.After(8, function() RT(partyLens).lastSync = 0 end)
+    end
 end
 
 -- Build the SD node digest: "SD|name:map:zone:beacon:age;..." of the nodes we know,
@@ -535,12 +550,14 @@ local function BuildNodeDigest(partyLens)
     local now = time()
     local list = {}
     for _, n in pairs(RT(partyLens).nodes) do
-        -- ALL known nodes — first-hand AND relayed — so data spreads MULTI-HOP
-        -- (anti-entropy gossip). Each entry carries the node's AGE; the age grows ~one
-        -- gossip cycle per relay, so an item dies once older than NODE_TTL. Combined
-        -- with "freshest wins" on receive, this can't loop forever.
-        if n.name and n.zoneUID and n.mapID and not SameAsPlayer(n.name)
-            and (now - (n.t or 0)) < LayerNet.NODE_TTL then
+        -- ALL known nodes with a REAL layer — first-hand AND relayed — so data spreads
+        -- MULTI-HOP (anti-entropy gossip). Each entry carries the node's AGE; the age
+        -- grows ~one gossip cycle per relay, so an item dies once older than NODE_TTL.
+        -- Combined with "freshest wins" on receive, this can't loop forever. Skip zone/
+        -- map 0 (a not-yet-detected presence ping): the SD receiver gates on >0 so those
+        -- would be dropped anyway — no sense spending digest bytes on them.
+        if n.name and n.zoneUID and n.zoneUID > 0 and n.mapID and n.mapID > 0
+            and not SameAsPlayer(n.name) and (now - (n.t or 0)) < LayerNet.NODE_TTL then
             list[#list + 1] = n
         end
     end
@@ -1475,15 +1492,40 @@ function LayerNet.NodeInfo(partyLens, name)
     end
     local ago = time() - (n.t or 0)
     local cur = Layer.Current(partyLens)
+    -- A peer can be heard with NO layer yet (zone 0 presence ping): report them as
+    -- online-but-layer-unknown (zoneUID/mapID/ordinal nil) so the UI shows "online" and
+    -- never offers a hop to layer 0.
+    local hasLayer = n.zoneUID and n.zoneUID > 0 and n.mapID and n.mapID > 0
     return {
         online = ago <= LayerNet.NODE_TTL,
         ago = ago,
-        zoneUID = n.zoneUID,
-        mapID = n.mapID,
-        ordinal = n.zoneUID and Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID) or nil,
+        zoneUID = hasLayer and n.zoneUID or nil,
+        mapID = hasLayer and n.mapID or nil,
+        ordinal = hasLayer and Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID) or nil,
         beacon = n.beacon and true or false,
-        sameLayer = (n.zoneUID and cur.zoneUID and n.zoneUID == cur.zoneUID) and true or false,
+        sameLayer = (hasLayer and cur.zoneUID and n.zoneUID == cur.zoneUID) and true or false,
     }
+end
+
+-- Every mesh peer we've currently heard, newest-heard first (for the `/partylens nodes`
+-- diagnostic — the fastest way to confirm, during guild testing, that presence is
+-- actually arriving). `layerUnknown` = heard but hasn't shared a layer yet (zone 0 ping).
+function LayerNet.HeardNodes(partyLens)
+    local out, now = {}, time()
+    for _, n in pairs(RT(partyLens).nodes) do
+        local hasLayer = n.zoneUID and n.zoneUID > 0 and n.mapID and n.mapID > 0
+        out[#out + 1] = {
+            name = n.name,
+            ago = now - (n.t or 0),
+            online = (now - (n.t or 0)) <= LayerNet.NODE_TTL,
+            ordinal = hasLayer and Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID) or nil,
+            layerUnknown = not hasLayer,
+            beacon = n.beacon and true or false,
+            direct = n.direct and true or false,
+        }
+    end
+    table.sort(out, function(a, b) return (a.ago or 0) < (b.ago or 0) end)
+    return out
 end
 
 -- Open requests seen on chat, newest first (for the UI list).
@@ -1547,7 +1589,14 @@ end
 function LayerNet.Observe(partyLens, unit)
     if Layer.Observe(partyLens, unit) then
         local rt = RT(partyLens)
-        if CFG(partyLens).beacon or rt.myRequest then
+        -- Push our new layer to the mesh RIGHT AWAY on a real change — for EVERYONE, not
+        -- just beacons/requesters — so idle users become visible (and the occupancy map
+        -- updates) the instant they detect/hop a layer, instead of waiting up to a full
+        -- PRESENCE_INTERVAL for the tick. A light TICK-sized throttle keeps a burst of
+        -- re-detection from spamming; opt-out (shareLayer=false) still honoured for idlers.
+        local active = CFG(partyLens).beacon or rt.myRequest
+        if (active or CFG(partyLens).shareLayer ~= false)
+            and (time() - (rt.lastSync or 0)) >= LayerNet.TICK then
             rt.lastSync = time()
             LayerNet.BroadcastSighting(partyLens)
         end
