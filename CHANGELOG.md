@@ -5,6 +5,24 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.30.0]
+
+Alertas de rede — o backoffice dispara um alerta e os addons de jogo mostram um popup na
+identidade de cada um, dismissável pra sempre.
+
+- **ChehulNet v4**: recebe o broadcast `ChehulAlert` e exibe um **popup** com o visual do
+  addon host (PartyLens = teal). Título, borda e barra superior na cor do addon; mostra de
+  quem veio + a mensagem.
+- **Um popup só por cliente**: cada addon se registra com uma prioridade (PartyLens 3 >
+  Guild OS 2 > Profession Helper 1), então com vários instalados aparece só um — no de maior
+  prioridade presente. Cada um traz sua identidade visual.
+- **Dismiss pra sempre**: o botão "Dismiss — don't show again" grava o id do alerta nas
+  SavedVariables (`db.alertDismissed`) e ele nunca mais aparece. O X fecha só desta vez (o
+  dedupe de sessão já evita repetição enquanto o alerta está sendo re-anunciado).
+- Dedupe por sessão (o alerta se re-transmite em loop pelo tempo configurado, mas o popup
+  aparece uma vez), ignora o próprio alerta, e degrada gracioso em rollout misto (`if
+  CN.EnableAlerts`). Arquivo `ChehulNet.lua` re-espelhado idêntico nos 3 addons.
+
 ## [0.29.0]
 
 Malha inteira layer-aware — agora sabemos a layer de QUALQUER usuário Chehul, não só do

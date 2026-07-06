@@ -18,6 +18,24 @@ CN.layerProvider = function()
     return 0, 0
 end
 
+-- Show network alerts in PartyLens's identity (teal). Highest priority in the family, so
+-- when PartyLens is installed it owns the alert popup. Forever-dismissed ids live in our
+-- SavedVariables (db.alertDismissed), resolved at call time (after SV load).
+if CN.EnableAlerts then
+    CN:EnableAlerts({
+        accent = { 0.150, 0.860, 0.720 },
+        title = "PartyLens",
+        priority = 3,
+        store = function()
+            local pl = _G.PartyLens
+            if pl and pl.db then
+                pl.db.alertDismissed = pl.db.alertDismissed or {}
+                return pl.db.alertDismissed
+            end
+        end,
+    })
+end
+
 CN:Register("pl", function()
     -- Advertise "looking for group" while the autopilot is armed, so crafter /
     -- guild peers know this PartyLens user is actively LFG.
