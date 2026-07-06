@@ -1455,6 +1455,22 @@ function LayerNet.KnownLayers(partyLens)
     return out
 end
 
+-- Fold a CROSS-ADDON peer (heard via the shared ChehulNet presence — e.g. a GuildOS or
+-- ProfessionHelper user who shared their layer in the CHN1 HELLO) into the node table, so
+-- they show on the occupancy map / node count / Circle just like a PartyLens peer. Non-
+-- beacon (they don't run our beacon), recorded first-hand. Called from ChehulNetWire's
+-- onPeer, which already filters OUT actual PL users (their own S records them, with the
+-- real beacon flag — folding here would clobber it with beacon=false).
+function LayerNet.RecordCrossAddonNode(partyLens, name, mapID, zoneUID)
+    if not name or name == "" or not mapID or not zoneUID
+        or mapID <= 0 or zoneUID <= 0 or SameAsPlayer(name) then
+        return
+    end
+    Layer.MergeSeen(partyLens, mapID, { zoneUID }) -- learn their layer's id for numbering
+    RecordNode(partyLens, name, mapID, zoneUID, false, "direct")
+    LayerNet.Refresh(partyLens)
+end
+
 -- The known layer with the FEWEST mesh peers on it (excluding the one I'm on) — a
 -- farming/questing hint: hop there for less competition. It is a SAMPLE (only PartyLens
 -- users we've heard), so it tracks RELATIVE crowding, not absolute population. `layers`

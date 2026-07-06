@@ -5,6 +5,28 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.29.0]
+
+Malha inteira layer-aware — agora sabemos a layer de QUALQUER usuário Chehul, não só do
+PartyLens. E o ping mede RTT contra qualquer um, mostrando o caminho.
+
+- **CHN1 v3**: a presença cross-addon agora carrega a **layer** (`mapID:zoneUID`) no HELLO.
+  Addons com detecção real (o PartyLens) alimentam via `layerProvider`; os outros
+  (GuildOS/ProfessionHelper) ganham um **detector mínimo embutido** no arquivo compartilhado
+  (mesmo parse do GUID field 5), então TODO usuário Chehul reporta a própria layer.
+  Retrocompatível: clientes v1/v2 ignoram o campo novo.
+- **Usuários de outros addons entram no mapa de ocupação.** Quando ouvimos um peer que NÃO
+  é PartyLens mas compartilhou layer, ele é dobrado no node table (`RecordCrossAddonNode`) —
+  aparece na contagem de nós, no mapa de ocupação e no Círculo. Usuários PL não são dobrados
+  (o S deles já os registra, com a flag de beacon correta).
+- **Ping universal**: o arquivo compartilhado agora responde ao `ChehulPing` — qualquer
+  usuário Chehul (PL/GuildOS/ProfessionHelper) auto-responde o pong. Então o backoffice mede
+  RTT real contra jogadores de verdade, não só contra outros backoffices. O PONG ecoa o
+  **bus de chegada**, então dá pra ver o CAMINHO que a mensagem tomou.
+- Arquivo `ChehulNet.lua` re-espelhado idêntico nos 3 addons (PartyLens/GuildOS/
+  ProfessionHelper). O addon de monitoramento (ChehulNet Backoffice) foi atualizado pra
+  mostrar a layer de cada peer + os buses por onde a malha os alcança + o RTT/caminho do ping.
+
 ## [0.28.0]
 
 Reforço lógico da comunicação da rede — garante que você comece a VER as pessoas na
