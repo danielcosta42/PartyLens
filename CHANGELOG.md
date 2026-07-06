@@ -5,6 +5,22 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.25.0]
+
+Recomendador de layer mais vazia — pra farmar/quest com menos concorrência.
+
+- Usa o mapa de ocupação que a malha já monta (quantos usuários PartyLens ouvimos em cada
+  layer) pra apontar a **layer menos lotada** e te levar até ela com um clique.
+- No painel **Layer**: a layer mais vazia agora aparece em **teal** entre os chips, e um
+  atalho no canto do cabeçalho "Trocar de layer" (`vazia: L3 (2)`) pede o hop direto pra
+  ela. Só aparece quando há escolha real (≥2 layers conhecidas) e a mais vazia é de fato
+  menos cheia que a sua.
+- Novo comando **`/partylens quiet`**: lista a lotação de todas as layers conhecidas
+  (marcando a sua e a mais vazia) e já pede hop pra menos cheia.
+- Honesto sobre o método: a contagem é uma **amostra** (só usuários do addon que ouvimos),
+  então reflete lotação RELATIVA, não a população absoluta da layer. Efeito colateral bom:
+  espalha a galera pelas layers, equilibrando a rede.
+
 ## [0.24.2]
 
 O kick de hopper agora respeita o cooldown de troca de layer da Blizzard — não expulsa

@@ -342,6 +342,30 @@ function PartyLens:OnAddonLoaded(name)
                     end
                 end)
             end
+        elseif msg == "quiet" then
+            -- "/partylens quiet" — rank known layers by mesh crowding and hop to the
+            -- least-crowded one (farming/questing helper).
+            local layers = (LayerNet.KnownLayers and LayerNet.KnownLayers(self)) or {}
+            local quiet = LayerNet.QuietestLayer and LayerNet.QuietestLayer(self, layers)
+            if #layers > 0 then
+                Utils.Print("|cff88ccff" .. Localization.L("LAYER_QUIET_HEADER") .. "|r")
+                for _, ly in ipairs(layers) do
+                    local tag = ly.isCurrent and " |cffffd200(you)|r"
+                        or (quiet and ly.ordinal == quiet.ordinal and " |cff58d6b0<= quietest|r")
+                        or ""
+                    Utils.Print(Localization.L("LAYER_QUIET_LINE", ly.ordinal, ly.nodes or 0, tag))
+                end
+            end
+            if quiet then
+                Utils.Print("|cff58d6b0" .. Localization.L("LAYER_QUIET_HOP", quiet.ordinal, quiet.nodes or 0) .. "|r")
+                if quiet.beaconZoneUID and quiet.beaconMapID and LayerNet.RequestLayerFor then
+                    LayerNet.RequestLayerFor(self, quiet.beaconMapID, quiet.beaconZoneUID)
+                else
+                    LayerNet.RequestLayer(self, tostring(quiet.ordinal))
+                end
+            else
+                Utils.Print(Localization.L("LAYER_QUIET_NONE"))
+            end
         elseif msg == "layer" then
             UIMain.CreateMainUI(self)
             self.frame:Show()

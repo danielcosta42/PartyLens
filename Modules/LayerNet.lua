@@ -1435,6 +1435,32 @@ function LayerNet.KnownLayers(partyLens)
     return out
 end
 
+-- The known layer with the FEWEST mesh peers on it (excluding the one I'm on) — a
+-- farming/questing hint: hop there for less competition. It is a SAMPLE (only PartyLens
+-- users we've heard), so it tracks RELATIVE crowding, not absolute population. `layers`
+-- is optional: pass a KnownLayers list you already built to avoid recomputing it.
+function LayerNet.QuietestLayer(partyLens, layers)
+    layers = layers or LayerNet.KnownLayers(partyLens)
+    local best
+    for _, ly in ipairs(layers) do
+        if not ly.isCurrent and (not best or (ly.nodes or 0) < (best.nodes or 0)) then
+            best = ly
+        end
+    end
+    return best
+end
+
+-- Node count on my current layer (the crowding baseline the quietest is compared to).
+function LayerNet.CurrentCrowding(partyLens, layers)
+    layers = layers or LayerNet.KnownLayers(partyLens)
+    for _, ly in ipairs(layers) do
+        if ly.isCurrent then
+            return ly.nodes or 0
+        end
+    end
+    return nil
+end
+
 -- Open requests seen on chat, newest first (for the UI list).
 function LayerNet.OpenRequests(partyLens)
     local rt = RT(partyLens)

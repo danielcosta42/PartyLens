@@ -2005,6 +2005,20 @@ local function CreateLayerPanel(partyLens, host)
     -- gold marks the one you're on. No typing. Tapping broadcasts an invisible mesh
     -- request (every beacon on that layer auto-invites me) + one signed public line.
     Section(panel, L("LAYER_HOP"), PAD, -244)
+    -- Quietest-layer hint (farming/questing): the least-crowded known layer by mesh
+    -- presence. Sits at the right of the "Hop" header; tapping requests a hop there.
+    ln.quietRec = UIElements.CreateButton(panel, "", 116, 18, P.teal)
+    ln.quietRec:SetPoint("TOPRIGHT", -PAD, -242)
+    ln.quietRec:SetScript("OnClick", function()
+        local best = LayerNet.QuietestLayer and LayerNet.QuietestLayer(partyLens)
+        if not best then return end
+        if best.beaconZoneUID and best.beaconMapID and LayerNet.RequestLayerFor then
+            LayerNet.RequestLayerFor(partyLens, best.beaconMapID, best.beaconZoneUID)
+        else
+            LayerNet.RequestLayer(partyLens, tostring(best.ordinal))
+        end
+    end)
+    ln.quietRec:Hide()
     ln.hopHint = UIElements.CreateLabel(panel, L("LAYER_HOP_HINT"), 9, P.faint)
     ln.hopHint:SetPoint("TOPLEFT", PAD, -262)
     ln.hopHint:SetPoint("RIGHT", -PAD, 0)
@@ -2085,6 +2099,20 @@ local function RefreshHopChips(partyLens)
     local P = UIElements.PALETTE
     local mr = LayerNet.MyRequest and LayerNet.MyRequest(partyLens)
     local layers = (LayerNet.KnownLayers and LayerNet.KnownLayers(partyLens)) or {}
+    -- Quietest known layer (fewest mesh peers) — highlight its chip + drive the header
+    -- recommendation. Reuse the `layers` list we already built (no second KnownLayers).
+    local quiet = LayerNet.QuietestLayer and LayerNet.QuietestLayer(partyLens, layers)
+    local curCrowd = LayerNet.CurrentCrowding and LayerNet.CurrentCrowding(partyLens, layers)
+    if ln.quietRec then
+        -- Only worth showing when there's a real choice (>=2 known layers) and the
+        -- quietest is actually less crowded than where I am (else no reason to move).
+        if quiet and #layers >= 2 and (curCrowd == nil or (quiet.nodes or 0) < curCrowd) then
+            ln.quietRec:SetText(L("LAYER_QUIET_REC", quiet.ordinal, quiet.nodes or 0))
+            ln.quietRec:Show()
+        else
+            ln.quietRec:Hide()
+        end
+    end
 
     local right = panel:GetWidth() or 0
     if right < 100 then right = 600 end -- pre-layout fallback
@@ -2138,17 +2166,20 @@ local function RefreshHopChips(partyLens)
             end
         end)
         if ly.hasBeacon then chip.dot:Show() else chip.dot:Hide() end
+        local isQuietest = quiet and not ly.isCurrent and ly.ordinal == quiet.ordinal
         if ly.isCurrent then
             chip.label:SetTextColor(P.gold[1], P.gold[2], P.gold[3], 1)
+        elseif isQuietest then
+            chip.label:SetTextColor(P.teal[1], P.teal[2], P.teal[3], 1) -- quietest: teal
         else
             chip.label:SetTextColor(P.text[1], P.text[2], P.text[3], 1)
         end
         local sel = (mr and not mr.req.any and mr.req.layers and mr.req.layers[ord]) and true or false
         chip:SetActive(sel)
         if not sel then
-            -- Keep layers with a beacon, my current layer, OR live peers at full
-            -- opacity; only dim empty known-but-quiet layers.
-            chip:SetAlpha((ly.hasBeacon or ly.isCurrent or peers > 0) and 1 or 0.5)
+            -- Keep layers with a beacon, my current layer, the quietest, OR live peers at
+            -- full opacity; only dim empty known-but-quiet layers.
+            chip:SetAlpha((ly.hasBeacon or ly.isCurrent or isQuietest or peers > 0) and 1 or 0.5)
         end
         place(chip, peers > 0 and 58 or 44)
     end
