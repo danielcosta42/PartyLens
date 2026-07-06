@@ -5,6 +5,16 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.30.3]
+
+O alerta agora é um banner discreto e persistente, não um popup gritante.
+
+- **ChehulNet v7**: trocado o popup central com som por um **banner fino no topo da tela**,
+  **sem som** — sutil, mas **visível o tempo inteiro até você clicar no ×** (que dá dismiss
+  pra sempre). Barra de acento fina + nome do addon na cor dele + a mensagem; arrastável.
+- Continua deduplicado por id, gateado pela allowlist (só Chehul), e com dismiss persistente.
+  `ChehulNet.lua` re-espelhado idêntico nos 3 addons.
+
 ## [0.30.2]
 
 O operador agora vê o próprio alerta (dá pra testar sozinho).
