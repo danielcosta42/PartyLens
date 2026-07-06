@@ -5,6 +5,19 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.30.1]
+
+Trava os popups de alerta: só remetentes autorizados aparecem.
+
+- **ChehulNet v5**: o popup de alerta agora é gateado por uma allowlist de nomes
+  (`CN.ALERT_SENDERS`) — só o char **Chehul** dispara um popup; qualquer outro remetente é
+  ignorado. Como nomes de personagem são únicos por realm e os buses do alerta são
+  realm-local, na prática isso é "só alertas do backoffice que eu controlo". Fecha o vetor
+  de griefing (antes qualquer um que soubesse o formato podia estourar popup em todo mundo).
+- O backoffice (monitor) continua vendo TODO alerta no feed — o gate é só no popup dos
+  addons de jogo, então tentativas de terceiros ficam visíveis pra quem opera a rede.
+- `ChehulNet.lua` re-espelhado idêntico nos 3 addons.
+
 ## [0.30.0]
 
 Alertas de rede — o backoffice dispara um alerta e os addons de jogo mostram um popup na
