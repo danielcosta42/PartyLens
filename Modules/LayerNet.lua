@@ -39,6 +39,7 @@ LayerNet.NODE_TTL = 600               -- a node counts as "online" if heard with
                                       -- otherwise real peers flicker out between rare flushes)
 LayerNet.GOSSIP_INTERVAL = 120        -- how often to gossip known nodes realm-wide (multi-hop, aged)
 LayerNet.GOSSIP_MAX = 8               -- nodes per gossip digest (fits the ~255-char channel line)
+LayerNet.BRIDGE_COOLDOWN = 20         -- min gap between party-bridge bursts (cross-layer seeding)
 LayerNet.REQUEST_TTL = 60             -- an inbound request stays "open" this long
 LayerNet.MY_REQUEST_TTL = 120         -- my own layer request stays active/re-broadcast this long
 LayerNet.PARTY_HOLD = 40              -- auto-uninvite an invitee still around after this (they hop fast)
@@ -520,30 +521,25 @@ function LayerNet.BroadcastSighting(partyLens)
     }, "|"), "S") -- realm-wide too (coalesced to my latest seen-set)
 end
 
--- Gossip a digest of the nodes we've heard FIRST-HAND out over the realm bus, so a
--- single click-flush teaches everyone about many peers at once (1-hop epidemic
--- spread — the realm bus alone is sparse/click-flushed, so most users would never
--- see each other otherwise). Realm-ONLY (guild/proximity already deliver directly),
--- coalesced to our latest, capped to fit the ~255-char channel line. Beacons first,
--- then freshest. Only first-hand records are shared, so gossip can't amplify itself.
-local function GossipNodes(partyLens)
-    if not Net.Realm then
-        return
-    end
+-- Build the SD node digest: "SD|name:map:zone:beacon:age;..." of the nodes we know,
+-- beacons first then freshest, aged, capped to fit the ~255-char line. Returns nil when
+-- we know nothing shareable. Shared by GossipNodes (realm), BridgeToGroup (party) and
+-- BridgeForward (yell) so every path emits the exact same wire format.
+local function BuildNodeDigest(partyLens)
     local now = time()
     local list = {}
     for _, n in pairs(RT(partyLens).nodes) do
-        -- Share ALL known nodes — first-hand AND relayed — so data spreads MULTI-HOP
-        -- (anti-entropy gossip), not just 1 hop. Each entry carries the node's AGE; the
-        -- age grows ~one gossip cycle per relay, so an item dies once it's older than
-        -- NODE_TTL. Combined with "freshest wins" on receive, this can't loop forever.
+        -- ALL known nodes — first-hand AND relayed — so data spreads MULTI-HOP
+        -- (anti-entropy gossip). Each entry carries the node's AGE; the age grows ~one
+        -- gossip cycle per relay, so an item dies once older than NODE_TTL. Combined
+        -- with "freshest wins" on receive, this can't loop forever.
         if n.name and n.zoneUID and n.mapID and not SameAsPlayer(n.name)
             and (now - (n.t or 0)) < LayerNet.NODE_TTL then
             list[#list + 1] = n
         end
     end
     if #list == 0 then
-        return
+        return nil
     end
     table.sort(list, function(a, b)
         if (a.beacon and true) ~= (b.beacon and true) then
@@ -569,11 +565,68 @@ local function GossipNodes(partyLens)
         parts[#parts + 1] = entry
         used = used + add
     end
-    if #parts > 0 then
-        Net.Realm(LayerNet.PREFIX,
-            table.concat({ LayerNet.NET_PROTO, "SD", table.concat(parts, ";") }, "|"),
-            LayerNet.PREFIX .. ":SD")
+    if #parts == 0 then
+        return nil
     end
+    return table.concat({ LayerNet.NET_PROTO, "SD", table.concat(parts, ";") }, "|")
+end
+
+-- Gossip our node digest out over the realm bus (YELL), so a single flush teaches many
+-- peers at once (multi-hop epidemic spread — see the age/freshest-wins scheme above).
+local function GossipNodes(partyLens)
+    if not Net.Realm then
+        return
+    end
+    local payload = BuildNodeDigest(partyLens)
+    if payload then
+        Net.Realm(LayerNet.PREFIX, payload, LayerNet.PREFIX .. ":SD")
+    end
+end
+
+-- BRIDGE (cross-layer seeding via a shared party). A hop party is a GUARANTEED
+-- cross-layer link: while a hopper is being pulled they briefly share the beacon's
+-- group but still stand on their ORIGINAL layer. So on any roster change we push our
+-- whole node digest over PARTY (cross-layer, reliable, targeted) — and the receiver's
+-- SD handler re-YELLs it onto THEIR layer (BridgeForward), seeding a layer neither of
+-- our own YELLs could reach. Cooldown-gated so a burst of roster updates fires once.
+local function BridgeToGroup(partyLens)
+    if not (IsInGroup and IsInGroup()) then
+        return
+    end
+    if IsInInstance and IsInInstance() then
+        return -- inside a dungeon/raid/BG everyone shares one instance: no layer to bridge
+    end
+    local rt = RT(partyLens)
+    local now = time()
+    if rt.lastBridge and (now - rt.lastBridge) < LayerNet.BRIDGE_COOLDOWN then
+        return
+    end
+    local payload = BuildNodeDigest(partyLens)
+    if not payload then
+        return
+    end
+    rt.lastBridge = now
+    Net.Group(LayerNet.PREFIX, payload)
+end
+LayerNet.BridgeToGroup = BridgeToGroup
+
+-- Receiver half of the bridge: a digest that arrived over PARTY/RAID came from someone
+-- who shares our group but is (probably) on ANOTHER layer — the beacon that invited us,
+-- or a hopper who just joined. Re-YELL what we now know onto OUR current layer, which
+-- their YELL couldn't reach. One-shot per join (cooldown), and only PARTY/RAID digests
+-- trigger it — a YELLed digest never re-bridges, so this can't loop.
+local function BridgeForward(partyLens)
+    local rt = RT(partyLens)
+    local now = time()
+    if rt.lastBridgeFwd and (now - rt.lastBridgeFwd) < LayerNet.BRIDGE_COOLDOWN then
+        return
+    end
+    local payload = BuildNodeDigest(partyLens)
+    if not payload then
+        return
+    end
+    rt.lastBridgeFwd = now
+    Net.Yell(LayerNet.PREFIX, payload)
 end
 
 -- Merge a comma-separated zoneUID list into our shared set (numbering convergence).
@@ -621,7 +674,7 @@ end
 -- Inbound addon-mesh message (CHAT_MSG_ADDON over the LFG channel).
 --   S|mapID|curZone|beacon|setCSV        presence + full sighting set
 --   R|mapID|curZone|spec|targetZone      a layer request (targetZone = wanted layer's zoneUID, or 0)
-function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
+function LayerNet.OnAddonMessage(partyLens, prefix, text, dist, sender)
     if prefix ~= LayerNet.PREFIX or not sender or sender == "" or SameAsPlayer(sender) then
         return
     end
@@ -685,6 +738,13 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, _, sender)
                 end
             end
             LayerNet.Refresh(partyLens)
+            -- CROSS-LAYER BRIDGE: a digest over PARTY/RAID came from a groupmate who is
+            -- (probably) on another layer — a hopper mid-pull or the beacon. Re-YELL what
+            -- we now know onto OUR layer to seed a layer their YELL can't reach. Only
+            -- PARTY/RAID triggers it (a YELLed digest never re-bridges → no loop).
+            if dist == "PARTY" or dist == "RAID" then
+                BridgeForward(partyLens)
+            end
         end
     elseif kind == "W" then
         -- World-boss sighting: W|mapID|bossZoneUID|npcID|hp. The boss's zoneUID was
@@ -834,6 +894,9 @@ function LayerNet.OnRosterUpdate(partyLens)
     if CFG(partyLens).beacon then
         LayerNet.RefreshPartyHide(partyLens)
     end
+    -- Cross-layer seeding: push our node digest to the (new) party over PARTY, so a
+    -- hopper mid-pull relays it onward to their origin layer (see BridgeToGroup).
+    BridgeToGroup(partyLens)
     LayerNet.Refresh(partyLens)
 end
 

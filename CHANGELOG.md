@@ -5,6 +5,28 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.24.0]
+
+Ponte cross-layer via party de hop — usa quem entra pra trocar de layer como "carteiro"
+que semeia a malha na layer de origem dele.
+
+- **Ideia**: uma party de hop é uma ponte cross-layer GARANTIDA. Enquanto o hopper está
+  sendo puxado, ele por um instante compartilha o grupo do beacon mas ainda está na sua
+  layer ORIGINAL. O YELL é layer-local, então o beacon nunca alcança essa layer — mas o
+  hopper alcança.
+- **Como funciona**: a qualquer mudança de roster (fora de instância), empurramos nosso
+  digest de nós inteiro por **PARTY** (cross-layer, confiável, direcionado). Quem recebe um
+  digest por PARTY/RAID — alguém do grupo que provavelmente está em outra layer — dá **um
+  YELL único** do que passou a conhecer, semeando a SUA layer atual (a de origem do hopper),
+  que nenhum dos nossos YELLs alcançaria. Bidirecional: beacon→hopper semeia a layer de
+  origem; hopper→beacon reforça a do beacon.
+- **Anti-loop**: só digests por PARTY/RAID disparam o re-YELL; um digest que chega por YELL
+  nunca re-ponteia. Cooldown de 20s por ponte (`BRIDGE_COOLDOWN`). A anti-entropy (idade +
+  "mais fresco vence" da 0.23.0) já limita a propagação do que é semeado.
+- Barrado dentro de instância (dungeon/raid/BG todos dividem uma instância — não há layer
+  pra pontear) e o re-YELL é auto-barrado pelo gate de YELL (não-instância/não-ghost).
+  Contido no `LayerNet.lua`; a lib compartilhada não mudou.
+
 ## [0.23.1]
 
 Conserta a numeração de layer voltar a divergir do NWB (mostrava "Layer 1" enquanto o
