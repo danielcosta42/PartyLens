@@ -206,6 +206,57 @@ function Reputation.Groupmates(partyLens)
     return list
 end
 
+-- The SOCIAL CIRCLE: everyone I've built a connection with — grouped/hopped with
+-- (groupmates, which GROUP_ROSTER_UPDATE records, so hop partners are included), vouched,
+-- or who vouched me — each annotated with LIVE mesh presence (online / their layer / on my
+-- layer). A pure VIEW over data we already keep (db.rep) + LayerNet presence, no new
+-- persistence. Sorted online-first, then by vouch count, then name.
+function Reputation.Circle(partyLens)
+    local db = DB(partyLens)
+    local ln = LN()
+    local me = MyKey()
+    local seen = {}
+    local function add(key, reason)
+        if not key or key == "" or key == me then
+            return
+        end
+        local e = seen[key]
+        if not e then
+            e = { key = key, name = Disp(key), grouped = false, vouchedByMe = false, vouchedMe = false }
+            seen[key] = e
+        end
+        e[reason] = true
+    end
+    for key in pairs(db.groupmates) do add(key, "grouped") end
+    for key in pairs(db.given) do add(key, "vouchedByMe") end
+    local myVoters = db.tally[me]
+    if myVoters then
+        for voter in pairs(myVoters) do add(voter, "vouchedMe") end
+    end
+    local list = {}
+    for key, e in pairs(seen) do
+        e.count = Reputation.Count(partyLens, key)
+        e.node = (ln and ln.NodeInfo) and ln.NodeInfo(partyLens, key) or nil
+        e.online = (e.node and e.node.online) and true or false
+        list[#list + 1] = e
+    end
+    table.sort(list, function(a, b)
+        if a.online ~= b.online then return a.online end -- online first
+        if (a.count or 0) ~= (b.count or 0) then return (a.count or 0) > (b.count or 0) end
+        return a.key < b.key
+    end)
+    return list
+end
+
+-- Count of contacts in the circle currently online (a header stat).
+function Reputation.CircleOnline(partyLens)
+    local n = 0
+    for _, e in ipairs(Reputation.Circle(partyLens)) do
+        if e.online then n = n + 1 end
+    end
+    return n
+end
+
 -- Vouches I've received.
 function Reputation.MyScore(partyLens)
     return Reputation.Count(partyLens, UnitName("player") or "")

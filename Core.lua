@@ -382,6 +382,10 @@ function PartyLens:OnAddonLoaded(name)
             UIMain.CreateMainUI(self)
             self.frame:Show()
             UIMain.SetMode(self, "network")
+        elseif msg == "circle" or msg == "friends" then
+            UIMain.CreateMainUI(self)
+            self.frame:Show()
+            UIMain.SetMode(self, "circle")
         elseif msg:sub(1, 5) == "vouch" then
             -- "/partylens vouch Name" — quick vouch from chat.
             local name = Utils.Trim(msg:sub(6))

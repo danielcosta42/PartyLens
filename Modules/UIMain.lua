@@ -77,7 +77,7 @@ function UIMain.RefreshActivityList(partyLens, allowRequest)
 end
 
 -- Top-level navigation modes.
-local MODES = { browse = true, create = true, settings = true, autopilot = true, summon = true, layer = true, radar = true, network = true }
+local MODES = { browse = true, create = true, settings = true, autopilot = true, summon = true, layer = true, radar = true, network = true, circle = true }
 
 local CONTENT_CATEGORIES = {
     { key = "all", labelKey = "FILTER_ALL" },
@@ -154,6 +154,7 @@ local MODE_TITLE = {
     layer = "LAYER_TITLE",
     radar = "WB_TITLE",
     network = "NET_TITLE",
+    circle = "CIRCLE_TITLE",
     create = "LISTING_SECTION_TITLE",
     settings = "SETTINGS_TITLE",
 }
@@ -189,6 +190,7 @@ function UIMain.SetMode(partyLens, mode)
     HideFrame(partyLens.layerPanel)
     HideFrame(partyLens.radarPanel)
     HideFrame(partyLens.networkPanel)
+    HideFrame(partyLens.circlePanel)
     HideFrame(partyLens.countPill)
     HideFrame(partyLens.compPopup)
 
@@ -234,6 +236,14 @@ function UIMain.SetMode(partyLens, mode)
         if C_Timer and C_Timer.NewTicker then
             partyLens._summonTicker = C_Timer.NewTicker(2, function()
                 UIMain.RefreshNetwork(partyLens)
+            end)
+        end
+    elseif mode == "circle" then
+        ShowFrame(partyLens.circlePanel)
+        UIMain.RefreshCircle(partyLens)
+        if C_Timer and C_Timer.NewTicker then
+            partyLens._summonTicker = C_Timer.NewTicker(2, function()
+                UIMain.RefreshCircle(partyLens)
             end)
         end
     else
@@ -2545,6 +2555,128 @@ function UIMain.RefreshNetwork(partyLens)
     end
 end
 
+-- ===========================================================================
+-- Circle panel — my mesh social graph: people I've grouped/hopped with, vouched,
+-- or who vouched me, each with live "online / reachable now" status + a one-tap
+-- hop-to-them / whisper. A pure view over Reputation's data + LayerNet presence.
+-- ===========================================================================
+local function CreateCirclePanel(partyLens, host)
+    local P = UIElements.PALETTE
+    local panel = CreateFrame("Frame", "PartyLensCirclePanel", host)
+    partyLens.circlePanel = panel
+    panel:SetAllPoints(host)
+
+    local cu = { rows = {} }
+    partyLens.circleUI = cu
+
+    local hint = UIElements.CreateLabel(panel, L("CIRCLE_HINT"), 10, P.muted)
+    hint:SetPoint("TOPLEFT", PAD, -PAD)
+    hint:SetPoint("RIGHT", -PAD, 0)
+    hint:SetJustifyH("LEFT")
+
+    cu.header = UIElements.CreateLabel(panel, "", 12, P.freshNew)
+    cu.header:SetPoint("TOPLEFT", PAD, -34)
+
+    Section(panel, L("CIRCLE_SECTION"), PAD, -54)
+
+    for i = 1, 8 do
+        local row = UIElements.CreatePanel(panel, nil, { 0.082, 0.096, 0.120, 0.5 }, P.stroke, true)
+        row:SetHeight(38)
+        row:SetPoint("TOPLEFT", PAD, -78 - (i - 1) * 44)
+        row:SetPoint("RIGHT", -PAD, 0)
+        row.dot = row:CreateTexture(nil, "OVERLAY")
+        row.dot:SetSize(7, 7)
+        row.dot:SetPoint("LEFT", 10, 0)
+        row.name = UIElements.CreateLabel(row, "", 12, P.text)
+        row.name:SetPoint("TOPLEFT", 24, -6)
+        row.sub = UIElements.CreateLabel(row, "", 9, P.muted)
+        row.sub:SetPoint("BOTTOMLEFT", 24, 6)
+        row.hop = UIElements.CreateButton(row, L("WB_HOP"), 46, 22, P.freshNew)
+        row.hop:SetPoint("RIGHT", -8, 0)
+        row.wsp = UIElements.CreateButton(row, L("NET_WHISPER"), 40, 22, P.blue)
+        row.wsp:SetPoint("RIGHT", row.hop, "LEFT", -6, 0)
+        row.hop:SetScript("OnClick", function()
+            if row.node and row.node.mapID and row.node.zoneUID and LayerNet and LayerNet.RequestLayerFor then
+                LayerNet.RequestLayerFor(partyLens, row.node.mapID, row.node.zoneUID)
+            end
+        end)
+        row.wsp:SetScript("OnClick", function()
+            if row.pname and ChatFrame_SendTell then ChatFrame_SendTell(row.pname) end
+        end)
+        row:Hide()
+        cu.rows[i] = row
+    end
+
+    cu.empty = UIElements.CreateLabel(panel, L("CIRCLE_NONE"), 12, P.faint)
+    cu.empty:SetPoint("TOPLEFT", PAD, -82)
+    cu.empty:SetPoint("RIGHT", -PAD, 0)
+    cu.empty:Hide()
+end
+
+function UIMain.RefreshCircle(partyLens)
+    local cu = partyLens.circleUI
+    if not cu or not Reputation or not Reputation.Circle then
+        return
+    end
+    local P = UIElements.PALETTE
+    local list = Reputation.Circle(partyLens)
+    local online = 0
+    for _, e in ipairs(list) do
+        if e.online then online = online + 1 end
+    end
+    if cu.header then
+        cu.header:SetText(L("CIRCLE_HEADER", #list, online))
+    end
+    for i, row in ipairs(cu.rows) do
+        local e = list[i]
+        if e then
+            row.pname = e.name
+            row.node = e.node
+            local nc = e.online and P.freshNew or P.faint
+            row.name:SetTextColor(nc[1], nc[2], nc[3], 1)
+            local score = (e.count and e.count > 0) and ("  |cff5a6470" .. L("REP_COUNT", e.count) .. "|r") or ""
+            row.name:SetText(e.name .. score)
+            -- presence dot: beacon = teal, online = green, offline = grey.
+            local dc = (e.node and e.node.beacon and P.teal)
+                or (e.online and P.freshNew) or { 0.4, 0.45, 0.5, 1 }
+            UIElements.SetTextureColor(row.dot, dc)
+            -- relationship reasons.
+            local rel = {}
+            if e.grouped then rel[#rel + 1] = L("CIRCLE_R_GROUPED") end
+            if e.vouchedByMe then rel[#rel + 1] = L("CIRCLE_R_VOUCHED") end
+            if e.vouchedMe then rel[#rel + 1] = L("CIRCLE_R_VOUCHEDME") end
+            -- presence text.
+            local presence
+            if e.online then
+                if e.node and e.node.sameLayer then
+                    presence = L("CIRCLE_P_SAMELAYER")
+                elseif e.node and e.node.ordinal then
+                    presence = L("CIRCLE_P_LAYER", e.node.ordinal)
+                else
+                    presence = L("CIRCLE_P_ONLINE")
+                end
+            else
+                presence = L("CIRCLE_P_OFFLINE")
+            end
+            local relText = table.concat(rel, ", ")
+            row.sub:SetText(presence .. (relText ~= "" and ("  \194\183  " .. relText) or ""))
+            -- Hop only when online, on a DIFFERENT layer, and we know their zone.
+            if e.online and e.node and not e.node.sameLayer and e.node.zoneUID and e.node.mapID then
+                row.hop:Show()
+            else
+                row.hop:Hide()
+            end
+            row:Show()
+        else
+            row.pname, row.node = nil, nil
+            row:Hide()
+        end
+    end
+    if cu.empty then
+        if #list == 0 then cu.empty:Show() else cu.empty:Hide() end
+    end
+end
+
 local function NavButton(parent, text, y, accent, onClick)
     local b = UIElements.CreateButton(parent, text, SIDEBAR_W - 20, 32, accent)
     b:SetPoint("TOPLEFT", 10, y)
@@ -2626,6 +2758,7 @@ function UIMain.CreateMainUI(partyLens)
         { key = "layer", labelKey = "LAYER_TITLE", accent = P.freshNew },
         { key = "radar", labelKey = "WB_TITLE", accent = P.coral },
         { key = "network", labelKey = "NET_TITLE", accent = P.blue },
+        { key = "circle", labelKey = "CIRCLE_TITLE", accent = P.freshNew },
         { key = "create", labelKey = "TAB_CREATE", accent = P.gold },
         { key = "settings", labelKey = "TAB_SETTINGS", accent = P.coral },
     }
@@ -2686,6 +2819,7 @@ function UIMain.CreateMainUI(partyLens)
     CreateLayerPanel(partyLens, hostPanel)
     CreateRadarPanel(partyLens, hostPanel)
     CreateNetworkPanel(partyLens, hostPanel)
+    CreateCirclePanel(partyLens, hostPanel)
 
     UIMain.SetMode(partyLens, partyLens.mode)
 end

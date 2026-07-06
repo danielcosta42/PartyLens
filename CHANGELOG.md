@@ -5,6 +5,23 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.27.0]
+
+Círculo — o grafo social da malha. Uma aba nova que mostra teu círculo pessoal e quem
+está online e alcançável AGORA.
+
+- Junta todo mundo com quem você **grupou/hopou** (groupmates — quem entra na sua party
+  vira contato, então parceiros de hop entram automático), **vouchou**, ou que **te
+  vouchou** — atravessando guilda, layer e realm.
+- Pra cada contato, status **ao vivo** vindo da presença da malha: online/offline, em qual
+  layer, ou "na sua layer". Ponto teal = beacon, verde = online, cinza = offline.
+- Ações num toque: **Hop** (aparece quando o contato está online em outra layer — pede pra
+  ser puxado pra layer dele) e **Whisper**. Ordenado: online primeiro, depois por vouches.
+- Cabeçalho com "%d no círculo · %d online". Nova aba **Circle** na navegação + comandos
+  **`/partylens circle`** e **`/partylens friends`**.
+- Zero persistência nova: é uma VISÃO sobre os dados que a Reputation já guarda + a
+  presença do LayerNet. A lib compartilhada não mudou.
+
 ## [0.26.0]
 
 Feed de eventos ao vivo do realm — o radar de world boss vira um mural de "o que tá

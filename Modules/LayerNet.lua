@@ -1464,6 +1464,28 @@ function LayerNet.CurrentCrowding(partyLens, layers)
     return nil
 end
 
+-- Presence lookup for a SPECIFIC player (the social circle uses this). Returns nil if
+-- we've never heard them on the mesh, else their live status: online (heard within
+-- NODE_TTL), how long ago, their layer (ordinal in our frame), whether they're a beacon,
+-- and whether they're on MY layer right now.
+function LayerNet.NodeInfo(partyLens, name)
+    local n = RT(partyLens).nodes[Key(name)]
+    if not n then
+        return nil
+    end
+    local ago = time() - (n.t or 0)
+    local cur = Layer.Current(partyLens)
+    return {
+        online = ago <= LayerNet.NODE_TTL,
+        ago = ago,
+        zoneUID = n.zoneUID,
+        mapID = n.mapID,
+        ordinal = n.zoneUID and Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID) or nil,
+        beacon = n.beacon and true or false,
+        sameLayer = (n.zoneUID and cur.zoneUID and n.zoneUID == cur.zoneUID) and true or false,
+    }
+end
+
 -- Open requests seen on chat, newest first (for the UI list).
 function LayerNet.OpenRequests(partyLens)
     local rt = RT(partyLens)
