@@ -36,9 +36,16 @@ function Net.Whisper(prefix, payload, target)
     return (Mesh and Mesh:Whisper(prefix, payload, target)) or false
 end
 
--- Realm-wide bus (dedicated addon-only channel, click-flushed, coalesced by key).
--- Use a STABLE per-message-type/per-source key so the queue holds only the latest
--- of each, instead of piling up.
+-- Zone-wide YELL bus (automatic, timer-safe; layer-local). Reaches everyone in your
+-- zone/layer — the whole city in a hub. Callers usually reach realm-wide via Net.Realm.
+function Net.Yell(prefix, payload)
+    return (Mesh and Mesh:Yell(prefix, payload)) or false
+end
+
+-- Realm-wide bus. Now rides YELL (zone-wide, coalesced by key, sent probabilistically on
+-- a timer) — the old click-flushed CHANNEL is dead on this client. Callers already do
+-- Guild/Proximity themselves, so this adds the wide zone reach. Use a STABLE per-message-
+-- type/per-source key so the queue holds only the latest of each.
 function Net.Realm(prefix, payload, coalesceKey)
     if Mesh and Mesh.Realm then
         Mesh:Realm(prefix, payload, coalesceKey)

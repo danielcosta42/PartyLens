@@ -5,6 +5,30 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.22.0]
+
+Reescrita do transporte da malha (LibChehulMesh v3) — conserta a rede realm-wide.
+
+- **Transporte agora é AceComm-3.0 + ChatThrottleLib** (as libs que NWB/DBM usam,
+  empacotadas). Ganha rate-limiting decente (sem risco de disconnect por spam) +
+  chunking automático (adeus byte-budgets manuais). Larga o `SendAddonMessage` cru.
+- **Bus realm-wide agora é YELL, não o CANAL quebrado.** Medimos in-game (via o addon
+  ChehulNet Backoffice) que o canal realm estava MORTO: timer-send é gated e o
+  click-flush entregava `realm 0/N` mesmo clicando o mundo. Então `:Realm` passou a
+  transmitir por **YELL** — alcance da zona/cidade inteira (>> os ~40yd do SAY),
+  automático, timer-safe — exatamente como o NovaWorldBuffs sincroniza. Coalescido por
+  chave + **probabilístico** (só ~1/3 dos clientes yella por ciclo, anti-spam) + gated a
+  fora-de-instância/não-ghost. Novo bus explícito `:Yell` / `Net.Yell`.
+- **Efeito**: em Shattrath (onde o auto-beacon estaciona a galera), todo mundo da sua
+  layer passa a se ver via YELL — não só a guild. YELL é layer-local (como o SAY), então
+  cross-layer continua via GUILD (guildmates) + WHISPER-pro-beacon (0.19.1). A API do
+  mesh foi **preservada** (`:Guild/:Group/:Proximity/:Whisper/:Register/:Realm/:Stats`),
+  então os callers não mudaram; a lib v3 sobe limpa sobre uma instância antiga (mantém
+  handlers, re-registra no AceComm, neutraliza o receive antigo).
+- Mesma lib idêntica nos 3 addons (PartyLens/GuildOS/ProfessionHelper). O addon de
+  monitoramento **ChehulNet Backoffice** foi atualizado pro novo transporte (captura
+  YELL, tira control-chars do AceComm, `/cnbo probe yell`).
+
 ## [0.21.0]
 
 Camada 2 — incentivos de OFERTA (agora que os beacons ficam visíveis, aumentar quantos
