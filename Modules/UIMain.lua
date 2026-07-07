@@ -872,15 +872,15 @@ local function LayoutAP(partyLens)
         frame:SetPoint("TOPLEFT", PAD, y - s)
         if not keepWidth then frame:SetPoint("RIGHT", -PAD, 0) end
     end
-    put(ap.summary, -258)
-    put(ap.armBtn, -280, true) -- fixed-width button: no RIGHT anchor
-    put(ap.opsHeader, -330)
-    put(ap.rosterLabel, -350)
-    put(ap.needLabel, -368)
-    put(ap.logHeader, -392, true)
+    put(ap.summary, -274)
+    put(ap.armBtn, -296, true) -- fixed-width button: no RIGHT anchor
+    put(ap.opsHeader, -346)
+    put(ap.rosterLabel, -366)
+    put(ap.needLabel, -384)
+    put(ap.logHeader, -408, true)
     for i, line in ipairs(ap.logLines) do
         line:ClearAllPoints()
-        line:SetPoint("TOPLEFT", PAD, (-412 - (i - 1) * 14) - s)
+        line:SetPoint("TOPLEFT", PAD, (-428 - (i - 1) * 14) - s)
         line:SetPoint("RIGHT", -PAD, 0)
     end
 end
@@ -1086,7 +1086,7 @@ local function CreateAutopilotPanel(partyLens, host)
 
     -- 1) GOAL — build a group (LFM) vs find one (LFG).
     StepLabel(L("AP_GOAL_LABEL"), -46)
-    ap.roleBuildBtn = UIElements.CreateButton(panel, L("AP_ROLE_BUILD"), 176, 26, P.teal)
+    ap.roleBuildBtn = UIElements.CreateButton(panel, L("AP_ROLE_BUILD"), 260, 26, P.teal)
     ap.roleBuildBtn:SetPoint("TOPLEFT", CX, -42)
     ap.roleBuildBtn:SetScript("OnClick", function()
         partyLens.db.autopilot.role = "build"
@@ -1095,6 +1095,7 @@ local function CreateAutopilotPanel(partyLens, host)
     end)
     ap.roleFindBtn = UIElements.CreateButton(panel, L("AP_ROLE_FIND"), 176, 26, P.gold)
     ap.roleFindBtn:SetPoint("LEFT", ap.roleBuildBtn, "RIGHT", 6, 0)
+    ap.roleFindBtn:SetPoint("RIGHT", -PAD, 0) -- stretch to fill the row (equal halves)
     ap.roleFindBtn:SetScript("OnClick", function()
         partyLens.db.autopilot.role = "find"
         UpdateAutopilotRole(partyLens)
@@ -1195,9 +1196,9 @@ local function CreateAutopilotPanel(partyLens, host)
     ap.compNeed:SetJustifyH("LEFT")
 
     local kwLabel = UIElements.CreateLabel(buildBox, L("AP_KEYWORD_SHORT"), 10, P.muted)
-    kwLabel:SetPoint("TOPLEFT", 236, -8)
     local kwBox, kwShell = UIElements.CreateEditBox(buildBox, "PartyLensAPKeyword", 86, 28)
-    kwShell:SetPoint("TOPLEFT", 300, -2)
+    kwShell:SetPoint("TOPRIGHT", 0, -2) -- keyword hugs the right edge; label sits just left of it
+    kwLabel:SetPoint("RIGHT", kwShell, "LEFT", -8, 0)
     kwBox:SetText(partyLens.db.autopilot.inviteKeyword or "inv")
     kwBox:SetScript("OnTextChanged", function(editBox)
         partyLens.db.autopilot.inviteKeyword = Utils.Trim(editBox:GetText())
@@ -1213,7 +1214,7 @@ local function CreateAutopilotPanel(partyLens, host)
     end)
 
     ap.autoAnnounceToggle = UIElements.CreateToggle(buildBox, L("AP_AUTO_ANNOUNCE"), 190)
-    ap.autoAnnounceToggle:SetPoint("LEFT", ap.autoInviteToggle, "RIGHT", 16, 0)
+    ap.autoAnnounceToggle:SetPoint("TOPLEFT", buildBox, "TOP", 0, -34) -- split the row width
     ap.autoAnnounceToggle:SetChecked(partyLens.db.autopilot.autoAnnounce)
     ap.autoAnnounceToggle:SetScript("OnClick", function(check)
         check:SetChecked(not check:GetChecked())
@@ -1241,8 +1242,9 @@ local function CreateAutopilotPanel(partyLens, host)
     end)
 
     -- Strict role/class matching: only whisper groups that actually ask for us.
+    -- Anchored to the row's horizontal center so the two toggles split the full width.
     ap.findStrictToggle = UIElements.CreateToggle(findBox, L("AP_FIND_STRICT"), 220)
-    ap.findStrictToggle:SetPoint("LEFT", ap.autoWhisperToggle, "RIGHT", 24, 0)
+    ap.findStrictToggle:SetPoint("TOPLEFT", findBox, "TOP", 0, -34)
     ap.findStrictToggle:SetChecked(partyLens.db.autopilot.findStrict ~= false)
     ap.findStrictToggle:SetScript("OnClick", function(check)
         check:SetChecked(not check:GetChecked())
@@ -1250,8 +1252,8 @@ local function CreateAutopilotPanel(partyLens, host)
     end)
 
     -- 4) AUTOMATION — how much it does on its own, with a plain-language description
-    -- of the selected level (set by UpdateAutopilotTier).
-    StepLabel(L("AP_TIER_LABEL"), -172)
+    -- of the selected level (set by UpdateAutopilotTier). Sits BELOW the 2-row WHO box.
+    StepLabel(L("AP_TIER_LABEL"), -190)
     ap.tierBtns = {}
     local tierOrder = {
         { key = "advisor", labelKey = "AP_TIER_ADVISOR", color = P.blue },
@@ -1260,11 +1262,11 @@ local function CreateAutopilotPanel(partyLens, host)
     }
     local prevTier
     for _, t in ipairs(tierOrder) do
-        local btn = UIElements.CreateButton(panel, L(t.labelKey), 100, 26, t.color)
+        local btn = UIElements.CreateButton(panel, L(t.labelKey), 171, 26, t.color)
         if prevTier then
             btn:SetPoint("LEFT", prevTier, "RIGHT", 6, 0)
         else
-            btn:SetPoint("TOPLEFT", CX, -168)
+            btn:SetPoint("TOPLEFT", CX, -186)
         end
         local key = t.key
         btn:SetScript("OnClick", function()
@@ -1275,21 +1277,22 @@ local function CreateAutopilotPanel(partyLens, host)
         ap.tierBtns[t.key] = btn
         prevTier = btn
     end
+    ap.tierBtns.full:SetPoint("RIGHT", -PAD, 0) -- last tier stretches to fill the row
     ap.tierDesc = UIElements.CreateLabel(panel, "", 10, P.muted)
-    ap.tierDesc:SetPoint("TOPLEFT", CX, -198)
+    ap.tierDesc:SetPoint("TOPLEFT", CX, -216)
     ap.tierDesc:SetPoint("RIGHT", -PAD, 0)
     ap.tierDesc:SetJustifyH("LEFT")
 
     -- ADVANCED — collapsed by default (progressive disclosure): the safety knobs.
     ap.advToggle = UIElements.CreateButton(panel, L("AP_ADVANCED"), 128, 22, P.blue)
-    ap.advToggle:SetPoint("TOPLEFT", PAD, -226)
+    ap.advToggle:SetPoint("TOPLEFT", PAD, -244)
     ap.advToggle:SetScript("OnClick", function()
         partyLens.db.autopilot.advOpen = not partyLens.db.autopilot.advOpen
         LayoutAP(partyLens)
     end)
     local advBox = CreateFrame("Frame", nil, panel)
     ap.advBox = advBox
-    advBox:SetPoint("TOPLEFT", PAD, -252)
+    advBox:SetPoint("TOPLEFT", PAD, -270)
     advBox:SetPoint("RIGHT", -PAD, 0)
     advBox:SetHeight(30)
     local cdLabel = UIElements.CreateLabel(advBox, L("AP_COOLDOWN_LABEL"), 9, P.muted)
@@ -1310,12 +1313,12 @@ local function CreateAutopilotPanel(partyLens, host)
     -- operations (roster / need / summon) -> activity log. All positioned by LayoutAP
     -- so it shifts down cleanly when Advanced expands. ----------------------------------
     ap.summary = UIElements.CreateLabel(panel, "", 11, P.gold)
-    ap.summary:SetPoint("TOPLEFT", PAD, -258)
+    ap.summary:SetPoint("TOPLEFT", PAD, -274)
     ap.summary:SetPoint("RIGHT", -PAD, 0)
     ap.summary:SetJustifyH("LEFT")
 
     ap.armBtn = UIElements.CreateButton(panel, L("AP_ARM"), 210, 36, P.teal)
-    ap.armBtn:SetPoint("TOPLEFT", PAD, -280)
+    ap.armBtn:SetPoint("TOPLEFT", PAD, -296)
     ap.armBtn:SetScript("OnClick", function()
         Autopilot.Toggle(partyLens)
         UIMain.RefreshAutopilot(partyLens)
@@ -1330,27 +1333,27 @@ local function CreateAutopilotPanel(partyLens, host)
     ap.statusLabel:SetJustifyH("LEFT")
 
     ap.opsHeader = UIElements.CreateLabel(panel, L("AP_SUMMON_SECTION"), 10, P.muted)
-    ap.opsHeader:SetPoint("TOPLEFT", PAD, -330)
+    ap.opsHeader:SetPoint("TOPLEFT", PAD, -346)
     ap.announceBtn = UIElements.CreateButton(panel, L("AP_ANNOUNCE_BTN"), 104, 24, P.gold)
     ap.announceBtn:SetPoint("RIGHT", -PAD, 0)
     ap.announceBtn:SetPoint("TOP", ap.opsHeader, "TOP", 0, 6)
     ap.announceBtn:SetScript("OnClick", function() Autopilot.AnnounceReady(partyLens) end)
 
     ap.rosterLabel = UIElements.CreateLabel(panel, "", 11, P.text)
-    ap.rosterLabel:SetPoint("TOPLEFT", PAD, -350)
+    ap.rosterLabel:SetPoint("TOPLEFT", PAD, -366)
     ap.rosterLabel:SetPoint("RIGHT", -PAD, 0)
     ap.rosterLabel:SetJustifyH("LEFT")
     ap.needLabel = UIElements.CreateLabel(panel, "", 11, P.gold)
-    ap.needLabel:SetPoint("TOPLEFT", PAD, -368)
+    ap.needLabel:SetPoint("TOPLEFT", PAD, -384)
     ap.needLabel:SetPoint("RIGHT", -PAD, 0)
     ap.needLabel:SetJustifyH("LEFT")
 
     ap.logHeader = UIElements.CreateLabel(panel, L("AP_LOG_TITLE"), 10, P.muted)
-    ap.logHeader:SetPoint("TOPLEFT", PAD, -392)
+    ap.logHeader:SetPoint("TOPLEFT", PAD, -408)
     ap.logLines = {}
     for i = 1, 5 do
         local line = UIElements.CreateLabel(panel, "", 10, P.faint)
-        line:SetPoint("TOPLEFT", PAD, -412 - (i - 1) * 14)
+        line:SetPoint("TOPLEFT", PAD, -428 - (i - 1) * 14)
         line:SetPoint("RIGHT", -PAD, 0)
         line:SetJustifyH("LEFT")
         line:Hide()
@@ -1510,7 +1513,7 @@ end
 
 -- Syncs every spec picker instance (Settings + Autopilot "find") to db state.
 function UIMain.RefreshSpecPickers(partyLens)
-    local roleHint = "\226\134\146 " .. UIMain.RolesText(partyLens) -- "→ Heal / DPS"
+    local roleHint = "\194\183  " .. UIMain.RolesText(partyLens) -- "· Heal / DPS" (middledot renders; → does not)
     for _, g in ipairs(partyLens.specPickers or {}) do
         if g.autoChip then
             g.autoChip:SetActive(partyLens.db.specAuto and true or false)

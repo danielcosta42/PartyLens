@@ -5,6 +5,21 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.32.1]
+
+Ajuste fino do redesenho do Autopilot — as linhas agora preenchem a largura toda.
+
+- **Goal** e **Automation**: os botões esticam até a borda direita (em vez de ficarem
+  presos à esquerda com espaço sobrando) — o último de cada linha ancora nos dois lados,
+  então se auto-ajusta à largura real.
+- **Toggles** (auto-invite/announce no build; auto-whisper/strict no find): divididos em
+  duas metades da linha, ocupando toda a largura.
+- **Keyword** (build): encostado na borda direita.
+- **Correção**: o `→` antes do papel ("→ DPS") renderizava como quadrado quebrado nessa
+  fonte — trocado pelo `·` (middledot), que já funciona no resto da tela.
+- Também corrige a sobreposição do **Automation** sobre a caixa **Who** (2 linhas) que
+  tinha ficado na 0.32.0.
+
 ## [0.32.0]
 
 Redesenho completo da tela de Autopilot — muito mais legível e num fluxo claro.
