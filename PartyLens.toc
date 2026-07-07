@@ -1,4 +1,4 @@
-## Interface: 20505
+## Interface: 20506
 ## Title: PartyLens
 ## Notes: A modern group radar for chat and the built-in group finder.
 ## Author: Chehul (danielcosta42)

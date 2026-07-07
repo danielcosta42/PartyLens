@@ -5,6 +5,13 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.32.2]
+
+Compatibilidade com o patch **2.5.6** do TBC Anniversary.
+
+- `## Interface` atualizado de `20505` (2.5.5) para `20506` (2.5.6) — o addon deixa
+  de aparecer como "desatualizado" na lista de AddOns após a atualização do cliente.
+
 ## [0.32.1]
 
 Ajuste fino do redesenho do Autopilot — as linhas agora preenchem a largura toda.
