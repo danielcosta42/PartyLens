@@ -34,9 +34,16 @@ LayerNet.SYNC_INTERVAL = 30           -- presence/sighting broadcast cadence (nu
 LayerNet.PRESENCE_INTERVAL = 60       -- idle layer-presence cadence (feeds the occupancy map); under NODE_TTL
 LayerNet.MAX_PER_MINUTE = 10          -- invites/min (racing to win clients; still bounded)
 LayerNet.CONTACT_COOLDOWN = 90        -- per-name cooldown
-LayerNet.NODE_TTL = 600               -- a node counts as "online" if heard within this (long,
-                                      -- because realm-wide presence is sparse/click-flushed —
-                                      -- otherwise real peers flicker out between rare flushes)
+LayerNet.NODE_TTL = 600               -- RETENTION: keep a peer's record this long (for the
+                                      -- gossip/hop mesh). Long on purpose — realm-wide presence
+                                      -- is sparse/click-flushed, so real peers would flicker out
+                                      -- of the mesh between rare flushes with a short window.
+LayerNet.NODE_ONLINE = 240            -- DISPLAY: a peer counts as "online" in the live counters
+                                      -- and layer dots only if heard within this — much shorter
+                                      -- than retention. Decouples "here right now" from "still
+                                      -- remembered", so a peer that goes quiet leaves the counters
+                                      -- in ~4 min instead of lingering the full 10-min retention
+                                      -- (~2x the gossip cadence, so live peers don't flicker out).
 LayerNet.GOSSIP_INTERVAL = 120        -- how often to gossip known nodes realm-wide (multi-hop, aged)
 LayerNet.GOSSIP_MAX = 8               -- nodes per gossip digest (fits the ~255-char channel line)
 LayerNet.BRIDGE_COOLDOWN = 20         -- min gap between party-bridge bursts (cross-layer seeding)
@@ -1050,6 +1057,14 @@ local function Prune(rt)
     end
 end
 
+-- Is this node fresh enough to show as "online" in the LIVE UI (the network
+-- counters and the layer-chip dots)? Retention (NODE_TTL) keeps a record around far
+-- longer for the gossip/hop mesh; the display uses this shorter NODE_ONLINE window so
+-- a peer that has gone quiet stops inflating the counters well before it's pruned.
+local function IsFresh(n, now)
+    return (n and n.t and ((now or time()) - n.t) <= LayerNet.NODE_ONLINE) or false
+end
+
 function LayerNet.Tick(partyLens)
     local rt = RT(partyLens)
     local cfg = CFG(partyLens)
@@ -1373,12 +1388,15 @@ function LayerNet.Stats(partyLens)
     -- nodes = every PartyLens peer heard (network reach). covered = distinct layers
     -- a BEACON is actually sitting on (a hoppable destination), numbered in OUR
     -- converged frame via the shared zoneUID set (not the peer's raw ordinal).
+    local now = time()
     local nodes, coveredSet = 0, {}
     for _, n in pairs(rt.nodes) do
-        nodes = nodes + 1
-        if n.beacon and n.mapID and n.zoneUID then
-            local ord = Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID)
-            if ord then coveredSet[ord] = true end
+        if IsFresh(n, now) then -- count who's here NOW, not everyone still in retention
+            nodes = nodes + 1
+            if n.beacon and n.mapID and n.zoneUID then
+                local ord = Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID)
+                if ord then coveredSet[ord] = true end
+            end
         end
     end
     if CFG(partyLens).beacon and cur.ordinal then
@@ -1412,9 +1430,10 @@ function LayerNet.KnownLayers(partyLens)
     -- zone), so matching raw zoneUIDs against ZoneUIDAt(i) missed their dot even
     -- though Stats counted them. OrdinalOf is map-agnostic under NWB, so drop the
     -- n.mapID filter too.
+    local now = time()
     local beaconAt, nodeCount, beaconZone, beaconMap = {}, {}, {}, {}
     for _, n in pairs(rt.nodes) do
-        if n.zoneUID then
+        if n.zoneUID and IsFresh(n, now) then -- fresh peers only: stale dots/counts clear too
             local ord = Layer.OrdinalOf(partyLens, n.mapID, n.zoneUID)
             if ord then
                 nodeCount[ord] = (nodeCount[ord] or 0) + 1

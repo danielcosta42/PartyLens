@@ -5,6 +5,18 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.32.3]
+
+Correção: os contadores da rede (**Nós online** / **Camadas cobertas**) e os pontos das
+camadas agora caem quando os peers ficam quietos, em vez de ficarem presos por até 10 min.
+
+- O painel contava **todos** os nós ainda em retenção (`NODE_TTL` = 10 min — janela longa
+  de propósito, pra o mesh de gossip/hop não perder peers reais entre flushes esparsos).
+- Agora a **exibição** usa uma janela curta de "online" (`NODE_ONLINE` ≈ 4 min), separada
+  da retenção do mesh: um peer que parou de aparecer sai dos contadores e dos dots dos chips
+  em ~4 min, enquanto o registro dele continua no mesh pelo tempo de retenção normal. Nós,
+  camadas cobertas e os dots passam a refletir quem está de fato ali agora.
+
 ## [0.32.2]
 
 Compatibilidade com o patch **2.5.6** do TBC Anniversary.
