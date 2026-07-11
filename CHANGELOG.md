@@ -5,6 +5,32 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.33.0]
+
+Novo: **buffs de mundo por camada** nos chips do seletor de hop — pra você saber pra
+qual layer ir pegar os world buffs. Cada chip ganha um indicador de canto (coral = buff
+de **drop caindo agora**, dourado = buff **estável** de pé) e o tooltip lista os buffs
+daquela layer com o tempo. Novo módulo `Modules/LayerBuffs.lua`.
+
+- **Duas fontes alimentam a mesma visão por-layer:**
+  - **Detecção nativa (nossa malha):** o combat log (`SPELL_AURA_APPLIED` com o spellID
+    do world buff num player = o drop acabou de acontecer na *minha* layer) detecta
+    Rend, Grito de Batalha (Ony/Nef), Zandalar e Flor Canora; o yell de captura detecta
+    Hellfire. Tudo é marcado com o zoneUID da minha layer e transmitido no mesh (novo
+    kind `B`), então quem **não tem NWB** ou está em **outra layer** também vê.
+  - **NWB como fallback/enriquecimento:** quando o NovaWorldBuffs está instalado, leio
+    ao vivo `NWB.data.layers[...]` (rendTimer / onyTimer+onyNpcDied / nefTimer+nefNpcDied
+    / terokTowers / hellfireRep) pra preencher as layers que ninguém reportou. Dados do
+    NWB ficam **locais** (ele já sincroniza a rede dele; não redistribuo).
+- **Buffs de drop (Rend/Ony/Nef/Zan) só aparecem enquanto são acionáveis:** "boss morto,
+  buff a caminho" (estado `onyNpcDied` do NWB) ou recém-caído (~5 min). Depois somem, pra
+  não mandar ninguém atrás de um buff que já passou. Songflower e buffs de zona
+  (Terokkar/Hellfire) aparecem enquanto estão de pé (são re-obteníveis).
+- Expiries viajam no mesh como epoch de servidor (`GetServerTime`, sincronizado no realm),
+  então "expira às T" é o mesmo instante em todos os clientes.
+- Diagnóstico: `/partylens buffs` lista os buffs conhecidos por layer; `/partylens
+  bufftest` injeta um buff fake na layer atual pra ver o chip.
+
 ## [0.32.3]
 
 Correção: os contadores da rede (**Nós online** / **Camadas cobertas**) e os pontos das

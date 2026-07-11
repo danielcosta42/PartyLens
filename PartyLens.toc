@@ -35,6 +35,7 @@ Modules/Autopilot.lua
 Modules/Layer.lua
 Modules/LayerNet.lua
 Modules/WorldBoss.lua
+Modules/LayerBuffs.lua
 Modules/Reputation.lua
 Modules/UIElements.lua
 Modules/Search.lua

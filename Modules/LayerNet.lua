@@ -786,6 +786,14 @@ function LayerNet.OnAddonMessage(partyLens, prefix, text, dist, sender)
             WB.OnMeshSighting(partyLens, mapID, zoneUID, tonumber(f5), tonumber(f6),
                 Utils.PlayerShortName(sender), nm)
         end
+    elseif kind == "B" then
+        -- World-buff sighting: B|mapID|zoneUID|buffKey|expiry. Its zoneUID was already
+        -- merged above so its layer can be numbered in our frame. buffKey (f5) is a
+        -- short token ("rend"/"dragon"/"terok"/...); expiry (f6) is a server epoch.
+        local LB = _G[ADDON_NAME .. "_LayerBuffs"]
+        if LB and LB.OnMesh then
+            LB.OnMesh(partyLens, mapID, zoneUID, f5, tonumber(f6))
+        end
     elseif kind == "V" or kind == "VD" then
         -- Reputation: V|targetName (one vouch) or VD|name1,name2,... (voter's digest).
         -- Fields aren't numeric, so hand the RAW text to Reputation to re-split.
@@ -1070,6 +1078,10 @@ function LayerNet.Tick(partyLens)
     local cfg = CFG(partyLens)
     Prune(rt)
     Layer.PruneSeen(partyLens) -- age out dead layers on a fixed cadence (keeps ordinals aligned)
+    do -- age out stale world-buff sightings (self/mesh native detections)
+        local LB = _G[ADDON_NAME .. "_LayerBuffs"]
+        if LB and LB.Prune then LB.Prune(partyLens) end
+    end
     AutoBeaconApply(partyLens) -- park-and-help: (de)activate the beacon by location
     -- Presence / numbering sync: broadcast our sighting (a hidden ADDON message,
     -- which is NOT hardware-gated — unlike a visible SendChatMessage to a CHANNEL)

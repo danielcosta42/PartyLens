@@ -13,6 +13,7 @@ local Who = _G[ADDON_NAME .. "_Who"]
 local Layer = _G[ADDON_NAME .. "_Layer"]
 local LayerNet = _G[ADDON_NAME .. "_LayerNet"]
 local WorldBoss = _G[ADDON_NAME .. "_WorldBoss"]
+local LayerBuffs = _G[ADDON_NAME .. "_LayerBuffs"]
 local Reputation = _G[ADDON_NAME .. "_Reputation"]
 
 local L = Localization.L
@@ -2176,8 +2177,15 @@ local function HopChip(ln, panel, i)
         chip.count:ClearAllPoints()
         chip.count:SetPoint("BOTTOMRIGHT", -3, 3)
         chip.count:Hide()
-        -- Tooltip (hooked so the button's own hover effect still runs): explain that the
-        -- little number is how many mesh players we've heard on that layer.
+        -- World-buff indicator (top-LEFT corner, mirroring the beacon dot at top-right):
+        -- coral = a drop buff is landing NOW here (go!), gold = a stable buff (songflower
+        -- / zone control) is up. What's up is spelled out on hover.
+        chip.buff = chip:CreateTexture(nil, "OVERLAY")
+        chip.buff:SetSize(7, 7)
+        chip.buff:SetPoint("TOPLEFT", 3, -3)
+        chip.buff:Hide()
+        -- Tooltip (hooked so the button's own hover effect still runs): the little number
+        -- is how many mesh players are on that layer; then the world buffs up there.
         chip:HookScript("OnEnter", function(self)
             if self.tipPeers == nil then return end
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -2186,6 +2194,25 @@ local function HopChip(ln, panel, i)
                 GameTooltip:AddLine(L("LAYER_CHIP_TIP_COUNT", self.tipPeers), 0.55, 0.60, 0.66, true)
             else
                 GameTooltip:AddLine(L("LAYER_CHIP_TIP_EMPTY"), 0.45, 0.49, 0.54, true)
+            end
+            if self.tipBuffs and #self.tipBuffs > 0 then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine(L("LB_TIP_HEADER"), 0.98, 0.74, 0.30)
+                for _, b in ipairs(self.tipBuffs) do
+                    local when
+                    if b.status == "pending" then
+                        when = L("LB_DROPPING")
+                    elseif b.remaining then
+                        when = L("LB_REMAINING", LayerBuffs.FmtTime(b.remaining))
+                    else
+                        when = ""
+                    end
+                    if b.urgent then
+                        GameTooltip:AddLine("  " .. b.name .. "  -  " .. when, 1.0, 0.42, 0.38)
+                    else
+                        GameTooltip:AddLine("  " .. b.name .. "  -  " .. when, 0.15, 0.86, 0.72)
+                    end
+                end
             end
             GameTooltip:Show()
         end)
@@ -2208,6 +2235,9 @@ local function RefreshHopChips(partyLens)
     local P = UIElements.PALETTE
     local mr = LayerNet.MyRequest and LayerNet.MyRequest(partyLens)
     local layers = (LayerNet.KnownLayers and LayerNet.KnownLayers(partyLens)) or {}
+    -- World-buff picture across all layers, built once (NWB read + native/mesh detections)
+    -- so each chip below annotates its layer without recomputing per chip.
+    local buffSnap = (LayerBuffs and LayerBuffs.Snapshot and LayerBuffs.Snapshot(partyLens)) or nil
     -- Quietest known layer (fewest mesh peers) — highlight its chip + drive the header
     -- recommendation. Reuse the `layers` list we already built (no second KnownLayers).
     local quiet = LayerNet.QuietestLayer and LayerNet.QuietestLayer(partyLens, layers)
@@ -2243,6 +2273,8 @@ local function RefreshHopChips(partyLens)
     local anyChip = HopChip(ln, panel, idx)
     anyChip.dot:Hide()
     anyChip.count:Hide()
+    anyChip.buff:Hide()
+    anyChip.tipBuffs = nil
     anyChip.tipPeers = nil -- no count tooltip on "Any"
     anyChip:SetText(L("LAYER_REQ_ANY"))
     anyChip.label:SetTextColor(P.text[1], P.text[2], P.text[3], 1)
@@ -2273,6 +2305,20 @@ local function RefreshHopChips(partyLens)
         end
         chip.tipPeers = peers
         chip.tipTitle = L("LAYER_N", ord)
+        -- World buffs on this layer: a corner indicator (coral = a drop buff landing
+        -- NOW, gold = a stable buff up) + the full list on the tooltip.
+        local buffs = (LayerBuffs and LayerBuffs.ForOrdinal and buffSnap)
+            and LayerBuffs.ForOrdinal(partyLens, ord, buffSnap) or nil
+        chip.tipBuffs = buffs and buffs.list or nil
+        if buffs and buffs.hasUrgent then
+            UIElements.SetTextureColor(chip.buff, P.coral)
+            chip.buff:Show()
+        elseif buffs and buffs.hasStable then
+            UIElements.SetTextureColor(chip.buff, P.gold)
+            chip.buff:Show()
+        else
+            chip.buff:Hide()
+        end
         chip:SetScript("OnClick", function()
             if not LayerNet then return end
             -- If a beacon is live on this layer, request its EXACT zoneUID (pin it) so

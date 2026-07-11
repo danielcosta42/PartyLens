@@ -27,6 +27,7 @@ local Who = LoadModule("Who")
 local Layer = LoadModule("Layer")
 local LayerNet = LoadModule("LayerNet")
 local WorldBoss = LoadModule("WorldBoss")
+local LayerBuffs = LoadModule("LayerBuffs")
 local Reputation = LoadModule("Reputation")
 local Autopilot = LoadModule("Autopilot")
 local UIMain = LoadModule("UIMain")
@@ -316,6 +317,26 @@ function PartyLens:OnAddonLoaded(name)
             UIMain.CreateMainUI(self)
             self.frame:Show()
             UIMain.SetMode(self, "layer")
+        elseif msg == "buffs" then
+            -- List the world buffs the network knows, per layer — the quickest check
+            -- that detection/NWB-read/mesh are feeding the layer chips.
+            local list = (LayerBuffs.Active and LayerBuffs.Active(self)) or {}
+            Utils.Print(("|cff88ccffWorld buffs known: %d|r"):format(#list))
+            for _, b in ipairs(list) do
+                local when = (b.status == "pending") and "|cffff8844dropping now|r"
+                    or (b.remaining and (LayerBuffs.FmtTime(b.remaining) .. " left")) or "?"
+                local src = (b.source == "nwb") and " |cff8a94a4(nwb)|r"
+                    or (b.source == "mesh") and " |cff8a94a4(mesh)|r" or ""
+                Utils.Print(("  L%s - %s - %s%s"):format(tostring(b.ordinal), b.name or b.buffKey, when, src))
+            end
+        elseif msg == "bufftest" then
+            -- Dev/QA: inject a fake world-buff on our current layer to see the chip.
+            local cur = Layer.Current(self)
+            LayerBuffs.OnMesh(self, cur.mapID, cur.zoneUID or 1, "song",
+                (GetServerTime and GetServerTime() or time()) + 1800)
+            UIMain.CreateMainUI(self)
+            self.frame:Show()
+            UIMain.SetMode(self, "layer")
         elseif msg == "layerframe" then
             -- Diagnostic: which party-frame candidates exist, and (after 3s) the
             -- frame under the mouse — hover the party frame to identify it.
@@ -477,6 +498,14 @@ PartyLens:SetScript("OnEvent", function(self, event, ...)
         -- layer AND whether it's a tracked boss/rare (map lookup is cached).
         LayerNet.Observe(self, ...)
         WorldBoss.Observe(self, ...)
+    elseif event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        -- Native world-buff detection: a world-buff aura landing on a player = the
+        -- drop hand-in just happened on MY layer. Handler early-returns fast on the
+        -- (overwhelmingly common) non-world-buff events.
+        LayerBuffs.OnCombatLog(self)
+    elseif event == "CHAT_MSG_MONSTER_YELL" then
+        -- Native zone-control detection (Hellfire capture yell) on layers without NWB.
+        LayerBuffs.OnMonsterYell(self, (select(1, ...)))
     elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" or event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
         LFGTool.CaptureToolResults(self)
     elseif event == "LFG_LIST_SEARCH_FAILED" then
@@ -519,6 +548,11 @@ PartyLens:RegisterEvent("GROUP_ROSTER_UPDATE")
 PartyLens:RegisterEvent("PLAYER_TARGET_CHANGED")
 PartyLens:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
 pcall(PartyLens.RegisterEvent, PartyLens, "NAME_PLATE_UNIT_ADDED")
+-- World-buff radar: the combat log carries the drop signal; monster yells the zone
+-- captures. Registered defensively (COMBAT_LOG_EVENT_UNFILTERED exists everywhere,
+-- but keep the pattern consistent).
+pcall(PartyLens.RegisterEvent, PartyLens, "COMBAT_LOG_EVENT_UNFILTERED")
+pcall(PartyLens.RegisterEvent, PartyLens, "CHAT_MSG_MONSTER_YELL")
 -- CHAT_MSG_ADDON is handled by the shared mesh (Mesh:Register), not here.
 PartyLens:RegisterEvent("WHO_LIST_UPDATE")
 -- Talent/spec events aren't guaranteed to exist on every client build, and an
