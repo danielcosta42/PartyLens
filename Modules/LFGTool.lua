@@ -67,9 +67,15 @@ local function KindTokens()
         return out
     end
     -- Order matters: PvP first so a "PvP"/"Arena" category never falls through to
-    -- the dungeon/raid buckets. Localized globals + English fallbacks.
+    -- the dungeon/raid buckets. Localized globals + English fallbacks. The PvP set
+    -- also lists TBC's fixed battleground/arena names by hand, because some clients
+    -- don't expose a PvP *category* name we can recognize (then the BGs would size-
+    -- classify as raids); an activity-name net catches them regardless of category.
     KIND_TOKENS = {
-        { kind = "pvp", needles = tok(_G.ARENA, _G.ARENAS, _G.BATTLEGROUND, _G.BATTLEGROUNDS, _G.PVP, "arena", "battleground", "pvp") },
+        { kind = "pvp", needles = tok(
+            _G.ARENA, _G.ARENAS, _G.BATTLEGROUND, _G.BATTLEGROUNDS, _G.PVP, _G.PLAYER_VS_PLAYER,
+            "arena", "battleground", "player vs", "pvp", "2v2", "3v3", "5v5",
+            "warsong gulch", "arathi basin", "alterac valley", "eye of the storm") },
         { kind = "quest", needles = tok(_G.QUESTS, _G.QUEST, "quest") },
         { kind = "raid", needles = tok(_G.RAIDS, _G.RAID, "raid") },
         { kind = "dungeon", needles = tok(_G.DUNGEONS, _G.DUNGEON, "dungeon") },
