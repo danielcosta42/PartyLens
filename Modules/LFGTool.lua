@@ -457,50 +457,54 @@ end
 function LFGTool.GetQuestActivities()
     local list = {}
     local QL = _G.C_QuestLog
-    if QL and QL.GetNumQuestLogEntries and QL.GetInfo then
-        local num = QL.GetNumQuestLogEntries()
-        for i = 1, (num or 0) do
+
+    -- Entry count + per-entry info come from whichever API this client exposes.
+    -- Prefer the table-returning C_QuestLog.GetInfo (named fields, no positional
+    -- ambiguity) even when the count function only exists as a global; only the
+    -- oldest clients fall back to the positional GetQuestLogTitle. Everything is
+    -- coerced with tonumber so a string field can never reach a numeric compare.
+    local num = (QL and QL.GetNumQuestLogEntries and QL.GetNumQuestLogEntries())
+        or (_G.GetNumQuestLogEntries and _G.GetNumQuestLogEntries())
+        or 0
+
+    for i = 1, num do
+        local title, questID, suggestedGroup, level, isHeader
+        if QL and QL.GetInfo then
             local info = QL.GetInfo(i)
-            if info and not info.isHeader and info.questID and (info.suggestedGroup or 0) > 1 then
-                list[#list + 1] = {
-                    value = "q:" .. info.questID,
-                    label = info.title or ("Quest " .. info.questID),
-                    order = info.level or 0,
-                    maxPlayers = info.suggestedGroup,
-                    kind = "quest",
-                    questID = info.questID,
-                    minLevel = info.level or 0,
-                    maxLevel = info.level or 0,
-                    levelText = info.level and tostring(info.level) or "",
-                }
+            if info then
+                title, questID = info.title, info.questID
+                suggestedGroup, level, isHeader = info.suggestedGroup, info.level, info.isHeader
+            end
+        elseif _G.GetQuestLogTitle then
+            local t, lvl, sg, hdr = _G.GetQuestLogTitle(i)
+            title, level, suggestedGroup, isHeader = t, lvl, sg, hdr
+            if QL and QL.GetQuestIDForLogIndex then
+                questID = QL.GetQuestIDForLogIndex(i)
             end
         end
-    elseif _G.GetNumQuestLogEntries and _G.GetQuestLogTitle then
-        -- Legacy fallback (older clients): quest log index API.
-        local num = _G.GetNumQuestLogEntries()
-        for i = 1, (num or 0) do
-            local title, level, suggestedGroup, isHeader = _G.GetQuestLogTitle(i)
-            if title and not isHeader and (suggestedGroup or 0) > 1 then
-                local qid = QL and QL.GetQuestIDForLogIndex and QL.GetQuestIDForLogIndex(i)
-                list[#list + 1] = {
-                    value = qid and ("q:" .. qid) or ("qi:" .. i),
-                    label = title,
-                    order = level or 0,
-                    maxPlayers = suggestedGroup,
-                    kind = "quest",
-                    questID = qid,
-                    minLevel = level or 0,
-                    maxLevel = level or 0,
-                    levelText = level and tostring(level) or "",
-                }
-            end
+
+        suggestedGroup = tonumber(suggestedGroup) or 0
+        level = tonumber(level) or 0
+        if title and not isHeader and suggestedGroup > 1 then
+            list[#list + 1] = {
+                value = questID and ("q:" .. questID) or ("qi:" .. i),
+                label = title,
+                order = level,
+                maxPlayers = suggestedGroup,
+                kind = "quest",
+                questID = questID,
+                minLevel = level,
+                maxLevel = level,
+                levelText = level > 0 and tostring(level) or "",
+            }
         end
     end
+
     table.sort(list, function(a, b)
-        if (a.order or 0) ~= (b.order or 0) then
-            return (a.order or 0) < (b.order or 0)
+        if a.order ~= b.order then
+            return a.order < b.order
         end
-        return (a.label or "") < (b.label or "")
+        return a.label < b.label
     end)
     return list
 end
