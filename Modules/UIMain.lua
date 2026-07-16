@@ -1210,9 +1210,10 @@ local function CreateAutopilotPanel(partyLens, host)
     StepLabel(L("AP_CONTENT_LABEL"), -84)
     ap.contentBtns = {}
     local contentOrder = {
-        { key = "dungeon", labelKey = "TAB_DUNGEONS", color = P.teal, width = 84 },
-        { key = "raid", labelKey = "TAB_RAIDS", color = P.blue, width = 64 },
-        { key = "any", labelKey = "FILTER_ALL", color = P.purple, width = 52 },
+        { key = "dungeon", labelKey = "TAB_DUNGEONS", color = P.teal, width = 82 },
+        { key = "raid", labelKey = "TAB_RAIDS", color = P.blue, width = 50 },
+        { key = "quest", labelKey = "FILTER_QUESTS", color = P.gold, width = 58 },
+        { key = "any", labelKey = "FILTER_ALL", color = P.purple, width = 44 },
     }
     local prevContent
     for _, c in ipairs(contentOrder) do
@@ -1225,12 +1226,16 @@ local function CreateAutopilotPanel(partyLens, host)
         local key = c.key
         btn:SetScript("OnClick", function()
             partyLens.db.autopilot.activityType = key
+            -- A quest selection only makes sense under the Quest content type.
+            if key ~= "quest" then
+                partyLens.db.autopilot.questID = nil
+            end
             UpdateAutopilotContent(partyLens)
             UIMain.RefreshAutopilotActivities(partyLens, true)
             -- Auto-fill a comfortable size for the content type (build only, and
             -- only when the player hasn't defined an explicit class/spec comp).
             if partyLens.db.autopilot.role == "build" and not CompActive(partyLens) then
-                if key == "dungeon" then
+                if key == "dungeon" or key == "quest" then
                     ApplyComp(partyLens, ComfortableComp(5))
                 elseif key == "raid" then
                     ApplyComp(partyLens, ComfortableComp(25))
@@ -1251,17 +1256,18 @@ local function CreateAutopilotPanel(partyLens, host)
     activityDropdown:SetPoint("LEFT", prevContent, "RIGHT", 10, 0)
     activityDropdown:SetPoint("RIGHT", -PAD, 0)
     activityDropdown.onSelect = function(value)
+        local cfg = partyLens.db.autopilot
         if value == "__retry__" then
             LFGTool.RequestActivities()
             UIMain.RefreshAutopilotActivities(partyLens, true)
             return
         elseif value == "__any__" then
-            partyLens.db.autopilot.activityFilter = ""
-            partyLens.db.autopilot.activityID = nil
+            cfg.activityFilter = ""
+            cfg.activityID = nil
+            cfg.questID = nil
             UIMain.RefreshAutopilot(partyLens)
             return
         end
-        partyLens.db.autopilot.activityID = tonumber(value)
         local label, maxp
         for _, opt in ipairs(activityDropdown.allOptions or activityDropdown.options) do
             if opt.value == value then
@@ -1270,10 +1276,19 @@ local function CreateAutopilotPanel(partyLens, host)
                 break
             end
         end
-        partyLens.db.autopilot.activityFilter = label or ""
-        -- Match the size to the picked activity (build only, and only when no
+        -- Quests carry a "q:"..questID value; real activities carry a numeric id.
+        local qid = tostring(value):match("^q:(%d+)$")
+        if qid then
+            cfg.questID = tonumber(qid)
+            cfg.activityID = nil
+        else
+            cfg.activityID = tonumber(value)
+            cfg.questID = nil
+        end
+        cfg.activityFilter = label or ""
+        -- Match the size to the picked activity/quest (build only, and only when no
         -- explicit class/spec comp is set).
-        if maxp and partyLens.db.autopilot.role == "build" and not CompActive(partyLens) then
+        if maxp and cfg.role == "build" and not CompActive(partyLens) then
             ApplyComp(partyLens, ComfortableComp(maxp))
         end
         UIMain.RefreshAutopilot(partyLens)
@@ -1595,7 +1610,9 @@ local function ActivityIsHeroic(label)
 end
 
 local function ActivityCategory(item, content)
-    if content == "dungeon" then
+    if content == "quest" then
+        return "quest", L("FILTER_QUESTS"), 1
+    elseif content == "dungeon" then
         if ActivityIsHeroic(item.label) then
             return "heroic", L("AP_CAT_HEROIC"), 2
         end
@@ -1604,10 +1621,18 @@ local function ActivityCategory(item, content)
         local size = item.maxPlayers or 0
         return "r" .. size, L("AP_CAT_RAID_SIZE", size), size
     else
-        if (item.maxPlayers or 0) > 5 then
-            return "raids", L("TAB_RAIDS"), 2
+        -- "All": split into Dungeons(Normal), Dungeons(Heroic), Raids, Quests
+        -- instead of one flat list.
+        if item.kind == "quest" then
+            return "quest", L("FILTER_QUESTS"), 4
         end
-        return "dungeons", L("TAB_DUNGEONS"), 1
+        if (item.maxPlayers or 0) > 5 or item.kind == "raid" then
+            return "raids", L("TAB_RAIDS"), 3
+        end
+        if ActivityIsHeroic(item.label) then
+            return "dh", L("TAB_DUNGEONS") .. " \194\183 " .. L("AP_CAT_HEROIC"), 2
+        end
+        return "dn", L("TAB_DUNGEONS") .. " \194\183 " .. L("AP_CAT_NORMAL"), 1
     end
 end
 
@@ -1618,13 +1643,17 @@ function UIMain.RefreshAutopilotActivities(partyLens, allowRequest)
     end
 
     local content = partyLens.db.autopilot.activityType
+    local current = (partyLens.db.autopilot.questID and ("q:" .. partyLens.db.autopilot.questID))
+        or partyLens.db.autopilot.activityID or "__any__"
     local lists
     if content == "raid" then
         lists = { LFGTool.GetActivityList("raids") }
     elseif content == "dungeon" then
         lists = { LFGTool.GetActivityList("dungeons") }
+    elseif content == "quest" then
+        lists = { LFGTool.GetQuestActivities() }
     else
-        lists = { LFGTool.GetActivityList("dungeons"), LFGTool.GetActivityList("raids") }
+        lists = { LFGTool.GetActivityList("dungeons"), LFGTool.GetActivityList("raids"), LFGTool.GetQuestActivities() }
     end
 
     local items, seen = {}, {}
@@ -1640,11 +1669,16 @@ function UIMain.RefreshAutopilotActivities(partyLens, allowRequest)
     local options = { { value = "__any__", label = L("AP_ANY_ACTIVITY") } }
 
     if #items == 0 then
-        if allowRequest then
-            LFGTool.RequestActivities()
+        if content == "quest" then
+            -- Quests come from your log, not the finder catalog — nothing to retry.
+            options[#options + 1] = { value = "__questempty__", label = L("AP_QUEST_EMPTY"), header = true }
+        else
+            if allowRequest then
+                LFGTool.RequestActivities()
+            end
+            options[#options + 1] = { value = "__retry__", label = L("LISTING_PICK_EMPTY") }
         end
-        options[#options + 1] = { value = "__retry__", label = L("LISTING_PICK_EMPTY") }
-        ap.activityDropdown:SetOptions(options, partyLens.db.autopilot.activityID or "__any__")
+        ap.activityDropdown:SetOptions(options, current)
         return
     end
 
@@ -1681,7 +1715,20 @@ function UIMain.RefreshAutopilotActivities(partyLens, allowRequest)
         end
     end
 
-    ap.activityDropdown:SetOptions(options, partyLens.db.autopilot.activityID or "__any__")
+    ap.activityDropdown:SetOptions(options, current)
+end
+
+-- Full resync of the autopilot panel from db (content buttons, role boxes, the
+-- activity list, the panel). Used when config changes programmatically rather than
+-- via a click on the panel — e.g. the quest-log "Find Group" hook.
+function UIMain.SyncAutopilot(partyLens)
+    if not partyLens.ap then
+        return
+    end
+    UpdateAutopilotContent(partyLens)
+    UpdateAutopilotRole(partyLens)
+    UIMain.RefreshAutopilotActivities(partyLens, true)
+    UIMain.RefreshAutopilot(partyLens)
 end
 
 function UIMain.RefreshAutopilot(partyLens)

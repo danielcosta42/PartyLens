@@ -86,7 +86,7 @@ function Database.EnsureDB(partyLens)
         autopilot = {
             role = "build", -- "build" (recruit, LFM) | "find" (apply, LFG)
             tier = "auto", -- "auto" (fire immediately) | "suggest" (queue for GO)
-            activityType = "dungeon", -- "dungeon" | "raid" | "any"
+            activityType = "dungeon", -- "dungeon" | "raid" | "quest" | "any"
             activityFilter = "", -- optional substring, e.g. "kara" / "heroic"
             -- Desired composition for build mode (totals, including yourself).
             -- These are DERIVED from `comp` when it has picks; otherwise they act

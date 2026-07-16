@@ -31,6 +31,105 @@ function LFGTool.DungeonCategoryID()
     return DungeonCategoryID()
 end
 
+-- ---------------------------------------------------------------------------
+-- Activity KIND classification (dungeon / raid / quest / pvp).
+-- The old size-only split (<=5 dungeon, >5 raid) swept Arenas and Battlegrounds
+-- into the PvE lists. We classify by the activity's real category instead, mapping
+-- each categoryID to a kind by matching its localized category name against the
+-- client's own localized globals (locale-robust). Size remains the fallback for
+-- categories we can't recognize; PvP is then excluded from the PvE lists.
+-- ---------------------------------------------------------------------------
+local function LowerContainsAny(hay, needles)
+    hay = Utils.SafeLower(hay or "")
+    if hay == "" then
+        return false
+    end
+    for _, n in ipairs(needles) do
+        if n ~= "" and hay:find(n, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local KIND_TOKENS
+local function KindTokens()
+    if KIND_TOKENS then
+        return KIND_TOKENS
+    end
+    local function tok(...)
+        local out = {}
+        for _, v in ipairs({ ... }) do
+            if type(v) == "string" and v ~= "" then
+                out[#out + 1] = Utils.SafeLower(v)
+            end
+        end
+        return out
+    end
+    -- Order matters: PvP first so a "PvP"/"Arena" category never falls through to
+    -- the dungeon/raid buckets. Localized globals + English fallbacks.
+    KIND_TOKENS = {
+        { kind = "pvp", needles = tok(_G.ARENA, _G.ARENAS, _G.BATTLEGROUND, _G.BATTLEGROUNDS, _G.PVP, "arena", "battleground", "pvp") },
+        { kind = "quest", needles = tok(_G.QUESTS, _G.QUEST, "quest") },
+        { kind = "raid", needles = tok(_G.RAIDS, _G.RAID, "raid") },
+        { kind = "dungeon", needles = tok(_G.DUNGEONS, _G.DUNGEON, "dungeon") },
+    }
+    return KIND_TOKENS
+end
+
+local categoryKindCache
+local function BuildCategoryKindCache()
+    categoryKindCache = {}
+    if not C_LFGList or not C_LFGList.GetAvailableCategories or not C_LFGList.GetCategoryInfo then
+        return
+    end
+    local okc, cats = pcall(C_LFGList.GetAvailableCategories)
+    if not okc or type(cats) ~= "table" then
+        return
+    end
+    for _, catID in ipairs(cats) do
+        local ok, info = pcall(C_LFGList.GetCategoryInfo, catID)
+        local name
+        if ok then
+            if type(info) == "table" then
+                name = info.name or info.categoryName
+            elseif type(info) == "string" then
+                name = info
+            end
+        end
+        if name then
+            for _, entry in ipairs(KindTokens()) do
+                if LowerContainsAny(name, entry.needles) then
+                    categoryKindCache[catID] = entry.kind
+                    break
+                end
+            end
+        end
+    end
+end
+
+-- kind for a categoryID, or nil when the category isn't recognized.
+function LFGTool.CategoryKind(categoryID)
+    if not categoryID then
+        return nil
+    end
+    if not categoryKindCache then
+        BuildCategoryKindCache()
+    end
+    return categoryKindCache[categoryID]
+end
+
+-- Invalidate the category->kind cache (call when the catalog is re-requested).
+function LFGTool.ResetCategoryKinds()
+    categoryKindCache = nil
+end
+
+-- True when an activity NAME itself reads as PvP (safety net for arenas whose
+-- category slipped classification). Battlegrounds are caught by category kind.
+local function LooksPvP(name)
+    return LowerContainsAny(name, KindTokens()[1].needles)
+end
+
 local function LooksLikeRecruiting(text)
     text = Utils.SafeLower(text)
     local needles = {
@@ -252,12 +351,22 @@ local function ActivityEntry(activityID)
     if not fullName or fullName == "" then
         return nil
     end
+    -- Real kind from the category; fall back to size when unknown. A PvP-looking
+    -- name overrides so a stray arena never lands in a PvE list.
+    local kind = LFGTool.CategoryKind(categoryID)
+    if not kind then
+        kind = ((maxPlayers or 0) > 5) and "raid" or "dungeon"
+    end
+    if kind ~= "pvp" and LooksPvP(fullName) then
+        kind = "pvp"
+    end
     return {
         value = activityID,
         label = fullName,
         order = orderIndex or 0,
         maxPlayers = maxPlayers or 0,
         categoryID = categoryID,
+        kind = kind,
         minLevel = tonumber(minLevel) or 0,
         maxLevel = tonumber(maxLevel) or 0,
         levelText = LevelRangeText(minLevel, maxLevel),
@@ -277,11 +386,13 @@ function LFGTool.GetActivityList(listingCategory)
         return list
     end
 
-    local wantRaid = (listingCategory == "raids")
+    local wantKind = (listingCategory == "raids") and "raid" or "dungeon"
     local seen = {}
 
-    -- Classify by group size (only raids exceed 5 players); this is robust even
-    -- when the conventional category ids are wrong for this client build.
+    -- Keep only entries whose real kind matches; this drops Arenas/Battlegrounds
+    -- (kind == "pvp") and quests from the dungeon/raid lists. ActivityEntry.kind
+    -- falls back to size when the category can't be recognized, so unknown-build
+    -- category ids still classify correctly.
     local function consider(activityID)
         if seen[activityID] then
             return
@@ -291,8 +402,7 @@ function LFGTool.GetActivityList(listingCategory)
         if not entry then
             return
         end
-        local isRaid = entry.maxPlayers > 5
-        if isRaid == wantRaid and (wantRaid or entry.maxPlayers >= 5) then
+        if entry.kind == wantKind then
             list[#list + 1] = entry
         end
     end
@@ -341,10 +451,65 @@ function LFGTool.GetActivityList(listingCategory)
     return list
 end
 
+-- The player's quest-log quests that suggest a group, as activity-shaped entries.
+-- Sourced from the log (not the finder catalog) so it reflects what YOU are on.
+-- Value is "q:"..questID so the dropdown can tell quests from real activities.
+function LFGTool.GetQuestActivities()
+    local list = {}
+    local QL = _G.C_QuestLog
+    if QL and QL.GetNumQuestLogEntries and QL.GetInfo then
+        local num = QL.GetNumQuestLogEntries()
+        for i = 1, (num or 0) do
+            local info = QL.GetInfo(i)
+            if info and not info.isHeader and info.questID and (info.suggestedGroup or 0) > 1 then
+                list[#list + 1] = {
+                    value = "q:" .. info.questID,
+                    label = info.title or ("Quest " .. info.questID),
+                    order = info.level or 0,
+                    maxPlayers = info.suggestedGroup,
+                    kind = "quest",
+                    questID = info.questID,
+                    minLevel = info.level or 0,
+                    maxLevel = info.level or 0,
+                    levelText = info.level and tostring(info.level) or "",
+                }
+            end
+        end
+    elseif _G.GetNumQuestLogEntries and _G.GetQuestLogTitle then
+        -- Legacy fallback (older clients): quest log index API.
+        local num = _G.GetNumQuestLogEntries()
+        for i = 1, (num or 0) do
+            local title, level, suggestedGroup, isHeader = _G.GetQuestLogTitle(i)
+            if title and not isHeader and (suggestedGroup or 0) > 1 then
+                local qid = QL and QL.GetQuestIDForLogIndex and QL.GetQuestIDForLogIndex(i)
+                list[#list + 1] = {
+                    value = qid and ("q:" .. qid) or ("qi:" .. i),
+                    label = title,
+                    order = level or 0,
+                    maxPlayers = suggestedGroup,
+                    kind = "quest",
+                    questID = qid,
+                    minLevel = level or 0,
+                    maxLevel = level or 0,
+                    levelText = level and tostring(level) or "",
+                }
+            end
+        end
+    end
+    table.sort(list, function(a, b)
+        if (a.order or 0) ~= (b.order or 0) then
+            return (a.order or 0) < (b.order or 0)
+        end
+        return (a.label or "") < (b.label or "")
+    end)
+    return list
+end
+
 -- Asks the server for the activity catalog. On the Classic client this catalog
 -- is owned by the Blizzard group-finder (a load-on-demand addon), so we load it
 -- first; otherwise GetAvailableActivities() stays nil.
 function LFGTool.RequestActivities()
+    LFGTool.ResetCategoryKinds()
     if not C_LFGList then
         return
     end
@@ -517,6 +682,69 @@ function LFGTool.AnnounceListing(partyLens)
     else
         Utils.Print(Localization.L("LFG_JOIN_ATTEMPT"))
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Quest-log "Find Group" hook. When the player clicks the group-finder action on
+-- a group quest, open PartyLens on the Autopilot, pre-set to that quest. Fully
+-- self-contained (mirrors LayerNet's hooksecurefunc pattern) -- no Core/.toc edits.
+-- The Blizzard entry point lives in a load-on-demand addon, so we retry on
+-- ADDON_LOADED / PLAYER_LOGIN until the symbol exists, and hook exactly once.
+-- ---------------------------------------------------------------------------
+local questHookInstalled = false
+
+local function OnQuestGroupFind(questID)
+    if not questID then
+        return
+    end
+    local pl = _G.PartyLens
+    if not pl or not pl.db or not pl.db.autopilot then
+        return
+    end
+    local title = (C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(questID))
+        or (_G.QuestUtils_GetQuestName and _G.QuestUtils_GetQuestName(questID))
+        or ("Quest " .. questID)
+    local cfg = pl.db.autopilot
+    cfg.role = "build"
+    cfg.activityType = "quest"
+    cfg.questID = questID
+    cfg.activityFilter = title
+    cfg.activityID = nil
+    -- Open to the Autopilot mode (do NOT auto-arm; arming stays deliberate).
+    local UIMain = _G[ADDON_NAME .. "_UIMain"]
+    if UIMain and UIMain.CreateMainUI then
+        UIMain.CreateMainUI(pl)
+        if pl.frame then
+            pl.frame:Show()
+        end
+        if UIMain.SetMode then
+            UIMain.SetMode(pl, "autopilot")
+        end
+        if UIMain.SyncAutopilot then
+            UIMain.SyncAutopilot(pl)
+        end
+    end
+end
+
+local function TryInstallQuestHook()
+    if questHookInstalled then
+        return
+    end
+    if type(_G.LFGListUtil_FindQuestGroup) == "function" and hooksecurefunc then
+        hooksecurefunc("LFGListUtil_FindQuestGroup", OnQuestGroupFind)
+        questHookInstalled = true
+    end
+end
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("ADDON_LOADED")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function()
+        TryInstallQuestHook()
+    end)
+    -- In case the symbol is already present when this module loads.
+    TryInstallQuestHook()
 end
 
 _G[ADDON_NAME .. "_LFGTool"] = LFGTool

@@ -355,7 +355,9 @@ end
 local function MatchesContent(partyLens, entry)
     local cfg = CFG(partyLens)
     local want = cfg.activityType or "dungeon"
-    if want ~= "any" then
+    -- Quests aren't a listing activityType: incoming entries are chat/tool posts
+    -- that mention the quest by name, so match on the title filter only (below).
+    if want ~= "any" and want ~= "quest" then
         local t = entry.activityType or (entry.isRaid and "raid" or "dungeon")
         if t ~= want then
             return false
