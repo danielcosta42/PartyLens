@@ -1376,6 +1376,23 @@ local function CreateAutopilotPanel(partyLens, host)
         partyLens.db.autopilot.autoAnnounce = check:GetChecked()
     end)
 
+    -- Find-only toggles share the same row (shown by role in UpdateAutopilotRole):
+    -- auto-whisper recruiting leaders + strict role/class matching.
+    ap.autoWhisperToggle = UIElements.CreateToggle(adj, L("AP_AUTO_WHISPER"), 200)
+    ap.autoWhisperToggle:SetPoint("TOPLEFT", 0, -68)
+    ap.autoWhisperToggle:SetChecked(partyLens.db.autopilot.autoWhisper)
+    ap.autoWhisperToggle:SetScript("OnClick", function(check)
+        check:SetChecked(not check:GetChecked())
+        partyLens.db.autopilot.autoWhisper = check:GetChecked()
+    end)
+    ap.findStrictToggle = UIElements.CreateToggle(adj, L("AP_FIND_STRICT"), 240)
+    ap.findStrictToggle:SetPoint("TOPLEFT", 260, -68)
+    ap.findStrictToggle:SetChecked(partyLens.db.autopilot.findStrict ~= false)
+    ap.findStrictToggle:SetScript("OnClick", function(check)
+        check:SetChecked(not check:GetChecked())
+        partyLens.db.autopilot.findStrict = check:GetChecked()
+    end)
+
     -- 5) Summary sentence + ARM. Final positions are set by LayoutAP (they shift
     -- down when Adjust is open).
     ap.summaryDivider = UIElements.CreateDivider(setupFace)
@@ -1755,35 +1772,54 @@ function UIMain.RefreshCockpit(partyLens)
 
     ap.goBtn:SetShown(rt and rt.pendingAction ~= nil)
 
-    local need, snap = Roster.Needed(partyLens)
-    local target = snap.size + math.max(0, need.total or 0)
-
-    ap.contactsLabel:Hide()
-    ap.progressLabel:Show()
-    ap.pipRow:Show()
-    ap.rosterLabel:Show()
-    ap.progressLabel:SetText(L("AP_GROUP_PROGRESS", snap.size, target))
-    SetPips(ap.pipRow, snap.size, target)
-    local names = {}
-    for _, m in ipairs(snap.members) do
-        names[#names + 1] = Utils.ClassColoredName(m.name or "", m.classFile)
-    end
-    ap.rosterLabel:SetText(table.concat(names, ", "))
-
-    if need.total <= 0 then
-        ap.needLabel:SetText(L("AP_NEED_NONE"))
-        ap.needLabel:SetTextColor(P.freshNew[1], P.freshNew[2], P.freshNew[3], 1)
+    if cfg.role == "find" then
+        -- Joining, not building: no roster/pips — show how many groups we contacted.
+        ap.progressLabel:Hide()
+        ap.pipRow:Hide()
+        ap.rosterLabel:Hide()
+        ap.announceBtn:Hide()
+        ap.contactsLabel:Show()
+        -- rt.contactCount is a TABLE ([lowerShortName] = attempts); count distinct names.
+        local contacted = 0
+        for _ in pairs((rt and rt.contactCount) or {}) do contacted = contacted + 1 end
+        ap.contactsLabel:SetText(L("AP_CONTACTED", contacted))
+        local rolesText = (UIMain.RolesText and UIMain.RolesText(partyLens)) or ""
+        if rolesText == "" then rolesText = "dps" end
+        ap.cfgLine:SetText(roleWord .. "  \194\183  " .. contentLabel
+            .. "  \194\183  " .. rolesText .. "  \194\183  " .. modeLabel)
+        ap.needLabel:SetText(L("AP_MYROLE_LABEL") .. ": " .. rolesText)
+        ap.needLabel:SetTextColor(P.muted[1], P.muted[2], P.muted[3], 1)
     else
-        local parts = {}
-        if need.tank > 0 then parts[#parts + 1] = need.tank .. "T" end
-        if need.heal > 0 then parts[#parts + 1] = need.heal .. "H" end
-        if need.dps > 0 then parts[#parts + 1] = need.dps .. "D" end
-        local detail = (#parts > 0) and table.concat(parts, " ") or (need.remaining .. "x")
-        ap.needLabel:SetText(L("AP_NEED_REMAINING", detail))
-        ap.needLabel:SetTextColor(P.gold[1], P.gold[2], P.gold[3], 1)
+        local need, snap = Roster.Needed(partyLens)
+        local target = snap.size + math.max(0, need.total or 0)
+
+        ap.contactsLabel:Hide()
+        ap.progressLabel:Show()
+        ap.pipRow:Show()
+        ap.rosterLabel:Show()
+        ap.progressLabel:SetText(L("AP_GROUP_PROGRESS", snap.size, target))
+        SetPips(ap.pipRow, snap.size, target)
+        local names = {}
+        for _, m in ipairs(snap.members) do
+            names[#names + 1] = Utils.ClassColoredName(m.name or "", m.classFile)
+        end
+        ap.rosterLabel:SetText(table.concat(names, ", "))
+
+        if need.total <= 0 then
+            ap.needLabel:SetText(L("AP_NEED_NONE"))
+            ap.needLabel:SetTextColor(P.freshNew[1], P.freshNew[2], P.freshNew[3], 1)
+        else
+            local parts = {}
+            if need.tank > 0 then parts[#parts + 1] = need.tank .. "T" end
+            if need.heal > 0 then parts[#parts + 1] = need.heal .. "H" end
+            if need.dps > 0 then parts[#parts + 1] = need.dps .. "D" end
+            local detail = (#parts > 0) and table.concat(parts, " ") or (need.remaining .. "x")
+            ap.needLabel:SetText(L("AP_NEED_REMAINING", detail))
+            ap.needLabel:SetTextColor(P.gold[1], P.gold[2], P.gold[3], 1)
+        end
+        UIElements.SetButtonEnabled(ap.announceBtn, snap.size > 1)
+        ap.announceBtn:Show()
     end
-    UIElements.SetButtonEnabled(ap.announceBtn, snap.size > 1)
-    ap.announceBtn:Show()
 
     local log = (rt and rt.log) or {}
     for i = 1, #ap.logLines do
