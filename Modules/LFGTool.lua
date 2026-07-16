@@ -474,31 +474,55 @@ function LFGTool.GetQuestActivities()
         or 0
 
     for i = 1, num do
-        local title, questID, suggestedGroup, level, isHeader
-        if QL and QL.GetInfo then
+        local questID, title, suggestedGroup, level, isHeader
+
+        -- Preferred: resolve a questID for the index, then read it by questID. These
+        -- by-questID getters return a proper number/string (no positional guessing)
+        -- and are the ones most likely to exist on a modern Classic client.
+        if QL and QL.GetQuestIDForLogIndex then
+            questID = QL.GetQuestIDForLogIndex(i)
+        end
+        if questID and questID > 0 then
+            if QL.GetSuggestedGroupSize then
+                suggestedGroup = QL.GetSuggestedGroupSize(questID)
+            end
+            if QL.GetTitleForQuestID then
+                title = QL.GetTitleForQuestID(questID)
+            end
+        end
+
+        -- Table form (named fields) fills any gaps.
+        if QL and QL.GetInfo and (not title or not suggestedGroup) then
             local info = QL.GetInfo(i)
             if info then
-                title, questID = info.title, info.questID
-                suggestedGroup, level, isHeader = info.suggestedGroup, info.level, info.isHeader
+                isHeader = info.isHeader
+                questID = questID or info.questID
+                title = title or info.title
+                suggestedGroup = suggestedGroup or info.suggestedGroup
+                level = level or info.level
             end
-        elseif _G.GetQuestLogTitle then
+        end
+
+        -- Oldest positional form, last resort (headers are still filtered out below
+        -- by the suggestedGroup gate, so a wrong isHeader position can't leak them).
+        if not title and _G.GetQuestLogTitle then
             local t, lvl, sg, hdr = _G.GetQuestLogTitle(i)
-            title, level, suggestedGroup, isHeader = t, lvl, sg, hdr
-            if QL and QL.GetQuestIDForLogIndex then
-                questID = QL.GetQuestIDForLogIndex(i)
-            end
+            title = t
+            level = level or lvl
+            suggestedGroup = suggestedGroup or sg
+            isHeader = isHeader or hdr
         end
 
         suggestedGroup = tonumber(suggestedGroup) or 0
         level = tonumber(level) or 0
         if title and not isHeader and suggestedGroup > 1 then
             list[#list + 1] = {
-                value = questID and ("q:" .. questID) or ("qi:" .. i),
+                value = (questID and questID > 0) and ("q:" .. questID) or ("qi:" .. i),
                 label = title,
                 order = level,
                 maxPlayers = suggestedGroup,
                 kind = "quest",
-                questID = questID,
+                questID = (questID and questID > 0) and questID or nil,
                 minLevel = level,
                 maxLevel = level,
                 levelText = level > 0 and tostring(level) or "",
