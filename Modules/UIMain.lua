@@ -1048,9 +1048,107 @@ local function CreateCompPopup(partyLens)
     pop:SetScript("OnHide", function() catcher:Hide() end)
 end
 
+-- A row of small squares showing group fill. Filled = seated, hollow = open.
+-- Textures are created lazily on parent.pips and reused across repaints.
+local AP_PIP_MAX = 40
+local function SetPips(parent, filled, total)
+    local P = UIElements.PALETTE
+    parent.pips = parent.pips or {}
+    total = math.min(total or 0, AP_PIP_MAX)
+    filled = filled or 0
+    for i = 1, AP_PIP_MAX do
+        local pip = parent.pips[i]
+        if i <= total then
+            if not pip then
+                pip = parent:CreateTexture(nil, "ARTWORK")
+                pip:SetSize(12, 12)
+                pip:SetPoint("LEFT", (i - 1) * 16, 0)
+                parent.pips[i] = pip
+            end
+            local on = i <= filled
+            pip:SetColorTexture(
+                on and P.teal[1] or P.stroke[1],
+                on and P.teal[2] or P.stroke[2],
+                on and P.teal[3] or P.stroke[3],
+                on and 1 or 0.5)
+            pip:Show()
+        elseif pip then
+            pip:Hide()
+        end
+    end
+end
+
 -- Builds the live COCKPIT face (status, slot pips, roster, live action, log).
--- Filled in a later step; declared here so CreateAutopilotPanel can call it.
-local function CreateAutopilotCockpit(partyLens, face) end
+-- Declared here so CreateAutopilotPanel can call it; repainted by RefreshCockpit.
+local function CreateAutopilotCockpit(partyLens, face)
+    local P = UIElements.PALETTE
+    local ap = partyLens.ap
+
+    -- Config summary line + an edit affordance (disarms and returns to Setup).
+    ap.cfgLine = UIElements.CreateLabel(face, "", 11, P.muted)
+    ap.cfgLine:SetPoint("TOPLEFT", PAD, -PAD)
+    ap.cfgLine:SetJustifyH("LEFT")
+    ap.editBtn = UIElements.CreateButton(face, L("AP_EDIT"), 64, 20, P.blue)
+    ap.editBtn:SetPoint("TOPRIGHT", -PAD, -PAD + 2)
+    ap.editBtn:SetScript("OnClick", function()
+        Autopilot.Disarm(partyLens)
+        UIMain.RefreshAutopilot(partyLens)
+    end)
+
+    -- Big status: a live dot + state text, with DISARM on the right.
+    ap.statusDot = face:CreateTexture(nil, "ARTWORK")
+    ap.statusDot:SetSize(10, 10)
+    ap.statusDot:SetPoint("TOPLEFT", PAD, -48)
+    ap.statusLabel = UIElements.CreateLabel(face, "", 14, P.text)
+    ap.statusLabel:SetPoint("LEFT", ap.statusDot, "RIGHT", 8, 0)
+    ap.disarmBtn = UIElements.CreateButton(face, L("AP_DISARM"), 120, 26, P.coral)
+    ap.disarmBtn:SetPoint("TOPRIGHT", -PAD, -42)
+    ap.disarmBtn:SetScript("OnClick", function()
+        Autopilot.Toggle(partyLens)
+        UIMain.RefreshAutopilot(partyLens)
+    end)
+
+    -- Progress: n/target + slot pips + roster names + remaining need. Find mode
+    -- swaps the progress/pips/roster for a running contacts count (RefreshCockpit).
+    ap.progressLabel = UIElements.CreateLabel(face, "", 11, P.muted)
+    ap.progressLabel:SetPoint("TOPLEFT", PAD, -86)
+    ap.contactsLabel = UIElements.CreateLabel(face, "", 11, P.muted)
+    ap.contactsLabel:SetPoint("TOPLEFT", PAD, -86)
+    ap.contactsLabel:Hide()
+    ap.pipRow = CreateFrame("Frame", nil, face)
+    ap.pipRow:SetPoint("TOPLEFT", PAD, -106)
+    ap.pipRow:SetSize(600, 14)
+    ap.rosterLabel = UIElements.CreateLabel(face, "", 11, P.text)
+    ap.rosterLabel:SetPoint("TOPLEFT", PAD, -128)
+    ap.rosterLabel:SetPoint("RIGHT", -PAD, 0)
+    ap.rosterLabel:SetJustifyH("LEFT")
+    ap.needLabel = UIElements.CreateLabel(face, "", 11, P.gold)
+    ap.needLabel:SetPoint("TOPLEFT", PAD, -148)
+    ap.needLabel:SetPoint("RIGHT", -PAD, 0)
+    ap.needLabel:SetJustifyH("LEFT")
+
+    -- Live action: Announce ready (build) + GO (suggest mode, when pending).
+    ap.announceBtn = UIElements.CreateButton(face, L("AP_ANNOUNCE_BTN"), 150, 28, P.gold)
+    ap.announceBtn:SetPoint("TOPLEFT", PAD, -178)
+    ap.announceBtn:SetScript("OnClick", function() Autopilot.AnnounceReady(partyLens) end)
+    ap.goBtn = UIElements.CreateButton(face, L("AP_GO"), 80, 28, P.gold)
+    ap.goBtn:SetPoint("LEFT", ap.announceBtn, "RIGHT", 8, 0)
+    ap.goBtn:SetScript("OnClick", function() Autopilot.PressGo(partyLens) end)
+    ap.goBtn:Hide()
+
+    -- Activity log.
+    ap.logHeader = UIElements.CreateLabel(face, L("AP_LOG_TITLE"), 10, P.muted)
+    ap.logHeader:SetPoint("TOPLEFT", PAD, -220)
+    ap.logLines = {}
+    for i = 1, 6 do
+        local line = UIElements.CreateLabel(face, "", 10, P.faint)
+        line:SetPoint("TOPLEFT", PAD, -240 - (i - 1) * 16)
+        line:SetPoint("RIGHT", -PAD, 0)
+        line:SetJustifyH("LEFT")
+        line:Hide()
+        ap.logLines[i] = line
+    end
+end
 
 local function CreateAutopilotPanel(partyLens, host)
     local P = UIElements.PALETTE
@@ -1627,6 +1725,75 @@ function UIMain.RefreshAutopilot(partyLens)
             local rolesText = (UIMain.RolesText and UIMain.RolesText(partyLens)) or ""
             if rolesText == "" then rolesText = "dps" end
             ap.summary:SetText(L("AP_SUMMARY_FIND", contentLabel, rolesText, modeLabel))
+        end
+    end
+end
+
+-- Repaints the live COCKPIT face (only while armed). Build mode shows the group
+-- filling up (progress + slot pips + roster + remaining need); find mode swaps in
+-- a contacts count (added in the find-mode step).
+function UIMain.RefreshCockpit(partyLens)
+    local ap = partyLens.ap
+    if not ap or not ap.statusLabel then
+        return
+    end
+    local P = UIElements.PALETTE
+    local cfg = partyLens.db.autopilot
+    local rt = partyLens.autopilot
+    local state = (rt and rt.state) or "searching"
+
+    local modeLabel = cfg.tier == "suggest" and L("AP_MODE_SUGGEST") or L("AP_MODE_AUTO")
+    local contentLabel = (cfg.activityFilter and cfg.activityFilter ~= "" and cfg.activityFilter)
+        or L(cfg.activityType == "raid" and "TAB_RAIDS"
+            or cfg.activityType == "any" and "FILTER_ALL" or "TAB_DUNGEONS")
+    local roleWord = cfg.role == "build" and L("AP_ROLE_BUILD") or L("AP_ROLE_FIND")
+    ap.cfgLine:SetText(roleWord .. "  \194\183  " .. contentLabel .. "  \194\183  " .. modeLabel)
+
+    ap.statusLabel:SetText(L(AP_STATE_LABEL[state] or "AP_STATUS_SEARCHING"))
+    local live = (state == "ready") and P.freshNew or P.teal
+    ap.statusDot:SetColorTexture(live[1], live[2], live[3], 1)
+
+    ap.goBtn:SetShown(rt and rt.pendingAction ~= nil)
+
+    local need, snap = Roster.Needed(partyLens)
+    local target = snap.size + math.max(0, need.total or 0)
+
+    ap.contactsLabel:Hide()
+    ap.progressLabel:Show()
+    ap.pipRow:Show()
+    ap.rosterLabel:Show()
+    ap.progressLabel:SetText(L("AP_GROUP_PROGRESS", snap.size, target))
+    SetPips(ap.pipRow, snap.size, target)
+    local names = {}
+    for _, m in ipairs(snap.members) do
+        names[#names + 1] = Utils.ClassColoredName(m.name or "", m.classFile)
+    end
+    ap.rosterLabel:SetText(table.concat(names, ", "))
+
+    if need.total <= 0 then
+        ap.needLabel:SetText(L("AP_NEED_NONE"))
+        ap.needLabel:SetTextColor(P.freshNew[1], P.freshNew[2], P.freshNew[3], 1)
+    else
+        local parts = {}
+        if need.tank > 0 then parts[#parts + 1] = need.tank .. "T" end
+        if need.heal > 0 then parts[#parts + 1] = need.heal .. "H" end
+        if need.dps > 0 then parts[#parts + 1] = need.dps .. "D" end
+        local detail = (#parts > 0) and table.concat(parts, " ") or (need.remaining .. "x")
+        ap.needLabel:SetText(L("AP_NEED_REMAINING", detail))
+        ap.needLabel:SetTextColor(P.gold[1], P.gold[2], P.gold[3], 1)
+    end
+    UIElements.SetButtonEnabled(ap.announceBtn, snap.size > 1)
+    ap.announceBtn:Show()
+
+    local log = (rt and rt.log) or {}
+    for i = 1, #ap.logLines do
+        local entry = log[i]
+        if entry then
+            local stamp = date and date("%H:%M", entry.t) or ""
+            ap.logLines[i]:SetText("|cff5a6470" .. stamp .. "|r  " .. entry.text)
+            ap.logLines[i]:Show()
+        else
+            ap.logLines[i]:Hide()
         end
     end
 end
