@@ -864,7 +864,9 @@ local function LayoutAP(partyLens)
     if not ap or not ap.summary then return end
     local open = partyLens.db.autopilot.adjustOpen and true or false
     if ap.adjustToggle then
-        ap.adjustToggle:SetText((open and "\226\150\190  " or "\226\150\184  ") .. L("AP_ADJUST"))
+        -- Plain ASCII carets: the WoW default font has no small-triangle glyphs
+        -- (they render as tofu). Mirrors the dropdown's "v" caret.
+        ap.adjustToggle:SetText((open and "v  " or ">  ") .. L("AP_ADJUST"))
     end
     if ap.adjBox then ap.adjBox:SetShown(open) end
     local s = open and AP_ADJ_HEIGHT or 0
