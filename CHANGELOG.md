@@ -5,6 +5,20 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.33.2]
+
+Confiabilidade do mesh (sobre os buses atuais, sem transporte novo):
+
+- **Cobertura do gossip de presença:** `BuildNodeDigest` mandava sempre os mesmos ~8 nodes
+  (beacons + mais frescos), então com mais de 8 nodes conhecidos a cauda nunca era
+  propagada — quem não ouvia esses nodes direto nunca ficava sabendo deles. Agora o gossip
+  periódico rotaciona uma janela sobre os nodes não-beacon, então ao longo dos ciclos TODOS
+  os nodes conhecidos acabam se espalhando (beacons seguem sempre incluídos). Seguro sob a
+  anti-entropia (idade / mais-fresco-vence).
+- **Consistência V/VD:** o vouch instantâneo `V` não ia pro bus realm (`:Realm`), só o
+  digest `VD` ia — agora `V` também leva o realmKey, então um vouch se espalha tão longe
+  quanto o digest.
+
 ## [0.33.1]
 
 Correção: a malha compartilhada (LibChehulMesh, v4) não estoura mais o limite de

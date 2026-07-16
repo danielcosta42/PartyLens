@@ -108,7 +108,7 @@ function Reputation.Vouch(partyLens, name)
     db.tally[key][MyKey()] = time() -- count my own vote immediately
     local ln = LN()
     if ln and ln.Broadcast then
-        ln.Broadcast(table.concat({ ln.NET_PROTO, "V", Utils.PlayerShortName(name) }, "|"))
+        ln.Broadcast(table.concat({ ln.NET_PROTO, "V", Utils.PlayerShortName(name) }, "|"), "V")
     end
     Utils.Print(L("REP_VOUCHED", Utils.PlayerShortName(name)))
     Reputation.Refresh(partyLens)
