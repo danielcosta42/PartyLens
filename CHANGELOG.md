@@ -5,6 +5,21 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.33.1]
+
+Correção: a malha compartilhada (LibChehulMesh, v4) não estoura mais o limite de
+mensagens de chat do cliente ("The number of messages that can be sent is limited").
+
+- O barramento realm usa **YELL**, que é chat público e cai no rate limit estrito do
+  cliente — limite que o ChatThrottleLib **não** controla (ele só regula o byte-throttle
+  de addon). O `FlushRealm` despejava a fila inteira num único frame, e a fila era
+  ilimitada e chaveada pelo payload quando o chamador não passava coalesceKey, então um
+  feed "um-por-item" acumulava e saía como uma rajada de YELLs.
+- Agora o flush **espaça** os YELLs (no máx. 4 por ciclo, 1 a cada 2s) sobre uma fila
+  com **teto** (40 itens), e o ticker é religado à versão atual no upgrade.
+- Arquivo compartilhado idêntico em toda a família Chehul (PartyLens/GuildOS/
+  ProfessionHelper/Lodestar).
+
 ## [0.33.0]
 
 Novo: **buffs de mundo por camada** nos chips do seletor de hop — pra você saber pra
