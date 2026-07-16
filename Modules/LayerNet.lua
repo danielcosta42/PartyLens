@@ -553,47 +553,68 @@ end
 -- beacons first then freshest, aged, capped to fit the ~255-char line. Returns nil when
 -- we know nothing shareable. Shared by GossipNodes (realm), BridgeToGroup (party) and
 -- BridgeForward (yell) so every path emits the exact same wire format.
-local function BuildNodeDigest(partyLens)
+-- `rotate` (GossipNodes' periodic realm gossip) advances a cursor over the NON-beacon
+-- nodes so that, across cycles, EVERY known node eventually propagates. Without it, with
+-- more than GOSSIP_MAX known nodes the same freshest-8 are shared every cycle and the tail
+-- never gossips — peers who can't hear those nodes directly never learn them. Beacons are
+-- always shared (most useful). Anti-entropy keeps rotation safe: a node an item a peer
+-- already holds fresher is ignored on receive (RecordNode freshest-wins). The one-shot
+-- bridge callers pass no `rotate` (they seed the freshest/beacon set, not a rotating slice).
+local function BuildNodeDigest(partyLens, rotate)
     local now = time()
-    local list = {}
+    -- Split beacons from the rest: beacons are always shared; the rest are the rotation pool.
+    -- Skip zone/map 0 (a not-yet-detected presence ping): the SD receiver gates on >0 so
+    -- those would be dropped anyway — no sense spending digest bytes on them.
+    local beacons, others = {}, {}
     for _, n in pairs(RT(partyLens).nodes) do
-        -- ALL known nodes with a REAL layer — first-hand AND relayed — so data spreads
-        -- MULTI-HOP (anti-entropy gossip). Each entry carries the node's AGE; the age
-        -- grows ~one gossip cycle per relay, so an item dies once older than NODE_TTL.
-        -- Combined with "freshest wins" on receive, this can't loop forever. Skip zone/
-        -- map 0 (a not-yet-detected presence ping): the SD receiver gates on >0 so those
-        -- would be dropped anyway — no sense spending digest bytes on them.
         if n.name and n.zoneUID and n.zoneUID > 0 and n.mapID and n.mapID > 0
             and not SameAsPlayer(n.name) and (now - (n.t or 0)) < LayerNet.NODE_TTL then
-            list[#list + 1] = n
+            if n.beacon then
+                beacons[#beacons + 1] = n
+            else
+                others[#others + 1] = n
+            end
         end
     end
-    if #list == 0 then
+    if #beacons == 0 and #others == 0 then
         return nil
     end
-    table.sort(list, function(a, b)
-        if (a.beacon and true) ~= (b.beacon and true) then
-            return a.beacon and true or false -- beacons first (most useful to share)
-        end
-        return (a.t or 0) > (b.t or 0) -- then most-recently heard
-    end)
-    local parts, used = {}, 0
-    for i = 1, #list do
+    local byFresh = function(a, b) return (a.t or 0) > (b.t or 0) end
+    table.sort(beacons, byFresh) -- freshest beacons first
+    table.sort(others, byFresh)  -- freshest others first (also the non-rotating default order)
+    local rt = RT(partyLens)
+    local start = (rotate and #others > 0) and ((rt.gossipCursor or 0) % #others) or 0
+    local parts, used, othersEmitted = {}, 0, 0
+    local function tryAdd(n)
         if #parts >= LayerNet.GOSSIP_MAX then
-            break
+            return false
         end
-        local n = list[i]
-        -- name:mapID:zoneUID:beacon:ageSeconds (names are letters-only -> ':'/';' safe)
+        -- name:mapID:zoneUID:beacon:ageSeconds (names are letters-only -> ':'/';' safe).
+        -- age grows ~one gossip cycle per relay hop, so an item dies once older than
+        -- NODE_TTL; combined with "freshest wins" on receive, gossip can't loop forever.
         local age = math.max(0, math.min(now - (n.t or now), 99999))
         local entry = table.concat({
             n.name, tostring(n.mapID), tostring(n.zoneUID), n.beacon and "1" or "0", tostring(age),
         }, ":")
         local add = #entry + (used > 0 and 1 or 0) -- +1 for the ';' separator
         if used + add > 220 then -- keep the whole channel line under the ~255 limit
-            break
+            return false
         end
         parts[#parts + 1] = entry
         used = used + add
+        return true
+    end
+    for i = 1, #beacons do
+        if not tryAdd(beacons[i]) then break end
+    end
+    for k = 0, #others - 1 do
+        if not tryAdd(others[((start + k) % #others) + 1]) then break end
+        othersEmitted = othersEmitted + 1
+    end
+    if rotate and #others > 0 then
+        -- Advance past exactly what we shared so the next cycle continues the sweep (never
+        -- skips or re-shares). max(...,1) guarantees progress even if beacons ate every slot.
+        rt.gossipCursor = (start + math.max(othersEmitted, 1)) % #others
     end
     if #parts == 0 then
         return nil
@@ -607,7 +628,7 @@ local function GossipNodes(partyLens)
     if not Net.Realm then
         return
     end
-    local payload = BuildNodeDigest(partyLens)
+    local payload = BuildNodeDigest(partyLens, true) -- rotate: sweep all known nodes across cycles
     if payload then
         Net.Realm(LayerNet.PREFIX, payload, LayerNet.PREFIX .. ":SD")
     end
