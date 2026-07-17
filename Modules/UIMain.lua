@@ -1666,6 +1666,22 @@ function UIMain.RefreshAutopilotActivities(partyLens, allowRequest)
         end
     end
 
+    -- A specific quest set programmatically (the quest-log "Find Group" hook) may
+    -- not be in the auto-detected group-quest list. Inject it so the dropdown can
+    -- show and select it instead of stranding a stale label.
+    local qid = partyLens.db.autopilot.questID
+    if qid and (content == "quest" or content == "any") and not seen["q:" .. qid] then
+        table.insert(items, 1, {
+            value = "q:" .. qid,
+            label = (partyLens.db.autopilot.activityFilter ~= "" and partyLens.db.autopilot.activityFilter)
+                or ("Quest " .. qid),
+            kind = "quest",
+            maxPlayers = 5,
+            order = 0,
+        })
+        seen["q:" .. qid] = true
+    end
+
     local options = { { value = "__any__", label = L("AP_ANY_ACTIVITY") } }
 
     if #items == 0 then

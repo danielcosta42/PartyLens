@@ -531,6 +531,22 @@ function LFGTool.GetQuestActivities()
     return list
 end
 
+-- Resolve a quest title from its id. This client has no C_QuestLog.GetTitleForQuestID,
+-- so scan the log by the questID that GetQuestLogTitle exposes in slot 8.
+function LFGTool.QuestTitleByID(questID)
+    if not questID or not _G.GetQuestLogTitle then
+        return nil
+    end
+    local n = (_G.GetNumQuestLogEntries and _G.GetNumQuestLogEntries()) or 0
+    for i = 1, n do
+        local t = { _G.GetQuestLogTitle(i) }
+        if t[8] == questID and t[1] and t[1] ~= "" then
+            return t[1]
+        end
+    end
+    return nil
+end
+
 -- Asks the server for the activity catalog. On the Classic client this catalog
 -- is owned by the Blizzard group-finder (a load-on-demand addon), so we load it
 -- first; otherwise GetAvailableActivities() stays nil.
@@ -728,6 +744,7 @@ local function OnQuestGroupFind(questID)
         return
     end
     local title = (C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(questID))
+        or LFGTool.QuestTitleByID(questID)
         or (_G.QuestUtils_GetQuestName and _G.QuestUtils_GetQuestName(questID))
         or ("Quest " .. questID)
     local cfg = pl.db.autopilot
