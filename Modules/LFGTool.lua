@@ -736,6 +736,11 @@ end
 local questHookInstalled = false
 
 local function OnQuestGroupFind(questID)
+    -- TEMP diagnostic: shows exactly what the group-finder entry point passes and
+    -- how we resolve the title. Remove once the quest hook is confirmed.
+    print("|cff26dbb8PartyLens hook|r arg=" .. tostring(questID)
+        .. " type=" .. type(questID)
+        .. " titleByID=" .. tostring(LFGTool.QuestTitleByID(tonumber(questID) or questID)))
     if not questID then
         return
     end
