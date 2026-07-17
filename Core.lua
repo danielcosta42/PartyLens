@@ -38,6 +38,9 @@ local LocalizedKeywords = LoadModule("LocalizedKeywords")
 
 local PartyLens = CreateFrame("Frame", "PartyLens_EventFrame")
 _G.PartyLens = PartyLens
+-- Mirror the public inter-addon API onto the singleton so siblings can call
+-- `_G.PartyLens.API.StartQuestGroup(...)` (the table itself is built in Modules/API.lua).
+PartyLens.API = _G.PartyLens_API
 
 -- Key Bindings UI labels (the binding action itself lives in Bindings.xml).
 _G.BINDING_HEADER_PARTYLENS = "PartyLens"
