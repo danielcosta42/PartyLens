@@ -5,6 +5,23 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [0.33.3]
+
+Confiabilidade cross-layer, aprendida estudando o AutoLayer:
+
+- **Flush por teclado no relay visível.** Postar no canal visível (a linha de hop que
+  humanos e outros addons leem) exige evento de hardware — e a gente só flushava em clique
+  no WorldFrame (superfície estreita: não dispara na UI nem enquanto você digita), a provável
+  causa da entrega ~zero que a gente mediu. Agora também flusha em cada tecla (um frame
+  `OnKeyDown` que re-propaga a tecla, então não engole input) — igual o AutoLayer faz. O relay
+  realmente drena durante o jogo normal.
+- **Segmentos de layer (Azeroth vs Outland).** Layers são numeradas separadamente por
+  continente, então "layer 3" em Orgrimmar não é a "layer 3" de um beacon em Shattrath. Novo
+  `Layer.Segment` (detecta AZ/OL pela cadeia de mapas do C_Map) + o beacon agora ignora
+  pedidos de chat público marcados para OUTRO segmento — usando a mesma tag `<AZ>`/`<OL>` do
+  AutoLayer, então os dois addons se filtram corretamente. (Hops de mesh PL↔PL já eram
+  seguros: casam por zoneUID, que é único por mapa/segmento.)
+
 ## [0.33.2]
 
 Confiabilidade do mesh (sobre os buses atuais, sem transporte novo):
