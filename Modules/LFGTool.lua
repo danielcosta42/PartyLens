@@ -332,6 +332,7 @@ end
 
 local function ActivityEntry(activityID)
     local fullName, maxPlayers, orderIndex, categoryID, minLevel, maxLevel
+    local isPvp, isRaidFlag, usesRoles
     -- The Anniversary client is a modern build: GetActivityInfo was replaced by
     -- the table-returning GetActivityInfoTable. Prefer it; fall back to the old
     -- positional form on older clients.
@@ -350,6 +351,11 @@ local function ActivityEntry(activityID)
                 minLevel = info.minLevelSuggestion
             end
             maxLevel = info.maxLevelSuggestion or info.maxLevel
+            -- Reliable per-activity classification flags (this client exposes them
+            -- even though the category API is missing).
+            isPvp = info.isPvpActivity or info.isRatedPvpActivity
+            isRaidFlag = info.isCurrentRaidActivity
+            usesRoles = info.useDungeonRoleExpectations
         end
     elseif C_LFGList.GetActivityInfo then
         fullName, _, categoryID, _, _, _, _, maxPlayers, _, orderIndex = C_LFGList.GetActivityInfo(activityID)
@@ -357,20 +363,34 @@ local function ActivityEntry(activityID)
     if not fullName or fullName == "" then
         return nil
     end
-    -- Real kind from the category; fall back to size when unknown. A PvP-looking
-    -- name overrides so a stray arena never lands in a PvE list.
+
+    -- Classify. Prefer the category map (works on clients with GetCategoryInfo);
+    -- otherwise use the activity's own flags. PvP (arenas/battlegrounds) is always
+    -- excluded; world/quest zones report maxNumPlayers == 0 and no dungeon roles,
+    -- so they fall to "quest" (kept out of the dungeon/raid lists too).
+    local maxp = maxPlayers or 0
     local kind = LFGTool.CategoryKind(categoryID)
     if not kind then
-        kind = ((maxPlayers or 0) > 5) and "raid" or "dungeon"
-    end
-    if kind ~= "pvp" and LooksPvP(fullName) then
+        if isPvp or LooksPvP(fullName) then
+            kind = "pvp"
+        elseif isRaidFlag or maxp > 5 then
+            kind = "raid"
+        elseif maxp >= 2 and maxp <= 5 then
+            kind = "dungeon"
+        elseif usesRoles then
+            kind = "dungeon" -- role-based instance whose size the client left at 0
+        else
+            kind = "quest" -- world/quest zone (e.g. "Hellfire Peninsula")
+        end
+    elseif kind ~= "pvp" and LooksPvP(fullName) then
         kind = "pvp"
     end
+
     return {
         value = activityID,
         label = fullName,
         order = orderIndex or 0,
-        maxPlayers = maxPlayers or 0,
+        maxPlayers = maxp,
         categoryID = categoryID,
         kind = kind,
         minLevel = tonumber(minLevel) or 0,
