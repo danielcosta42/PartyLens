@@ -747,34 +747,21 @@ function LFGTool.AnnounceListing(partyLens)
 end
 
 -- ---------------------------------------------------------------------------
--- Quest -> Autopilot entry point. Targets a specific quest and opens PartyLens on
--- the Autopilot, pre-set to Build that quest (does NOT auto-arm -- arming stays
--- deliberate). Public so any addon can drive it:
+-- Quest -> Autopilot entry points. Target a quest and open PartyLens on the
+-- Autopilot, pre-set to Build that quest (never auto-arms -- arming stays
+-- deliberate). Two public surfaces:
 --
---     PartyLens_FindQuestGroup(questID)            -- title resolved from the log
---     PartyLens_FindQuestGroup(questID, "Title")   -- caller supplies the title
---
--- Also hooked to the Blizzard quest-log "Find Group" action where that exists
--- (this client lacks it, but other builds have it).
+--   PartyLens_FindQuestGroup(questID[, title])   -- id-based (native quest-log hook)
+--   PartyLens.API.StartQuestGroup(ctx)           -- context-based (sibling addons,
+--        ctx = { questID, questName/stepText, zone, needRaid, size })
 -- ---------------------------------------------------------------------------
-function LFGTool.FindQuestGroup(questID, title)
-    -- TEMP diagnostic: confirms the call fires and shows the args passed in.
-    print("|cff26dbb8PartyLens_FindQuestGroup|r qid=" .. tostring(questID) .. " title=" .. tostring(title))
-    local qid = tonumber(questID)
-    if not qid and not (type(title) == "string" and title ~= "") then
-        return -- nothing usable to target
-    end
+
+-- Apply a quest target to the config and open the panel. size (optional) fills a
+-- comfortable comp when the player hasn't set an explicit one.
+local function OpenForQuest(qid, title, size)
     local pl = _G.PartyLens
     if not pl or not pl.db or not pl.db.autopilot then
-        return
-    end
-    -- Prefer a caller-supplied title (e.g. Lodestar already knows it); otherwise
-    -- resolve from the quest log by id.
-    if type(title) ~= "string" or title == "" then
-        title = (qid and C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid))
-            or (qid and LFGTool.QuestTitleByID(qid))
-            or (qid and _G.QuestUtils_GetQuestName and _G.QuestUtils_GetQuestName(qid))
-            or ("Quest " .. tostring(qid or "?"))
+        return false
     end
     local cfg = pl.db.autopilot
     cfg.role = "build"
@@ -782,6 +769,11 @@ function LFGTool.FindQuestGroup(questID, title)
     cfg.questID = qid
     cfg.activityFilter = title
     cfg.activityID = nil
+    if size and not (cfg.comp and next(cfg.comp)) then
+        size = math.max(2, size)
+        local heal = (size >= 10) and 2 or 1
+        cfg.needTank, cfg.needHeal, cfg.needDps = 1, heal, math.max(0, size - 1 - heal)
+    end
     local UIMain = _G[ADDON_NAME .. "_UIMain"]
     if UIMain and UIMain.CreateMainUI then
         UIMain.CreateMainUI(pl)
@@ -798,8 +790,48 @@ function LFGTool.FindQuestGroup(questID, title)
     return true
 end
 
--- Global alias so other addons can integrate without reaching into the module.
+-- Id-based: title resolved from the log when not supplied.
+function LFGTool.FindQuestGroup(questID, title)
+    local qid = tonumber(questID)
+    if not qid and not (type(title) == "string" and title ~= "") then
+        return
+    end
+    if type(title) ~= "string" or title == "" then
+        title = (qid and C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid))
+            or (qid and LFGTool.QuestTitleByID(qid))
+            or (qid and _G.QuestUtils_GetQuestName and _G.QuestUtils_GetQuestName(qid))
+            or ("Quest " .. tostring(qid or "?"))
+    end
+    return OpenForQuest(qid, title, nil)
+end
 _G.PartyLens_FindQuestGroup = LFGTool.FindQuestGroup
+
+-- Context-based: the surface sibling addons (Lodestar) call. Prefers the real
+-- quest title (resolved from the id) over the raw step text, and sizes the recruit.
+function LFGTool.StartQuestGroup(ctx)
+    ctx = ctx or {}
+    local qid = tonumber(ctx.questID)
+    local title = (qid and LFGTool.QuestTitleByID(qid))
+        or (type(ctx.questName) == "string" and ctx.questName ~= "" and ctx.questName)
+        or (type(ctx.stepText) == "string" and ctx.stepText ~= "" and ctx.stepText)
+        or (qid and ("Quest " .. qid))
+    if not title or title == "" then
+        return false
+    end
+    return OpenForQuest(qid, title, tonumber(ctx.size))
+end
+
+-- Attach the sibling-addon API onto the PartyLens object. Core.lua (which creates
+-- _G.PartyLens) loads AFTER this module, so we attach lazily on load events.
+local function InstallPartyLensAPI()
+    local pl = _G.PartyLens
+    if pl then
+        pl.API = pl.API or {}
+        if not pl.API.StartQuestGroup then
+            pl.API.StartQuestGroup = LFGTool.StartQuestGroup
+        end
+    end
+end
 
 local questHookInstalled = false
 local function TryInstallQuestHook()
@@ -819,9 +851,11 @@ do
     f:RegisterEvent("ADDON_LOADED")
     f:RegisterEvent("PLAYER_LOGIN")
     f:SetScript("OnEvent", function()
+        InstallPartyLensAPI()
         TryInstallQuestHook()
     end)
-    -- In case the symbol is already present when this module loads.
+    -- In case the objects are already present when this module loads.
+    InstallPartyLensAPI()
     TryInstallQuestHook()
 end
 
