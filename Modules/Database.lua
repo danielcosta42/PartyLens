@@ -12,7 +12,7 @@ function Database.EnsureDB(partyLens)
     local previousSchemaVersion = PartyLensDB.schemaVersion or 0
     local defaults = {
         className = className,
-        schemaVersion = 7,
+        schemaVersion = 8,
         spec = "",
         -- Spec picker: specAuto detects the active spec from talents; otherwise
         -- specKeys is the set of specs the player pinned. Roles are DERIVED from
@@ -85,8 +85,8 @@ function Database.EnsureDB(partyLens)
         -- (partyLens.autopilot) so a reload never resumes acting silently.
         autopilot = {
             role = "build", -- "build" (recruit, LFM) | "find" (apply, LFG)
-            tier = "assisted", -- "advisor" | "assisted" | "full"
-            activityType = "dungeon", -- "dungeon" | "raid" | "any"
+            tier = "auto", -- "auto" (fire immediately) | "suggest" (queue for GO)
+            activityType = "dungeon", -- "dungeon" | "raid" | "quest" | "any"
             activityFilter = "", -- optional substring, e.g. "kara" / "heroic"
             -- Desired composition for build mode (totals, including yourself).
             -- These are DERIVED from `comp` when it has picks; otherwise they act
@@ -180,6 +180,19 @@ function Database.EnsureDB(partyLens)
         PartyLensDB.specAuto = true
         PartyLensDB.specKeys = {}
         PartyLensDB.schemaVersion = 7
+    end
+
+    -- v8: automation tiers collapsed 3 -> 2. advisor -> suggest; assisted|full -> auto.
+    if previousSchemaVersion < 8 then
+        if type(PartyLensDB.autopilot) == "table" then
+            local t = PartyLensDB.autopilot.tier
+            if t == "advisor" then
+                PartyLensDB.autopilot.tier = "suggest"
+            elseif t == "assisted" or t == "full" then
+                PartyLensDB.autopilot.tier = "auto"
+            end
+        end
+        PartyLensDB.schemaVersion = 8
     end
 
     -- Always backfill autopilot sub-keys so new options (added across versions)

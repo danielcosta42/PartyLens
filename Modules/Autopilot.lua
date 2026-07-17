@@ -355,7 +355,9 @@ end
 local function MatchesContent(partyLens, entry)
     local cfg = CFG(partyLens)
     local want = cfg.activityType or "dungeon"
-    if want ~= "any" then
+    -- Quests aren't a listing activityType: incoming entries are chat/tool posts
+    -- that mention the quest by name, so match on the title filter only (below).
+    if want ~= "any" and want ~= "quest" then
         local t = entry.activityType or (entry.isRaid and "raid" or "dungeon")
         if t ~= want then
             return false
@@ -491,14 +493,14 @@ end
 -- and get blocked even from a button click — so the autopilot never calls them.
 function Autopilot.Engage(partyLens, entry)
     local cfg = CFG(partyLens)
-    local tier = cfg.tier or "assisted"
+    local tier = cfg.tier or "auto"
     local rt = RT(partyLens)
 
     if cfg.role == "build" then
         if not Roster.CanInvite() then
             return
         end
-        if tier == "advisor" then
+        if tier == "suggest" then
             rt.pendingAction = { kind = "invite", name = entry.leader }
             Autopilot.Log(partyLens, L("AP_LOG_SUGGEST_INVITE", Short(entry.leader)))
         elseif Autopilot.WithinRate(partyLens) then
@@ -515,7 +517,7 @@ function Autopilot.Engage(partyLens, entry)
     if message == "" then
         return
     end
-    if tier == "advisor" then
+    if tier == "suggest" then
         rt.pendingAction = { kind = "whisper", name = entry.leader, message = message }
         Autopilot.Log(partyLens, L("AP_LOG_SUGGEST_WHISPER", Short(entry.leader)))
     elseif Autopilot.WithinRate(partyLens) then
@@ -610,8 +612,8 @@ function Autopilot.OnReady(partyLens, snap)
     Autopilot.Log(partyLens, L("AP_LOG_READY", snap.size, snap.max))
 
     local cfg = CFG(partyLens)
-    -- Only the recruiter announces, and only when not in advisor mode.
-    if cfg.role == "build" and cfg.tier ~= "advisor" and Roster.CanInvite() and snap.size > 1 then
+    -- Only the recruiter announces, and only when not in suggest mode.
+    if cfg.role == "build" and cfg.tier ~= "suggest" and Roster.CanInvite() and snap.size > 1 then
         Autopilot.AnnounceReady(partyLens)
     end
 end
@@ -727,9 +729,9 @@ function Autopilot.Tick(partyLens)
     if Comm and Comm.Heartbeat then
         Comm.Heartbeat(partyLens)
     end
-    -- Advisor/assisted tiers wait for the player's GO before queuing anything
-    -- new, so a pending suggestion or apply doesn't get re-logged every tick.
-    if cfg.tier ~= "full" and Autopilot.HasPending(partyLens) then
+    -- Suggest mode waits for the player's GO before queuing anything new, so a
+    -- pending suggestion doesn't get re-logged every tick. Auto never waits.
+    if cfg.tier == "suggest" and Autopilot.HasPending(partyLens) then
         Autopilot.RefreshPanel(partyLens)
         return
     end

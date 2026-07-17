@@ -31,6 +31,111 @@ function LFGTool.DungeonCategoryID()
     return DungeonCategoryID()
 end
 
+-- ---------------------------------------------------------------------------
+-- Activity KIND classification (dungeon / raid / quest / pvp).
+-- The old size-only split (<=5 dungeon, >5 raid) swept Arenas and Battlegrounds
+-- into the PvE lists. We classify by the activity's real category instead, mapping
+-- each categoryID to a kind by matching its localized category name against the
+-- client's own localized globals (locale-robust). Size remains the fallback for
+-- categories we can't recognize; PvP is then excluded from the PvE lists.
+-- ---------------------------------------------------------------------------
+local function LowerContainsAny(hay, needles)
+    hay = Utils.SafeLower(hay or "")
+    if hay == "" then
+        return false
+    end
+    for _, n in ipairs(needles) do
+        if n ~= "" and hay:find(n, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local KIND_TOKENS
+local function KindTokens()
+    if KIND_TOKENS then
+        return KIND_TOKENS
+    end
+    local function tok(...)
+        local out = {}
+        for _, v in ipairs({ ... }) do
+            if type(v) == "string" and v ~= "" then
+                out[#out + 1] = Utils.SafeLower(v)
+            end
+        end
+        return out
+    end
+    -- Order matters: PvP first so a "PvP"/"Arena" category never falls through to
+    -- the dungeon/raid buckets. Localized globals + English fallbacks. The PvP set
+    -- also lists TBC's fixed battleground/arena names by hand, because some clients
+    -- don't expose a PvP *category* name we can recognize (then the BGs would size-
+    -- classify as raids); an activity-name net catches them regardless of category.
+    KIND_TOKENS = {
+        { kind = "pvp", needles = tok(
+            _G.ARENA, _G.ARENAS, _G.BATTLEGROUND, _G.BATTLEGROUNDS, _G.PVP, _G.PLAYER_VS_PLAYER,
+            "arena", "battleground", "player vs", "pvp", "2v2", "3v3", "5v5",
+            "warsong gulch", "arathi basin", "alterac valley", "eye of the storm") },
+        { kind = "quest", needles = tok(_G.QUESTS, _G.QUEST, "quest") },
+        { kind = "raid", needles = tok(_G.RAIDS, _G.RAID, "raid") },
+        { kind = "dungeon", needles = tok(_G.DUNGEONS, _G.DUNGEON, "dungeon") },
+    }
+    return KIND_TOKENS
+end
+
+local categoryKindCache
+local function BuildCategoryKindCache()
+    categoryKindCache = {}
+    if not C_LFGList or not C_LFGList.GetAvailableCategories or not C_LFGList.GetCategoryInfo then
+        return
+    end
+    local okc, cats = pcall(C_LFGList.GetAvailableCategories)
+    if not okc or type(cats) ~= "table" then
+        return
+    end
+    for _, catID in ipairs(cats) do
+        local ok, info = pcall(C_LFGList.GetCategoryInfo, catID)
+        local name
+        if ok then
+            if type(info) == "table" then
+                name = info.name or info.categoryName
+            elseif type(info) == "string" then
+                name = info
+            end
+        end
+        if name then
+            for _, entry in ipairs(KindTokens()) do
+                if LowerContainsAny(name, entry.needles) then
+                    categoryKindCache[catID] = entry.kind
+                    break
+                end
+            end
+        end
+    end
+end
+
+-- kind for a categoryID, or nil when the category isn't recognized.
+function LFGTool.CategoryKind(categoryID)
+    if not categoryID then
+        return nil
+    end
+    if not categoryKindCache then
+        BuildCategoryKindCache()
+    end
+    return categoryKindCache[categoryID]
+end
+
+-- Invalidate the category->kind cache (call when the catalog is re-requested).
+function LFGTool.ResetCategoryKinds()
+    categoryKindCache = nil
+end
+
+-- True when an activity NAME itself reads as PvP (safety net for arenas whose
+-- category slipped classification). Battlegrounds are caught by category kind.
+local function LooksPvP(name)
+    return LowerContainsAny(name, KindTokens()[1].needles)
+end
+
 local function LooksLikeRecruiting(text)
     text = Utils.SafeLower(text)
     local needles = {
@@ -227,6 +332,7 @@ end
 
 local function ActivityEntry(activityID)
     local fullName, maxPlayers, orderIndex, categoryID, minLevel, maxLevel
+    local isPvp, isRaidFlag, usesRoles
     -- The Anniversary client is a modern build: GetActivityInfo was replaced by
     -- the table-returning GetActivityInfoTable. Prefer it; fall back to the old
     -- positional form on older clients.
@@ -245,6 +351,11 @@ local function ActivityEntry(activityID)
                 minLevel = info.minLevelSuggestion
             end
             maxLevel = info.maxLevelSuggestion or info.maxLevel
+            -- Reliable per-activity classification flags (this client exposes them
+            -- even though the category API is missing).
+            isPvp = info.isPvpActivity or info.isRatedPvpActivity
+            isRaidFlag = info.isCurrentRaidActivity
+            usesRoles = info.useDungeonRoleExpectations
         end
     elseif C_LFGList.GetActivityInfo then
         fullName, _, categoryID, _, _, _, _, maxPlayers, _, orderIndex = C_LFGList.GetActivityInfo(activityID)
@@ -252,12 +363,36 @@ local function ActivityEntry(activityID)
     if not fullName or fullName == "" then
         return nil
     end
+
+    -- Classify. Prefer the category map (works on clients with GetCategoryInfo);
+    -- otherwise use the activity's own flags. PvP (arenas/battlegrounds) is always
+    -- excluded; world/quest zones report maxNumPlayers == 0 and no dungeon roles,
+    -- so they fall to "quest" (kept out of the dungeon/raid lists too).
+    local maxp = maxPlayers or 0
+    local kind = LFGTool.CategoryKind(categoryID)
+    if not kind then
+        if isPvp or LooksPvP(fullName) then
+            kind = "pvp"
+        elseif isRaidFlag or maxp > 5 then
+            kind = "raid"
+        elseif maxp >= 2 and maxp <= 5 then
+            kind = "dungeon"
+        elseif usesRoles then
+            kind = "dungeon" -- role-based instance whose size the client left at 0
+        else
+            kind = "quest" -- world/quest zone (e.g. "Hellfire Peninsula")
+        end
+    elseif kind ~= "pvp" and LooksPvP(fullName) then
+        kind = "pvp"
+    end
+
     return {
         value = activityID,
         label = fullName,
         order = orderIndex or 0,
-        maxPlayers = maxPlayers or 0,
+        maxPlayers = maxp,
         categoryID = categoryID,
+        kind = kind,
         minLevel = tonumber(minLevel) or 0,
         maxLevel = tonumber(maxLevel) or 0,
         levelText = LevelRangeText(minLevel, maxLevel),
@@ -277,11 +412,13 @@ function LFGTool.GetActivityList(listingCategory)
         return list
     end
 
-    local wantRaid = (listingCategory == "raids")
+    local wantKind = (listingCategory == "raids") and "raid" or "dungeon"
     local seen = {}
 
-    -- Classify by group size (only raids exceed 5 players); this is robust even
-    -- when the conventional category ids are wrong for this client build.
+    -- Keep only entries whose real kind matches; this drops Arenas/Battlegrounds
+    -- (kind == "pvp") and quests from the dungeon/raid lists. ActivityEntry.kind
+    -- falls back to size when the category can't be recognized, so unknown-build
+    -- category ids still classify correctly.
     local function consider(activityID)
         if seen[activityID] then
             return
@@ -291,8 +428,7 @@ function LFGTool.GetActivityList(listingCategory)
         if not entry then
             return
         end
-        local isRaid = entry.maxPlayers > 5
-        if isRaid == wantRaid and (wantRaid or entry.maxPlayers >= 5) then
+        if entry.kind == wantKind then
             list[#list + 1] = entry
         end
     end
@@ -341,10 +477,101 @@ function LFGTool.GetActivityList(listingCategory)
     return list
 end
 
+-- The player's quest-log quests that suggest a group, as activity-shaped entries.
+-- Sourced from the log (not the finder catalog) so it reflects what YOU are on.
+-- Value is "q:"..questID so the dropdown can tell quests from real activities.
+function LFGTool.GetQuestActivities()
+    local list = {}
+    local QL = _G.C_QuestLog
+
+    -- Entry count + per-entry info come from whichever API this client exposes.
+    -- Prefer the table-returning C_QuestLog.GetInfo (named fields, no positional
+    -- ambiguity) even when the count function only exists as a global; only the
+    -- oldest clients fall back to the positional GetQuestLogTitle. Everything is
+    -- coerced with tonumber so a string field can never reach a numeric compare.
+    local num = (QL and QL.GetNumQuestLogEntries and QL.GetNumQuestLogEntries())
+        or (_G.GetNumQuestLogEntries and _G.GetNumQuestLogEntries())
+        or 0
+
+    -- Group-ish quest tags (localized global + English literal). On this client
+    -- GetQuestLogTitle returns the quest TAG as a string in slot 3 ("Group" for
+    -- group quests) -- not a numeric suggestedGroup -- so we detect by tag.
+    local groupTags = {}
+    for _, g in ipairs({ _G.GROUP, "Group", _G.ELITE, "Elite", _G.DUNGEON, "Dungeon", _G.RAID, "Raid" }) do
+        if type(g) == "string" and g ~= "" then
+            groupTags[g] = true
+        end
+    end
+
+    for i = 1, num do
+        local questID, title, level, isHeader, isGroup
+
+        if QL and QL.GetInfo then
+            -- Modern named-field path (absent on many Classic builds).
+            local info = QL.GetInfo(i)
+            if info then
+                title, questID, isHeader, level = info.title, info.questID, info.isHeader, info.level
+                isGroup = (tonumber(info.suggestedGroup) or 0) > 1
+            end
+        elseif _G.GetQuestLogTitle then
+            -- Global positional path. Layout on this client:
+            --   1 title, 2 level, 3 questTag(string|nil), 4 isHeader, ... 8 questID
+            local t = { _G.GetQuestLogTitle(i) }
+            title = t[1]
+            level = tonumber(t[2]) or 0
+            isHeader = t[4] and true or false
+            isGroup = (type(t[3]) == "string" and groupTags[t[3]]) and true or false
+            if type(t[8]) == "number" and t[8] > 0 then
+                questID = t[8]
+            end
+        end
+
+        level = tonumber(level) or 0
+        if title and not isHeader and isGroup then
+            list[#list + 1] = {
+                value = (questID and questID > 0) and ("q:" .. questID) or ("qi:" .. i),
+                label = title,
+                order = level,
+                maxPlayers = 5, -- group quests are small; drives a comfortable comp
+                kind = "quest",
+                questID = (questID and questID > 0) and questID or nil,
+                minLevel = level,
+                maxLevel = level,
+                levelText = level > 0 and tostring(level) or "",
+            }
+        end
+    end
+
+    table.sort(list, function(a, b)
+        if a.order ~= b.order then
+            return a.order < b.order
+        end
+        return a.label < b.label
+    end)
+    return list
+end
+
+-- Resolve a quest title from its id. This client has no C_QuestLog.GetTitleForQuestID,
+-- so scan the log by the questID that GetQuestLogTitle exposes in slot 8.
+function LFGTool.QuestTitleByID(questID)
+    if not questID or not _G.GetQuestLogTitle then
+        return nil
+    end
+    local n = (_G.GetNumQuestLogEntries and _G.GetNumQuestLogEntries()) or 0
+    for i = 1, n do
+        local t = { _G.GetQuestLogTitle(i) }
+        if t[8] == questID and t[1] and t[1] ~= "" then
+            return t[1]
+        end
+    end
+    return nil
+end
+
 -- Asks the server for the activity catalog. On the Classic client this catalog
 -- is owned by the Blizzard group-finder (a load-on-demand addon), so we load it
 -- first; otherwise GetAvailableActivities() stays nil.
 function LFGTool.RequestActivities()
+    LFGTool.ResetCategoryKinds()
     if not C_LFGList then
         return
     end
@@ -517,6 +744,119 @@ function LFGTool.AnnounceListing(partyLens)
     else
         Utils.Print(Localization.L("LFG_JOIN_ATTEMPT"))
     end
+end
+
+-- ---------------------------------------------------------------------------
+-- Quest -> Autopilot entry points. Target a quest and open PartyLens on the
+-- Autopilot, pre-set to Build that quest (never auto-arms -- arming stays
+-- deliberate). Two public surfaces:
+--
+--   PartyLens_FindQuestGroup(questID[, title])   -- id-based (native quest-log hook)
+--   PartyLens.API.StartQuestGroup(ctx)           -- context-based (sibling addons,
+--        ctx = { questID, questName/stepText, zone, needRaid, size })
+-- ---------------------------------------------------------------------------
+
+-- Apply a quest target to the config and open the panel. size (optional) fills a
+-- comfortable comp when the player hasn't set an explicit one.
+local function OpenForQuest(qid, title, size)
+    local pl = _G.PartyLens
+    if not pl or not pl.db or not pl.db.autopilot then
+        return false
+    end
+    local cfg = pl.db.autopilot
+    cfg.role = "build"
+    cfg.activityType = "quest"
+    cfg.questID = qid
+    cfg.activityFilter = title
+    cfg.activityID = nil
+    if size and not (cfg.comp and next(cfg.comp)) then
+        size = math.max(2, size)
+        local heal = (size >= 10) and 2 or 1
+        cfg.needTank, cfg.needHeal, cfg.needDps = 1, heal, math.max(0, size - 1 - heal)
+    end
+    local UIMain = _G[ADDON_NAME .. "_UIMain"]
+    if UIMain and UIMain.CreateMainUI then
+        UIMain.CreateMainUI(pl)
+        if pl.frame then
+            pl.frame:Show()
+        end
+        if UIMain.SetMode then
+            UIMain.SetMode(pl, "autopilot")
+        end
+        if UIMain.SyncAutopilot then
+            UIMain.SyncAutopilot(pl)
+        end
+    end
+    return true
+end
+
+-- Id-based: title resolved from the log when not supplied.
+function LFGTool.FindQuestGroup(questID, title)
+    local qid = tonumber(questID)
+    if not qid and not (type(title) == "string" and title ~= "") then
+        return
+    end
+    if type(title) ~= "string" or title == "" then
+        title = (qid and C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid))
+            or (qid and LFGTool.QuestTitleByID(qid))
+            or (qid and _G.QuestUtils_GetQuestName and _G.QuestUtils_GetQuestName(qid))
+            or ("Quest " .. tostring(qid or "?"))
+    end
+    return OpenForQuest(qid, title, nil)
+end
+_G.PartyLens_FindQuestGroup = LFGTool.FindQuestGroup
+
+-- Context-based: the surface sibling addons (Lodestar) call. Prefers the real
+-- quest title (resolved from the id) over the raw step text, and sizes the recruit.
+function LFGTool.StartQuestGroup(ctx)
+    ctx = ctx or {}
+    local qid = tonumber(ctx.questID)
+    local title = (qid and LFGTool.QuestTitleByID(qid))
+        or (type(ctx.questName) == "string" and ctx.questName ~= "" and ctx.questName)
+        or (type(ctx.stepText) == "string" and ctx.stepText ~= "" and ctx.stepText)
+        or (qid and ("Quest " .. qid))
+    if not title or title == "" then
+        return false
+    end
+    return OpenForQuest(qid, title, tonumber(ctx.size))
+end
+
+-- Attach the sibling-addon API onto the PartyLens object. Core.lua (which creates
+-- _G.PartyLens) loads AFTER this module, so we attach lazily on load events.
+local function InstallPartyLensAPI()
+    local pl = _G.PartyLens
+    if pl then
+        pl.API = pl.API or {}
+        if not pl.API.StartQuestGroup then
+            pl.API.StartQuestGroup = LFGTool.StartQuestGroup
+        end
+    end
+end
+
+local questHookInstalled = false
+local function TryInstallQuestHook()
+    if questHookInstalled then
+        return
+    end
+    if type(_G.LFGListUtil_FindQuestGroup) == "function" and hooksecurefunc then
+        hooksecurefunc("LFGListUtil_FindQuestGroup", function(questID)
+            LFGTool.FindQuestGroup(questID)
+        end)
+        questHookInstalled = true
+    end
+end
+
+do
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("ADDON_LOADED")
+    f:RegisterEvent("PLAYER_LOGIN")
+    f:SetScript("OnEvent", function()
+        InstallPartyLensAPI()
+        TryInstallQuestHook()
+    end)
+    -- In case the objects are already present when this module loads.
+    InstallPartyLensAPI()
+    TryInstallQuestHook()
 end
 
 _G[ADDON_NAME .. "_LFGTool"] = LFGTool

@@ -44,4 +44,5 @@ Modules/UIMain.lua
 Modules/NetDiag.lua
 Modules/ChehulNet.lua
 Modules/ChehulNetWire.lua
+Modules/API.lua
 Core.lua
