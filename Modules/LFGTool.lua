@@ -473,54 +473,46 @@ function LFGTool.GetQuestActivities()
         or (_G.GetNumQuestLogEntries and _G.GetNumQuestLogEntries())
         or 0
 
+    -- Group-ish quest tags (localized global + English literal). On this client
+    -- GetQuestLogTitle returns the quest TAG as a string in slot 3 ("Group" for
+    -- group quests) -- not a numeric suggestedGroup -- so we detect by tag.
+    local groupTags = {}
+    for _, g in ipairs({ _G.GROUP, "Group", _G.ELITE, "Elite", _G.DUNGEON, "Dungeon", _G.RAID, "Raid" }) do
+        if type(g) == "string" and g ~= "" then
+            groupTags[g] = true
+        end
+    end
+
     for i = 1, num do
-        local questID, title, suggestedGroup, level, isHeader
+        local questID, title, level, isHeader, isGroup
 
-        -- Preferred: resolve a questID for the index, then read it by questID. These
-        -- by-questID getters return a proper number/string (no positional guessing)
-        -- and are the ones most likely to exist on a modern Classic client.
-        if QL and QL.GetQuestIDForLogIndex then
-            questID = QL.GetQuestIDForLogIndex(i)
-        end
-        if questID and questID > 0 then
-            if QL.GetSuggestedGroupSize then
-                suggestedGroup = QL.GetSuggestedGroupSize(questID)
-            end
-            if QL.GetTitleForQuestID then
-                title = QL.GetTitleForQuestID(questID)
-            end
-        end
-
-        -- Table form (named fields) fills any gaps.
-        if QL and QL.GetInfo and (not title or not suggestedGroup) then
+        if QL and QL.GetInfo then
+            -- Modern named-field path (absent on many Classic builds).
             local info = QL.GetInfo(i)
             if info then
-                isHeader = info.isHeader
-                questID = questID or info.questID
-                title = title or info.title
-                suggestedGroup = suggestedGroup or info.suggestedGroup
-                level = level or info.level
+                title, questID, isHeader, level = info.title, info.questID, info.isHeader, info.level
+                isGroup = (tonumber(info.suggestedGroup) or 0) > 1
+            end
+        elseif _G.GetQuestLogTitle then
+            -- Global positional path. Layout on this client:
+            --   1 title, 2 level, 3 questTag(string|nil), 4 isHeader, ... 8 questID
+            local t = { _G.GetQuestLogTitle(i) }
+            title = t[1]
+            level = tonumber(t[2]) or 0
+            isHeader = t[4] and true or false
+            isGroup = (type(t[3]) == "string" and groupTags[t[3]]) and true or false
+            if type(t[8]) == "number" and t[8] > 0 then
+                questID = t[8]
             end
         end
 
-        -- Oldest positional form, last resort (headers are still filtered out below
-        -- by the suggestedGroup gate, so a wrong isHeader position can't leak them).
-        if not title and _G.GetQuestLogTitle then
-            local t, lvl, sg, hdr = _G.GetQuestLogTitle(i)
-            title = t
-            level = level or lvl
-            suggestedGroup = suggestedGroup or sg
-            isHeader = isHeader or hdr
-        end
-
-        suggestedGroup = tonumber(suggestedGroup) or 0
         level = tonumber(level) or 0
-        if title and not isHeader and suggestedGroup > 1 then
+        if title and not isHeader and isGroup then
             list[#list + 1] = {
                 value = (questID and questID > 0) and ("q:" .. questID) or ("qi:" .. i),
                 label = title,
                 order = level,
-                maxPlayers = suggestedGroup,
+                maxPlayers = 5, -- group quests are small; drives a comfortable comp
                 kind = "quest",
                 questID = (questID and questID > 0) and questID or nil,
                 minLevel = level,
