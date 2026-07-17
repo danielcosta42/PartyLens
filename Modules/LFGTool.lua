@@ -747,33 +747,39 @@ function LFGTool.AnnounceListing(partyLens)
 end
 
 -- ---------------------------------------------------------------------------
--- Quest-log "Find Group" hook. When the player clicks the group-finder action on
--- a group quest, open PartyLens on the Autopilot, pre-set to that quest. Fully
--- self-contained (mirrors LayerNet's hooksecurefunc pattern) -- no Core/.toc edits.
--- The Blizzard entry point lives in a load-on-demand addon, so we retry on
--- ADDON_LOADED / PLAYER_LOGIN until the symbol exists, and hook exactly once.
+-- Quest -> Autopilot entry point. Targets a specific quest and opens PartyLens on
+-- the Autopilot, pre-set to Build that quest (does NOT auto-arm -- arming stays
+-- deliberate). Public so any addon can drive it:
+--
+--     PartyLens_FindQuestGroup(questID)            -- title resolved from the log
+--     PartyLens_FindQuestGroup(questID, "Title")   -- caller supplies the title
+--
+-- Also hooked to the Blizzard quest-log "Find Group" action where that exists
+-- (this client lacks it, but other builds have it).
 -- ---------------------------------------------------------------------------
-local questHookInstalled = false
-
-local function OnQuestGroupFind(questID)
-    if not questID then
-        return
+function LFGTool.FindQuestGroup(questID, title)
+    local qid = tonumber(questID)
+    if not qid and not (type(title) == "string" and title ~= "") then
+        return -- nothing usable to target
     end
     local pl = _G.PartyLens
     if not pl or not pl.db or not pl.db.autopilot then
         return
     end
-    local title = (C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(questID))
-        or LFGTool.QuestTitleByID(questID)
-        or (_G.QuestUtils_GetQuestName and _G.QuestUtils_GetQuestName(questID))
-        or ("Quest " .. questID)
+    -- Prefer a caller-supplied title (e.g. Lodestar already knows it); otherwise
+    -- resolve from the quest log by id.
+    if type(title) ~= "string" or title == "" then
+        title = (qid and C_QuestLog and C_QuestLog.GetTitleForQuestID and C_QuestLog.GetTitleForQuestID(qid))
+            or (qid and LFGTool.QuestTitleByID(qid))
+            or (qid and _G.QuestUtils_GetQuestName and _G.QuestUtils_GetQuestName(qid))
+            or ("Quest " .. tostring(qid or "?"))
+    end
     local cfg = pl.db.autopilot
     cfg.role = "build"
     cfg.activityType = "quest"
-    cfg.questID = questID
+    cfg.questID = qid
     cfg.activityFilter = title
     cfg.activityID = nil
-    -- Open to the Autopilot mode (do NOT auto-arm; arming stays deliberate).
     local UIMain = _G[ADDON_NAME .. "_UIMain"]
     if UIMain and UIMain.CreateMainUI then
         UIMain.CreateMainUI(pl)
@@ -787,14 +793,21 @@ local function OnQuestGroupFind(questID)
             UIMain.SyncAutopilot(pl)
         end
     end
+    return true
 end
 
+-- Global alias so other addons can integrate without reaching into the module.
+_G.PartyLens_FindQuestGroup = LFGTool.FindQuestGroup
+
+local questHookInstalled = false
 local function TryInstallQuestHook()
     if questHookInstalled then
         return
     end
     if type(_G.LFGListUtil_FindQuestGroup) == "function" and hooksecurefunc then
-        hooksecurefunc("LFGListUtil_FindQuestGroup", OnQuestGroupFind)
+        hooksecurefunc("LFGListUtil_FindQuestGroup", function(questID)
+            LFGTool.FindQuestGroup(questID)
+        end)
         questHookInstalled = true
     end
 end
