@@ -758,6 +758,8 @@ end
 -- (this client lacks it, but other builds have it).
 -- ---------------------------------------------------------------------------
 function LFGTool.FindQuestGroup(questID, title)
+    -- TEMP diagnostic: confirms the call fires and shows the args passed in.
+    print("|cff26dbb8PartyLens_FindQuestGroup|r qid=" .. tostring(questID) .. " title=" .. tostring(title))
     local qid = tonumber(questID)
     if not qid and not (type(title) == "string" and title ~= "") then
         return -- nothing usable to target
