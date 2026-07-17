@@ -1,5 +1,4 @@
 local ADDON_NAME = ...
-local Utils = _G[ADDON_NAME .. "_Utils"]
 
 -- Standalone layer detection — no NWB / AutoLayer dependency.
 --
@@ -85,6 +84,56 @@ function Layer.CurrentMap()
         end
     end
     return _mapCache or 0
+end
+
+-- Layer SEGMENT (continent): layers are numbered INDEPENDENTLY per segment (Azeroth vs
+-- Outland), so "layer 3" in Orgrimmar is NOT the "layer 3" a Shattrath beacon sits on.
+-- A cross-segment hop request is a wrong-world match. We reuse the SAME <AZ>/<OL> request
+-- tag AutoLayer uses, so the two addons filter each other's tagged requests correctly.
+-- Detection walks the map's parent chain to the continent map, with overrides for the BC
+-- starting zones whose continent map differs from their layer segment. Continent mapIDs and
+-- overrides are AutoLayer's (maintained for this exact client).
+Layer.SEGMENT_MAPS = { [947] = "AZ", [1945] = "OL" }
+Layer.SEGMENT_OVERRIDES = {
+    [1941] = "OL", [1942] = "OL", [1943] = "OL", [1947] = "OL",
+    [1950] = "OL", [1954] = "OL", [1957] = "OL",
+}
+
+-- Cache by mapID: a map's continent is STATIC, so this never needs invalidating. `false`
+-- marks "resolved to no segment" so we don't re-walk (e.g. arenas/instances with no map).
+local _segCache = {}
+function Layer.Segment(unit)
+    unit = unit or "player"
+    if not (C_Map and C_Map.GetBestMapForUnit and C_Map.GetMapInfo) then
+        return nil
+    end
+    local mapID = C_Map.GetBestMapForUnit(unit)
+    if not mapID then
+        return nil
+    end
+    if _segCache[mapID] ~= nil then
+        return _segCache[mapID] or nil
+    end
+    local seg
+    local info = C_Map.GetMapInfo(mapID)
+    local guard = 0
+    while info and info.mapID and guard < 30 do
+        guard = guard + 1
+        if Layer.SEGMENT_OVERRIDES[info.mapID] then
+            seg = Layer.SEGMENT_OVERRIDES[info.mapID]
+            break
+        end
+        if Layer.SEGMENT_MAPS[info.mapID] then
+            seg = Layer.SEGMENT_MAPS[info.mapID]
+            break
+        end
+        if not info.parentMapID or info.parentMapID == 0 then
+            break
+        end
+        info = C_Map.GetMapInfo(info.parentMapID)
+    end
+    _segCache[mapID] = seg or false
+    return seg
 end
 
 -- Records a zoneUID sighting for a map and (if it's our current map) updates the

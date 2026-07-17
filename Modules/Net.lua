@@ -102,8 +102,25 @@ function Net.InstallHooks()
         return
     end
     Net._hooked = true
+    -- SendChatMessage to a CHANNEL is hardware-event-gated (a timer send is dropped), so
+    -- queued visible posts can only leave the client from within a real input event. A
+    -- WorldFrame OnMouseDown hook alone is a THIN surface — it never fires while the cursor
+    -- is over the UI or while the user is typing — which is very likely why the channel
+    -- relay measured delivering almost nothing. AutoLayer flushes on every keystroke too, via
+    -- a frame that listens OnKeyDown and re-propagates the key so it never eats input.
+    -- Replicate both so the relay actually drains on the user's natural play.
     if WorldFrame and WorldFrame.HookScript then
         WorldFrame:HookScript("OnMouseDown", FlushChannel)
+    end
+    if CreateFrame and not Net._keyFlush then
+        local keyFlush = CreateFrame("Frame", nil, UIParent)
+        keyFlush:EnableKeyboard(true)
+        keyFlush:SetPropagateKeyboardInput(true) -- pass every key straight through, untouched
+        keyFlush:SetScript("OnKeyDown", function(self)
+            self:SetPropagateKeyboardInput(true) -- re-assert each key so we never swallow input
+            FlushChannel()
+        end)
+        Net._keyFlush = keyFlush
     end
 end
 

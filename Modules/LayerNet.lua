@@ -1683,6 +1683,20 @@ function LayerNet.OnChannelChat(partyLens, msg, sender, baseName)
     if string.find(lname, "chehulmesh", 1, true) then
         return
     end
+    -- Layer SEGMENT gate: layers are numbered per continent-segment (Azeroth vs Outland),
+    -- so a bare "layer 3" only means the same physical layer WITHIN a segment. A request
+    -- tagged for another segment ("<AZ> ..."/"<OL> ..." — the convention AutoLayer uses) is
+    -- a wrong-world match, so skip it. Strip the tag before parsing so it isn't seen as
+    -- noise. Untagged requests are processed as before (best-effort — we can't know their
+    -- segment), matching how AutoLayer treats them.
+    local reqSeg = msg and string.match(msg, "^<(%w+)>%s")
+    if reqSeg then
+        local mySeg = Layer.Segment("player")
+        if mySeg and reqSeg ~= mySeg then
+            return
+        end
+        msg = string.gsub(msg, "^<%w+>%s+", "")
+    end
     local source
     -- A dedicated layer channel (named "Layer"/"Camada") is where hopping happens;
     -- flag it so ParseRequest accepts bare "5" / "inv 4" without the word "layer".
