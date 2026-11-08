@@ -42,8 +42,7 @@ Localization.Strings = {
         NOTICE_WHO_THROTTLED = "Wait a moment between /who lookups.",
         NOTICE_LAYER_REQUESTED = "Asking a beacon on that layer.",
         NOTICE_LAYER_NOBODY = "No beacon on that layer could take you now. Try again in a moment.",
-        NOTICE_LAYER_ACCEPTED = "%s is inviting you to their layer: accept the invite.",
-        NOTICE_LAYER_INCOMING = "%s asks to come to your layer.",
+        NOTICE_LAYER_ACCEPTED = "A beacon is inviting you: accept the invite.",
         NOTICE_LAYER_HOPPED = "You are on the new layer.",
 
         SUMMON_NEEDED_MSG = "summon needed — %s",
@@ -86,8 +85,7 @@ Localization.Strings = {
         NOTICE_WHO_THROTTLED = "Espere um pouco entre buscas de /who.",
         NOTICE_LAYER_REQUESTED = "Pedindo a um beacon daquela camada.",
         NOTICE_LAYER_NOBODY = "Nenhum beacon daquela camada pôde te levar agora. Tente de novo daqui a pouco.",
-        NOTICE_LAYER_ACCEPTED = "%s está te convidando para a camada dele: aceite o convite.",
-        NOTICE_LAYER_INCOMING = "%s pede para vir para a sua camada.",
+        NOTICE_LAYER_ACCEPTED = "Um beacon está te convidando: aceite o convite.",
         NOTICE_LAYER_HOPPED = "Você está na nova camada.",
 
         SUMMON_NEEDED_MSG = "precisa summon — %s",

@@ -31,6 +31,7 @@ Ordem de execução. [ ] por fazer.
 - [x] D3 Beacon gamificado ligado por padrão: plantão, recusa `N`, próximo beacon sozinho, hops e patentes, aviso
   fora da janela, tecla de atalho, opção em Ajustes.
 - [x] D4 Harnesses `layer.lua`/`ui.lua`/`contract.lua` e o contrato (§6) atualizados.
+- [x] D5 Camadas por zona (medido); hop conta na chegada (`T`); revisão independente: 9 achados corrigidos com teste.
 
 ## C. Fechamento
 - [x] C1 README/CURSEFORGE-DESCRIPTION para o Forever; CHANGELOG; VERSION 1.0.0.

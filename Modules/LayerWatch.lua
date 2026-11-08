@@ -13,6 +13,8 @@ LayerWatch.TREND_MIN = 2          -- a smaller change is no news
 LayerWatch.TREND_GAP = 10 * 60    -- one population news per layer per this
 LayerWatch.NEWS_TTL = 30 * 60
 LayerWatch.NEWS_MAX = 4
+LayerWatch.WARMUP = 4 * 60        -- after login the picture fills in (HELLOs every 3 min): no news meanwhile
+LayerWatch.HOP_STEP_MAX = 3       -- a beacon brings a few people per look at most; a claim of more is not news
 
 local function RT(partyLens)
     partyLens.layerWatch = partyLens.layerWatch or { layers = {} }
@@ -57,11 +59,16 @@ local function Count(partyLens)
 end
 
 -- Compares the counts with the last look and writes the news (kinds: new, beacon_on, beacon_off, hop, group, grow,
--- shrink; n = how many). The first look after login only takes the picture.
+-- shrink; n = how many). For the first minutes after login it only takes the picture.
 function LayerWatch.Watch(partyLens)
     local rt, now = RT(partyLens), time()
+    rt.startedAt = rt.startedAt or now
+    local warm = now - rt.startedAt >= LayerWatch.WARMUP
     local added = false
     local function Add(w, kind, n)
+        if not warm then
+            return
+        end
         table.insert(w.news, 1, { t = now, kind = kind, n = n })
         while #w.news > LayerWatch.NEWS_MAX do
             table.remove(w.news)
@@ -74,9 +81,7 @@ function LayerWatch.Watch(partyLens)
         if not w then
             w = { hist = {}, news = {}, beacons = 0, groups = 0, hops = {} }
             rt.layers[key] = w
-            if rt.ready then
-                Add(w, "new")
-            end
+            Add(w, "new")
         else
             if w.beacons == 0 and c.beacons > 0 then
                 Add(w, "beacon_on", c.beacons)
@@ -87,7 +92,7 @@ function LayerWatch.Watch(partyLens)
             for nodeKey, hops in pairs(c.hops) do
                 local was = w.hops[nodeKey]
                 if was and hops > was then
-                    hopped = hopped + (hops - was)
+                    hopped = hopped + math.min(hops - was, LayerWatch.HOP_STEP_MAX)
                 end
             end
             if hopped > 0 then
@@ -106,6 +111,9 @@ function LayerWatch.Watch(partyLens)
             end
         end
         w.beacons, w.groups, w.hops, w.seen = c.beacons, c.groups, c.hops, now
+        if not warm then
+            w.hist = {} -- the trend starts from the filled-in picture, not from the first half-heard one
+        end
         w.hist[#w.hist + 1] = { t = now, pop = c.population }
         while w.hist[1] and now - w.hist[1].t > LayerWatch.TREND_WINDOW do
             table.remove(w.hist, 1)
@@ -121,7 +129,6 @@ function LayerWatch.Watch(partyLens)
             rt.layers[key] = nil
         end
     end
-    rt.ready = true
     if added then
         partyLens:Fire("LAYER_NODES_CHANGED")
     end

@@ -39,11 +39,12 @@ LayerNet.DECLINE_HOLD = 10 * 60  -- a declined requester is not heard again for 
 LayerNet.REQUEST_COOLDOWN = 30   -- one request (or one "no") per sender per this; a repeat is never a new toast
 LayerNet.INBOUND_MAX = 10        -- when full, the oldest request not yet in my group makes room
 LayerNet.HOPS_MAX = 99999
+LayerNet.SILENT_HOLD = 30 * 60   -- a beacon that let an ask run out is asked last for this long
 -- Ranks by hops served. The names live in the UI; the core only knows the thresholds.
 LayerNet.RANKS = { 0, 3, 10, 25, 60, 150 }
 
 local function RT(partyLens)
-    partyLens.layerNet = partyLens.layerNet or { nodes = {}, inbound = {}, said = {} }
+    partyLens.layerNet = partyLens.layerNet or { nodes = {}, inbound = {}, said = {}, silent = {} }
     return partyLens.layerNet
 end
 
@@ -81,17 +82,19 @@ local function IsHopper(r)
     return r.state == "served" or r.state == "arrived"
 end
 
-local function ServedKeys(partyLens)
-    local set = {}
-    for key, r in pairs(RT(partyLens).inbound) do
-        if IsHopper(r) then
-            set[key] = true
-        end
+-- A "no" to a request, at most once per sender per cooldown.
+local function SayNo(partyLens, key, name, mapID)
+    local rt, now = RT(partyLens), time()
+    if (rt.said[key] or 0) + LayerNet.REQUEST_COOLDOWN > now then
+        return
     end
-    return set
+    rt.said[key] = now
+    local cur = Layer.Current(partyLens)
+    Net.Whisper(LayerNet.PREFIX, table.concat({ LayerNet.PROTO, "N", mapID, cur.zoneUID or 0 }, "|"), name)
 end
 
--- True while I can take a request now; false and why otherwise.
+-- On duty, as the presence advertises it: false and why otherwise. Combat is not in it (a fight that comes and
+-- goes every few seconds must not flood the network); CanTake adds it.
 function LayerNet.Available(partyLens)
     if not BeaconDB(partyLens).on then
         return false, "off"
@@ -102,11 +105,8 @@ function LayerNet.Available(partyLens)
     if not Layer.Current(partyLens).zoneUID then
         return false, "no_layer"
     end
-    local combat, afk = UnitAffectingCombat("player"), UnitIsAFK("player")
-    if Utils.IsSecret(combat, afk) or combat then
-        return false, "combat"
-    end
-    if afk then
+    local afk = UnitIsAFK("player")
+    if Utils.IsSecret(afk) or afk then
         return false, "afk"
     end
     if IsInGroup() then
@@ -116,13 +116,38 @@ function LayerNet.Available(partyLens)
         if Roster.IsFull() then
             return false, "group_full"
         end
-        -- Never someone else's group: only the people I brought over may be in it.
-        local mine = ServedKeys(partyLens)
-        for _, m in ipairs(Roster.Members()) do
-            if not m.isPlayer and not mine[Utils.NameKey(m.name)] then
-                return false, "grouped"
+        -- Never someone else's group: only the people I brought over may be in it. A group unit can carry the
+        -- first name alone, so the match is SameName's, as the roster's.
+        local hoppers = {}
+        for _, r in pairs(RT(partyLens).inbound) do
+            if IsHopper(r) then
+                hoppers[#hoppers + 1] = r.name
             end
         end
+        for _, m in ipairs(Roster.Members()) do
+            if not m.isPlayer then
+                local mine = false
+                for _, name in ipairs(hoppers) do
+                    mine = mine or Utils.SameName(m.name, name)
+                end
+                if not mine then
+                    return false, "grouped"
+                end
+            end
+        end
+    end
+    return true
+end
+
+-- On duty and free to take a request this moment (not in combat).
+function LayerNet.CanTake(partyLens)
+    local available, why = LayerNet.Available(partyLens)
+    if not available then
+        return false, why
+    end
+    local combat = UnitAffectingCombat("player")
+    if Utils.IsSecret(combat) or combat then
+        return false, "combat"
     end
     return true
 end
@@ -139,20 +164,39 @@ end
 
 function LayerNet.BeaconStatus(partyLens)
     local b = BeaconDB(partyLens)
-    local available, why = LayerNet.Available(partyLens)
+    local available, why = LayerNet.CanTake(partyLens)
     local rank = LayerNet.Rank(b.hops)
     local today = (b.day == date("%Y-%m-%d")) and b.today or 0
     return { on = b.on == true, available = available, why = why, hops = b.hops, today = today, rank = rank,
         rankAt = LayerNet.RANKS[rank], nextAt = LayerNet.RANKS[rank + 1], queue = LayerNet.OpenCount(partyLens) }
 end
 
--- Re-reads duty after anything that can change it; tells the network and the UI when it did.
+-- Re-reads duty after anything that can change it. The network hears a change of duty; the UI hears that and
+-- combat. Requests still open when I can no longer take them get a no now, so the askers move on.
 function LayerNet.CheckDuty(partyLens)
     local rt = RT(partyLens)
     local available = LayerNet.Available(partyLens) == true
+    local canTake, why = LayerNet.CanTake(partyLens)
+    if not canTake then
+        local dropped = false
+        for key, r in pairs(rt.inbound) do
+            if r.state == "open" then
+                rt.inbound[key] = nil
+                SayNo(partyLens, key, r.name, r.mapID)
+                dropped = true
+            end
+        end
+        if dropped then
+            Changed(partyLens)
+        end
+    end
     if rt.onDuty ~= available then
         rt.onDuty = available
         LayerNet.SendPresence(partyLens)
+    end
+    local state = canTake and "take" or why
+    if rt.dutyState ~= state then
+        rt.dutyState = state
         partyLens:Fire("BEACON_CHANGED", LayerNet.BeaconStatus(partyLens))
     end
 end
@@ -216,16 +260,6 @@ end
 -- ---------------------------------------------------------------------------
 -- Messages
 -- ---------------------------------------------------------------------------
--- A "no" to a request, at most once per sender per cooldown.
-local function SayNo(partyLens, key, name, mapID)
-    local rt, now = RT(partyLens), time()
-    if (rt.said[key] or 0) + LayerNet.REQUEST_COOLDOWN > now then
-        return
-    end
-    rt.said[key] = now
-    local cur = Layer.Current(partyLens)
-    Net.Whisper(LayerNet.PREFIX, table.concat({ LayerNet.PROTO, "N", mapID, cur.zoneUID or 0 }, "|"), name)
-end
 
 local function OnRequest(partyLens, name, key, mapID, fromZone, target)
     local rt = RT(partyLens)
@@ -241,7 +275,7 @@ local function OnRequest(partyLens, name, key, mapID, fromZone, target)
     end
     local cur = Layer.Current(partyLens)
     if cur.mapID ~= mapID or not cur.zoneUID or (target and target ~= cur.zoneUID)
-        or LayerNet.Available(partyLens) ~= true or not LayerNet.MakeRoom(rt) then
+        or LayerNet.CanTake(partyLens) ~= true or not LayerNet.MakeRoom(rt) then
         SayNo(partyLens, key, name, mapID)
         return
     end
@@ -249,8 +283,7 @@ local function OnRequest(partyLens, name, key, mapID, fromZone, target)
     local req = { name = name, key = key, mapID = mapID, fromZone = fromZone, targetZone = cur.zoneUID,
         t = now, seq = rt.seq, state = "open" }
     rt.inbound[key] = req
-    partyLens:Notice(L("NOTICE_LAYER_INCOMING", name))
-    partyLens:Fire("LAYER_REQUEST_RECEIVED", req)
+    partyLens:Fire("LAYER_REQUEST_RECEIVED", req) -- the UI's prompt shows it; no notice on top
     Changed(partyLens)
 end
 
@@ -273,10 +306,12 @@ function LayerNet.OnMessage(partyLens, payload, sender, dist)
     elseif kind == "R" and dist == "WHISPER" and mapID then
         OnRequest(partyLens, name, key, mapID, zoneUID, Positive(c))
     elseif kind == "A" and dist == "WHISPER" then
+        -- Any beacon I asked may click late, after the next one was asked: its invite is as good.
         local my = rt.my
-        if my and my.state == "sent" and Utils.SameName(my.name, name) then
+        if my and my.state == "sent" and my.tried[key] then
+            my.name, my.key = my.tried[key], key
             my.state, my.stateAt = "accepted", time()
-            partyLens:Notice(L("NOTICE_LAYER_ACCEPTED", name))
+            partyLens:Notice(L("NOTICE_LAYER_ACCEPTED"))
             Changed(partyLens)
         end
     elseif kind == "N" and dist == "WHISPER" then
@@ -361,15 +396,20 @@ function LayerNet.NodeCount(partyLens)
     return #LayerNet.Nodes(partyLens)
 end
 
--- The beacons on duty on one layer, the one with the most hops first (then the freshest).
+-- The beacons on duty on one layer, the one with the most hops first (then the freshest). One that let an ask
+-- run out lately goes last, whatever hops it claims: a presence can claim any number.
 function LayerNet.Beacons(partyLens, mapID, zoneUID)
-    local out = {}
+    local out, silent, now = {}, RT(partyLens).silent, time()
     for _, n in ipairs(LayerNet.Nodes(partyLens)) do
         if n.beacon and n.mapID == mapID and n.zoneUID == zoneUID then
+            n.silent = silent[n.key] ~= nil and now - silent[n.key] < LayerNet.SILENT_HOLD
             out[#out + 1] = n
         end
     end
     table.sort(out, function(x, y)
+        if x.silent ~= y.silent then
+            return y.silent
+        end
         if x.hops ~= y.hops then
             return x.hops > y.hops
         end
@@ -391,7 +431,7 @@ function LayerNet.AskNext(partyLens)
     local cur = Layer.Current(partyLens)
     for _, beacon in ipairs(LayerNet.Beacons(partyLens, my.mapID, my.targetZone)) do
         if not my.tried[beacon.key] then
-            my.tried[beacon.key] = true
+            my.tried[beacon.key] = beacon.name
             local payload = table.concat({ LayerNet.PROTO, "R", my.mapID, cur.zoneUID or 0, my.targetZone }, "|")
             if Net.Whisper(LayerNet.PREFIX, payload, beacon.name) then
                 my.name, my.key, my.askedAt = beacon.name, beacon.key, time()
@@ -399,6 +439,7 @@ function LayerNet.AskNext(partyLens)
                 local attempt = my.asked
                 C_Timer.After(LayerNet.ASK_TTL, function()
                     if rt.my == my and my.state == "sent" and my.asked == attempt then
+                        rt.silent[beacon.key] = time() -- it let the ask run out: asked last for a while
                         LayerNet.AskNext(partyLens)
                     end
                 end)
@@ -488,6 +529,10 @@ function LayerNet.Serve(partyLens, req)
     if cur.mapID ~= r.mapID or cur.zoneUID ~= r.targetZone then
         return false, "not_on_layer"
     end
+    local canTake, why = LayerNet.CanTake(partyLens)
+    if not canTake then
+        return false, why == "group_full" and "group_full" or "off_duty"
+    end
     if not Roster.CanInvite() then
         return false, "cannot_invite"
     end
@@ -528,8 +573,17 @@ function LayerNet.OnRoster(partyLens)
     local rt, changed = RT(partyLens), false
     local members = Roster.Members()
     local my = rt.my
-    if Pending(my) and Roster.Contains(members, my.name) then
-        my.state, my.stateAt = "served", time()
+    if Pending(my) then
+        for key, name in pairs(my.tried) do
+            if Roster.Contains(members, name) then
+                my.name, my.key = name, key
+                my.state, my.stateAt = "served", time()
+                changed = true
+            end
+        end
+    elseif my and (my.state == "served" or my.state == "hopped") and not Roster.Contains(members, my.name) then
+        -- Out of the beacon's group: the hop is over (or never happened); the card stops offering to leave.
+        my.state, my.stateAt = my.state == "hopped" and "done" or "cancelled", time()
         changed = true
     end
     for key, r in pairs(rt.inbound) do
@@ -614,6 +668,11 @@ function LayerNet.Prune(partyLens)
     for key, at in pairs(rt.said) do
         if now - at > LayerNet.REQUEST_COOLDOWN then
             rt.said[key] = nil
+        end
+    end
+    for key, at in pairs(rt.silent) do
+        if now - at > LayerNet.SILENT_HOLD then
+            rt.silent[key] = nil
         end
     end
     for key, r in pairs(rt.inbound) do

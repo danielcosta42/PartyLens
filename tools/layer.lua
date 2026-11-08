@@ -118,6 +118,9 @@ W.deliver("PLLnet", "PLL2|A|1453|202", "WHISPER", "Ana Lima")
 check(PL:GetMyLayerRequest().state == "sent", "nor one whispered by a beacon I did not ask now")
 W.deliver("PLLnet", "PLL2|A|1453|202", "WHISPER", "Elza Dias")
 check(PL:GetMyLayerRequest().state == "accepted", "her whispered accept: the invite is on its way")
+local named = false
+for _, line in ipairs(W.printed) do named = named or line:find("Elza", 1, true) ~= nil end
+check(not named, "and the notice says a beacon, not who")
 W.advance(60)
 check(PL:GetMyLayerRequest().state == "accepted", "and no other beacon is asked meanwhile")
 W.setGroup({ { name = "Ivo", surname = "Sol" } })
@@ -139,13 +142,56 @@ W.violations = {}
 W.click(PL.UndoLayerGroup, PL)
 check(#W.left == 1, "from a click it leaves the group")
 W.setGroup({})
-check(not PL:CanUndoLayer() and PL:GetMyLayerRequest().state == "hopped", "out of the group, I stay on her layer")
+check(not PL:CanUndoLayer() and PL:GetMyLayerRequest().state == "done" and PL:GetLayer().zoneUID == 202,
+  "out of the group, I stay on her layer and the hop is done")
+W.setGroup({ { name = "Ivo", surname = "Sol" } })
+check(not PL:CanUndoLayer(), "a group I join later is not mine to leave through the layer card")
+W.setGroup({})
 check(#W.invites == 0, "the requester never invited anybody")
 
 W.advance(200)
 local l = row(PL, 1453, 202)
 check(l and l.population >= 4 and l.beacons == (l.meBeacon and 1 or 0),
   "a beacon flag not refreshed in 150 s is not counted (the node still is)")
+
+-- A beacon that answers late, after the next one was asked: its invite still serves the request.
+PL = W.boot({})
+W.npc("target", 101)
+W.fire("PLAYER_TARGET_CHANGED")
+W.deliver("PLLnet", "PLL2|S|1453|202|1|99999", "GUILD", "Max Fake")
+W.deliver("PLLnet", "PLL2|S|1453|202|1|4", "GUILD", "Ana Lima")
+W.sent = {}
+W.click(PL.RequestLayer, PL, { mapID = 1453, zoneUID = 202 })
+W.advance(41)
+check(#W.sentWhere({ prefix = "PLLnet", target = "Max Fake" }) == 1 and #W.sentWhere({ prefix = "PLLnet", target = "Ana Lima" }) == 1,
+  "the one claiming the most hops is asked first; silent for 40 s, the next one is asked")
+W.deliver("PLLnet", "PLL2|A|1453|202", "WHISPER", "Max Fake")
+check(PL:GetMyLayerRequest().state == "accepted" and PL:GetMyLayerRequest().name == "Max Fake",
+  "its late accept counts: the request follows the beacon that clicked")
+W.setGroup({ { name = "Max", surname = "Fake" } })
+check(PL:GetMyLayerRequest().state == "served", "and joining its group serves the request")
+W.setGroup({})
+W.advance(5)
+W.deliver("PLLnet", "PLL2|S|1453|202|1|99999", "GUILD", "Max Fake")
+W.deliver("PLLnet", "PLL2|S|1453|202|1|4", "GUILD", "Ana Lima")
+W.sent = {}
+W.click(PL.RequestLayer, PL, { mapID = 1453, zoneUID = 202 })
+W.advance(3)
+check(#W.sentWhere({ prefix = "PLLnet", target = "Ana Lima" }) == 1 and #W.sentWhere({ prefix = "PLLnet", target = "Max Fake" }) == 0,
+  "a beacon that let an ask run out goes last for a while, whatever hops it claims")
+W.click(PL.CancelLayerRequest, PL)
+-- An invite from a beacon asked earlier whose "invite on its way" never reached me: joining serves it too.
+PL = W.boot({})
+W.npc("target", 101)
+W.fire("PLAYER_TARGET_CHANGED")
+W.deliver("PLLnet", "PLL2|S|1453|202|1|9", "GUILD", "Max Fake")
+W.deliver("PLLnet", "PLL2|S|1453|202|1|4", "GUILD", "Ana Lima")
+W.click(PL.RequestLayer, PL, { mapID = 1453, zoneUID = 202 })
+W.advance(41)
+W.setGroup({ { name = "Max", surname = "Fake" } })
+check(PL:GetMyLayerRequest().state == "served" and PL:GetMyLayerRequest().name == "Max Fake",
+  "joining the group of a beacon asked earlier serves the request, without its accept")
+W.setGroup({})
 
 -- ── the beacon: Ana Lima on layer 202 ──────────────────────────────────────
 PL = W.boot({ name = "Ana", surname = "Lima", class = "DRUID" })
@@ -205,6 +251,9 @@ check(#served == 1 and served[1].hops == 1 and served[1].today == 1 and served[1
 W.deliver("PLLnet", "PLL2|T|1453|202", "WHISPER", "Chehul Costa")
 check(#served == 1, "a repeated arrival counts once")
 check(PL:GetBeacon().available, "with only my hopper in the group I stay on duty")
+W.units.party1.surname = nil
+check(PL:GetBeacon().available, "even when the group unit carries his first name alone")
+W.units.party1.surname = "Costa"
 check(PL:CanUndoLayer(), "and I can undo the group")
 PL:UndoLayerGroup()
 check(#W.uninvites == 0 and W.violations[1].fn == "UninviteUnit", "uninviting from outside a click is blocked")
@@ -253,12 +302,36 @@ check(#PL:GetLayerRequests() == 0 and #W.sentWhere({ prefix = "PLLnet", target =
   "a request while away gets a no, no prompt")
 W.afk = false
 W.fire("PLAYER_FLAGS_CHANGED", "player")
-W.combat = true
-W.fire("PLAYER_REGEN_DISABLED")
-check(PL:GetBeacon().why == "combat", "in combat: off duty")
+W.advance(15)
+W.deliver("PLLnet", "PLL2|R|1453|101|202", "WHISPER", "Uli Wait")
+check(#PL:GetLayerRequests() == 1, "a request while on duty is open")
+W.advance(15)
+local before = #W.sentWhere({ prefix = "PLLnet", dist = "GUILD" })
+for _ = 1, 10 do
+  W.combat = true
+  W.fire("PLAYER_REGEN_DISABLED")
+  W.advance(8)
+  W.combat = false
+  W.fire("PLAYER_REGEN_ENABLED")
+  W.advance(4)
+  W.combat = true
+  W.fire("PLAYER_REGEN_DISABLED")
+end
+check(PL:GetBeacon().why == "combat", "in combat: not taking requests")
+check(#W.sentWhere({ prefix = "PLLnet", dist = "GUILD" }) - before <= 3,
+  "ten fights in two minutes send no extra presence: combat is not broadcast")
+check(#PL:GetLayerRequests() == 0 and #W.sentWhere({ prefix = "PLLnet", target = "Uli Wait" }) == 1,
+  "the open request got a no when the fight started, so he moved on")
 W.combat = false
 W.fire("PLAYER_REGEN_ENABLED")
 check(PL:GetBeacon().available, "out of combat: back on duty")
+W.advance(31)
+W.deliver("PLLnet", "PLL2|R|1453|101|202", "WHISPER", "Vic Late")
+local vic = PL:GetLayerRequests()[1]
+W.setGroup({ { name = "Wes", surname = "Pal" } })
+check(#PL:GetLayerRequests() == 0, "grouping with a friend drops the open request with a no")
+check(select(2, W.click(PL.ServeLayerRequest, PL, vic)) == "gone", "and it cannot be served into that group")
+W.setGroup({})
 W.click(PL.SetBeacon, PL, false)
 check(PL.db.beacon.on == false and PL:GetBeacon().why == "off", "the setting turns it off")
 W.deliver("PLLnet", "PLL2|R|1453|101|202", "WHISPER", "Tom Off")
@@ -333,6 +406,20 @@ local function news(mapID, zoneUID)
   return rw and rw.news or {}
 end
 check(#news(1453, 202) == 0, "the first look after login only takes the picture")
+for i = 1, 5 do W.deliver("ChehulNet", hello("gos", "1453:202"), "GUILD", "Late" .. string.char(64 + i) .. " Paz") end
+W.deliver("ChehulNet", hello("gos", "1454:505"), "GUILD", "Quiet Zone")
+W.advance(60)
+W.deliver("PLLnet", "PLL2|S|1453|202|1|3", "GUILD", "Ana Lima")
+W.advance(60)
+check(#news(1453, 202) == 0 and #news(1454, 505) == 0,
+  "for the first minutes the picture fills in: people heard late, a beacon or a quiet layer are no news")
+for _ = 1, 4 do
+  W.deliver("PLLnet", "PLL2|S|1453|202|0|3", "GUILD", "Ana Lima")
+  W.deliver("ChehulNet", hello("gos", "1454:505"), "GUILD", "Quiet Zone")
+  for i = 1, 5 do W.deliver("ChehulNet", hello("gos", "1453:202"), "GUILD", "Late" .. string.char(64 + i) .. " Paz") end
+  W.advance(30)
+end
+check(#news(1453, 202) == 0, "nor once warm, when nothing changed")
 W.deliver("PLLnet", "PLL2|S|1453|202|1|3", "GUILD", "Ana Lima")
 W.deliver("ChehulNet", hello("gos", "1454:404"), "GUILD", "Bia Rocha")
 W.advance(30)
@@ -342,6 +429,10 @@ check(news(1454, 404)[1] and news(1454, 404)[1].kind == "new", "a layer heard fo
 W.deliver("PLLnet", "PLL2|S|1453|202|1|5", "GUILD", "Ana Lima")
 W.advance(30)
 check(news(1453, 202)[1].kind == "hop" and news(1453, 202)[1].n == 2, "a beacon whose hops went up brought people over")
+W.deliver("PLLnet", "PLL2|S|1453|202|1|99999", "GUILD", "Ana Lima")
+W.advance(30)
+check(news(1453, 202)[1].kind == "hop" and news(1453, 202)[1].n <= 3, "a claim of thousands of hops is a few at most")
+W.deliver("PLLnet", "PLL2|S|1453|202|1|5", "GUILD", "Ana Lima")
 W.deliver("PartyLens", table.concat({ "2", "lfm", "heal", "dungeon", "thanes", "0", "DRUID", "34", "202", "1453",
   "1.0.2", "1.1.3", tostring(time()), "0", "Ana Lima", "need heal" }, "|"), "GUILD", "Ana Lima")
 W.advance(30)

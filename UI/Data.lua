@@ -192,6 +192,7 @@ local REASONS = {
 	throttled = L["Wait a moment"], cooldown = L["Wait a moment"], no_channel = L["Joining the channel"],
 	same_layer = L["Same layer"], pending = L["One at a time"], no_beacon = L["No beacon now"],
 	other_map = L["Other zone"], cannot_send = L["Can't send now"], group_full = L["Group full"],
+	off_duty = L["Not on duty"],
 	not_on_layer = L["You moved"], gone = L["Gone"], not_in_group = L["Not in a group"],
 }
 function D.Reason(code)

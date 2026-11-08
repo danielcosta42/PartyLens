@@ -687,6 +687,17 @@ click(prompt.actions[2])
 check(reqOf("Kai Rio").state == "declined", "Decline declines it")
 S.advance(0.6)
 check(not prompt.__shown or prompt.__alpha == 0, "and with none left the prompt goes")
+S.advance(31)
+W.deliver("PLLnet", "PLL2|R|1453|303|202", "WHISPER", "Pia Out-ClassicBetaPvE2")
+S.advance(0.3)
+check(prompt.__shown and prompt.__alpha ~= 0 and prompt.title.__text == "Pia Out wants your layer", "a new request: the prompt again")
+W.combat = true
+W.fire("PLAYER_REGEN_DISABLED")
+S.advance(0.6)
+check(PL:GetBeacon().queue == 0 and (not prompt.__shown or prompt.__alpha == 0),
+  "a fight drops the open request (the asker hears no) and the prompt goes with it")
+W.combat = false
+W.fire("PLAYER_REGEN_ENABLED")
 lp = UI:Open("layer")
 S.advance(0.3)
 W.setGroup({ { name = "Jon", surname = "Mar" } })

@@ -153,6 +153,7 @@ local ptBR = {
 	["Not the leader"] = "Não é o líder",
 	["Not this one"] = "Este não",
 	["Not yet"] = "Ainda não",
+	["Not on duty"] = "Fora do plantão",
 	["Nothing to send"] = "Nada para enviar",
 	["now"] = "agora",
 	["Off. Turn it on to help players reach your layer."] = "Desligado. Ligue para ajudar jogadores a chegar à sua camada.",

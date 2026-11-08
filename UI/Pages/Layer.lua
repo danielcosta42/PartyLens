@@ -490,8 +490,15 @@ local function ShowNext()
 end
 
 UI:Listen("layerRequest", function() ShowNext() end)
+-- The shown request answered, expired or dropped (the core deletes it without a state change): the next one.
+local function StillOpen(req)
+	for _, r in ipairs(UI.data.LayerRequests()) do
+		if r == req then return r.state == "open" end
+	end
+	return false
+end
 UI:Listen("layer", function()
-	if prompt and prompt.req and prompt.req.state ~= "open" then
+	if prompt and prompt.req and not StillOpen(prompt.req) then
 		prompt.req = nil
 		ShowNext()
 	end
