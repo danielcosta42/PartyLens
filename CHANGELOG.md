@@ -30,6 +30,8 @@ PartyLens agora é do **WoW: Forever** (interface 16001). A linha 0.33 continua 
   Cada pessoa que chega na sua camada conta um hop (uma vez por pessoa por dia), e os hops dão patentes: Faísca, Lanterna,
   Farol, Luz-guia, Estrela do norte e Lenda. Desliga em Ajustes.
 - **Rede:** a página mostra só números, sem nomes.
+- **Radar mais exigente:** conversa ("where the locks at when you need em") e anúncio de guilda não viram
+  grupo; "need/precisa" só conta junto de uma função, atividade ou quest.
 - **Autopilot em modo sugestão:** ele lista quem fecha as funções que faltam; você confirma cada convite.
 - **Interface nova:** radar com varredura e pontos para cada grupo, cartões com as funções que faltam,
   transições, botões animados, avisos que descem do topo. As animações desligam em Ajustes.

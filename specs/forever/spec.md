@@ -40,6 +40,9 @@ morre e várias APIs mudam. Fatos medidos no jogo (backoffice CehulNet, build 70
 - R1 O addon carrega no Forever sem erro de Lua; todos os módulos removidos saem do TOC.
 - R2 Radar: lê `CHAT_MSG_CHANNEL` do canal de LFG (detecção por nome, tolerante a idioma), reconhece LFG/LFM,
   papéis, atividade (masmorras/raides do Forever, incluindo as novas) e o post assinado de outro usuário.
+  Só é grupo o que tem sinal forte (LFM/LFxM, "LF" + papel, forming, vagas, "N more") ou um "need/precisa" junto
+  de papel, atividade ou quest; "more"/"mais" sozinhos e anúncio de guilda (tag `<Guilda>`, "guild", "recruiting")
+  sem atividade nomeada não entram (visto no teste do dono, 2026-11-08).
 - R3 Radar: recebe e mostra listagens de outros usuários pela rede (prefixo `PartyLens`), que chegam por GUILD,
   grupo e o diretório da ChehulNet (`Mesh:Realm`), com repasse limitado para alcançar a facção.
 - R4 Cada grupo mostra papéis que faltam, preenchimento, frescor, atividade, líder (cor da classe) e mensagem;

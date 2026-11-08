@@ -51,8 +51,33 @@ d = parse("LFM RoL need 1 heal and a tank")
 check(d.type == "lfm" and d.roles.heal and d.roles.tank and not d.roles.dps, "LFM with the roles needed")
 d = parse("need group for WC, tank here")
 check(d.type == "lfg" and d.roles.tank, "'need group' is a player looking for one")
-d = parse("<Ashen> recruiting for raids, apply on discord, LFM")
-check(d.activityType == "guild" and not d.roles.heal, "guild recruiting is 'guild', and 'disc' in discord is no healer")
+check(parse("<Ashen> recruiting for raids, apply on discord, LFM") == nil,
+  "a guild's recruiting ad is no group, even with LFM in it")
+d = parse("LFM RoL need tank, join our discord")
+check(d and d.activityKey == "rol" and not d.roles.heal, "a group that names a dungeon stays, and 'disc' in discord is no healer")
+
+-- ── chatter is no group (seen on Forever, 2026-11-08) ──────────────────────
+local chatter = {
+  "damn where the locks at when you need em",
+  "{rt8} <Great Tomb of Nazarick> {rt8} More than just a raid guild! We're recruiting all classes",
+  "need more mana lol",
+  "anyone need help?",
+  "one more thing, is the AH open",
+  "<Doom Generation> is a North American Horde guild, whisper for invite",
+}
+for _, line in ipairs(chatter) do
+  check(parse(line) == nil, "'" .. line .. "' is no group")
+end
+local real = {
+  { "need tank for WC", "lfm" }, { "need 2 for Wailing Caverns", "lfm" }, { "need heal", "lfm" },
+  { "need 2 more dps for SM", "lfm" }, { "LF tank", "lfm" }, { "forming RFC", "lfm" },
+  { "need 2 for the elite quest in Barrens", "lfm" }, { "LFG any dungeon, mage 30", "lfg" },
+  { "LFM need tank and heal, join discord after", "lfm" },
+}
+for _, c in ipairs(real) do
+  local r = parse(c[1])
+  check(r and r.type == c[2], "'" .. c[1] .. "' is still " .. c[2] .. " (got " .. tostring(r and r.type) .. ")")
+end
 check(parse("selling gold cheap LFM boost 500g").isSpam, "spam is flagged")
 check(parse("anyone around Orgrimmar?") == nil, "a line that is neither LFG nor LFM is nothing")
 
@@ -61,6 +86,8 @@ PL = W.boot({ locale = "ptBR" })
 Chat = _G.PartyLens_Chat
 d = Chat.Parse("Procuro grupo para Minas Mortas, sou curador")
 check(d and d.type == "lfg" and d.activityKey == "dm" and d.roles.heal, "ptBR: procuro grupo, Minas Mortas, curador")
+check(Chat.Parse("alguém mais vai pra Orgrimmar?") == nil and Chat.Parse("vou ficar mais um pouco") == nil,
+  "'mais' alone is no group")
 d = Chat.Parse("LFM Ruínas de Lordaeron precisa tanque")
 check(d and d.type == "lfm" and d.activityKey == "rol" and d.roles.tank, "ptBR: Ruínas de Lordaeron, tanque")
 d = Chat.Parse("LFM RoL need heal")

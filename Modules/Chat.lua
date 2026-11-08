@@ -15,15 +15,15 @@ local PLAYER_PHRASES = {
     "preciso de grupo", "preciso grupo",
 }
 
+-- Words that only a group being formed writes. "need", "precisa" and the like are weaker: they count only next to
+-- a role, an activity or a quest (Chat.GuessType), or chatter like "where the locks at when you need em" is a group.
 local RECRUIT_PHRASES = {
-    "lfm", "forming", "montando", "recrutando", "vaga", "vagas", "1 more", "2 more", "3 more", "need more",
-    "mais 1", "mais um", "+1",
+    "lfm", "forming", "montando", "recrutando", "vaga", "vagas", "1 more", "2 more", "3 more", "4 more", "mais 1",
 }
 
-local GUILD_PHRASES = {
-    "guild", "guilda", "guilds", "recruit", "recruiting", "recruta", "raid core", "progression", "progressao",
-    "progressão", "semi-hardcore", "apply", "application", "discord", "loot council", "dkp",
-}
+-- A guild recruiting members, not a group: only the words a guild ad has and a group post does not ("discord" or
+-- "dkp" show up in group posts too, so they are not here).
+local GUILD_PHRASES = { "guild", "guilda", "guilds", "guilde", "gilde", "recruit", "recruiting", "recruta" }
 
 local QUEST_PHRASES = {
     "quest", "quests", "elite quest", "group quest", "attune", "attunement", "prequest", "pre-quest", "missao",
@@ -54,29 +54,32 @@ local function LooksLFM(text)
     return false
 end
 
--- "lfg" or "lfm" for a line, or nil when it is neither.
-function Chat.GuessType(text)
+-- "lfg" or "lfm" for a line, or nil when it is neither. `named` = the line names an activity or a quest.
+function Chat.GuessType(text, named)
     local hasLFG = Utils.ContainsAnyWord(text, LocalizedKeywords.GetLFGKeywords())
-    local hasLFM = LooksLFM(text) or Utils.ContainsAnyWord(text, LocalizedKeywords.GetLFMKeywords())
-    if not hasLFG and not hasLFM then
+    local strong = LooksLFM(text) or Utils.ContainsAnyWord(text, RECRUIT_PHRASES)
+    local need = Utils.ContainsAnyWord(text, LocalizedKeywords.GetLFMKeywords())
+    if not hasLFG and not strong and not need then
         return nil
     end
     if Utils.ContainsAny(text, PLAYER_PHRASES) then
         return "lfg"
     end
-    if LooksLFM(text) or Utils.ContainsAnyWord(text, RECRUIT_PHRASES) then
+    if strong then
         return "lfm"
     end
-    if hasLFM and HasRoleWord(text) then
+    if need and (named or HasRoleWord(text)) then
         return "lfm"
     end
-    return hasLFG and "lfg" or "lfm"
+    return hasLFG and "lfg" or nil
+end
+
+-- A guild's recruiting ad: its tag in angle brackets ("<Ashen>") or the words guilds use.
+local function IsGuildAd(text)
+    return text:find("<[^<>]+>") ~= nil or Utils.ContainsAnyWord(text, GUILD_PHRASES)
 end
 
 local function GuessActivityType(text, activity)
-    if Utils.ContainsAnyWord(text, GUILD_PHRASES) then
-        return "guild"
-    end
     if activity then
         return activity.type
     end
@@ -143,11 +146,13 @@ function Chat.Parse(msg)
         msg = Utils.Trim(msg:sub(#sign + 1))
     end
     local text = Utils.SafeLower(msg)
-    local kind = Chat.GuessType(text)
-    if not kind then
+    local activity = Activity.Guess(text)
+    local quest = Utils.ContainsAnyWord(text, QUEST_PHRASES)
+    local kind = Chat.GuessType(text, activity ~= nil or quest)
+    -- No group: chatter, or a guild recruiting members (unless it forms a run that names a dungeon or raid).
+    if not kind or (not activity and IsGuildAd(text)) then
         return nil
     end
-    local activity = Activity.Guess(text)
     return {
         type = kind,
         roles = Needs.Guess(text),
