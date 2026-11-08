@@ -47,7 +47,7 @@ true)` com guarda de segredo.
 - `PLLnet` (camada): `S|map|zone|beacon|hops` presença (GUILD + grupo + Realm, 60 s e na troca de camada ou de
   plantão; `beacon` = 1 quando de plantão, `hops` = hops servidos); `R|reqMap|myZone|targetZone` pedido (WHISPER ao
   beacon escolhido); `A|map|zone` convite a caminho; `N|map|zone` "não posso agora" (o pedinte passa ao próximo
-  beacon). Sem `SD` gossip, sem bridge por YELL. Novidades por camada (`Modules/LayerWatch.lua`) saem só do que já
+  beacon); `T|map|zone` "cheguei" (o pedinte, quando a camada dele vira a do beacon; conta o hop). Sem `SD` gossip, sem bridge por YELL. Novidades por camada (`Modules/LayerWatch.lua`) saem só do que já
   chega: presença, HELLO e listagens com mapID/zoneUID, comparados a cada 30 s.
 - Nada sai de dentro de instância ou em lockdown (a lib já segura o diretório; os envios diretos também checam).
 

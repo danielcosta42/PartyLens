@@ -20,11 +20,12 @@ PartyLens agora é do **WoW: Forever** (interface 16001). A linha 0.33 continua 
 - **Camadas e beacons:** a página Camada mostra camadas, não pessoas: cada camada ouvida, por zona, com a
   população, os beacons de plantão, os grupos se formando e as novidades (camada nova, beacon entrou ou
   saiu, beacon trouxe alguém, população subiu ou caiu, grupo começou). "Ir para cá" pede a um beacon da
-  camada, e o próximo é pedido sozinho se ele não puder.
+  camada, e o próximo é pedido sozinho se ele não puder. No grupo do beacon, a página lembra de clicar no
+  aviso de troca do jogo (ou esperar uns 5 minutos). Camadas no Forever são por zona.
 - **Beacon gamificado, ligado por padrão:** de plantão quando você está no mundo aberto, fora de combate,
   não ausente e sem grupo (ou só com quem trouxe). O pedido aparece na tela com Convidar e Recusar, mesmo
   com a janela fechada, e há uma tecla de atalho para convidar o próximo; o convite é sempre um clique.
-  Cada pessoa trazida conta um hop (uma vez por pessoa por dia), e os hops dão patentes: Faísca, Lanterna,
+  Cada pessoa que chega na sua camada conta um hop (uma vez por pessoa por dia), e os hops dão patentes: Faísca, Lanterna,
   Farol, Luz-guia, Estrela do norte e Lenda. Desliga em Ajustes.
 - **Rede:** a página mostra só números, sem nomes.
 - **Autopilot em modo sugestão:** ele lista quem fecha as funções que faltam; você confirma cada convite.

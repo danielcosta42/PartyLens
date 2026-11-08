@@ -20,6 +20,8 @@ local L = UI.L
 D.CHAT_TTL, D.NET_TTL = 30 * 60, 3 * 60
 -- Each beacon asked for a layer gets 40 s before the next one is asked (section 6).
 D.ASK_TTL = 40
+-- In the beacon's group the game switches me by itself after about this long (its prompt does it at once).
+D.SWITCH_WAIT = 300
 
 local FILTER_DEFAULTS = {
 	["roles.tank"] = false, ["roles.heal"] = false, ["roles.dps"] = false, type = "all", activityType = "all",

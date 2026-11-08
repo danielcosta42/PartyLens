@@ -315,7 +315,7 @@ end
 local STATE_TEXT = {
 	sent = { L["Asking a beacon"], L["Each beacon gets 40 s, then the next one."] },
 	accepted = { L["A beacon is inviting you"], L["Accept the invite to come over."] },
-	served = { L["In the beacon's group"], L["Target a creature there to confirm."] },
+	served = { L["In the beacon's group"], L["Click the game's switch prompt, or wait about 5 minutes."] },
 	hopped = { L["On the new layer"], L["Leave the group when you are done."] },
 	expired = { L["No beacon could take you"], L["Try again in a moment."] },
 }
@@ -343,11 +343,15 @@ local function RefreshMine(page)
 		if req.state == "sent" then
 			-- askedAt is time(); the ring runs on GetTime().
 			card.ring:Start(D.ASK_TTL, GetTime() - math.max(0, time() - (req.askedAt or req.t or time())))
+		elseif req.state == "served" then
+			-- The game moves me by itself after about five minutes (its prompt does it at once).
+			card.ring:Start(D.SWITCH_WAIT, GetTime() - math.max(0, time() - (req.stateAt or time())))
 		else
 			card.ring:Stop()
 			card.ring:SetFraction(req.state == "expired" and 0 or 1)
 		end
-		card.ring:SetColor(req.state == "expired" and T.muted or (req.state == "sent" and T.amber or T.ok))
+		local waiting = req.state == "sent" or req.state == "served"
+		card.ring:SetColor(req.state == "expired" and T.muted or (waiting and T.amber or T.ok))
 		-- The ring flashes once when the invite is on its way.
 		if req.state == "accepted" and page.lastState ~= "accepted" then M.Ripple(card.halo, 1.6, 0.7) end
 	else
@@ -394,7 +398,7 @@ local function RefreshBeacon(page)
 	b.serve:SetShown(queue > 0 or b.serve.rest ~= nil)
 	if queue > 0 then b.serve:SetLabel(string.format(L["Invite next (%d)"], queue)) end
 	local hoppers = false
-	for _, r in ipairs(D.LayerRequests()) do hoppers = hoppers or r.state == "served" end
+	for _, r in ipairs(D.LayerRequests()) do hoppers = hoppers or r.state == "served" or r.state == "arrived" end
 	b.undo:SetShown(queue == 0 and b.serve.rest == nil and hoppers)
 	-- Going on duty sends one ripple from the light.
 	if st.available and not page.breathing then

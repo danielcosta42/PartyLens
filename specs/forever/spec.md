@@ -54,10 +54,15 @@ morre e várias APIs mudam. Fatos medidos no jogo (backoffice CehulNet, build 70
   **novidades** dela (camada nova, beacon entrou/saiu, beacon trouxe alguém, população subiu/caiu, grupo começou a se
   formar). "Ir para esta camada" pede a um beacon dela, escolhido pelo addon (mais hops servidos primeiro); se ele
   recusa ou não responde em 40 s, o próximo é pedido sozinho. Nomes só aparecem para o beacon (quem ele convida).
+  **Camadas são por zona no Forever** (medido em 2026-11-08 pelo log de HELLOs do backoffice: no mesmo intervalo,
+  dez jogadores aleatórios em Thunder Bluff estavam todos na mesma cópia e oito membros da guilda em The Barrens em
+  oito cópias diferentes; com camadas por continente as duas zonas teriam o mesmo número). No grupo do beacon, o
+  jogo troca a camada quando o jogador clica no aviso de troca, ou sozinho em uns 5 minutos (confirmado pelo dono).
 - R12 Beacon gamificado, **ligado por padrão** (opt-out em Ajustes e na página): quem está no mundo aberto, fora de
   combate, não ausente e sozinho (ou só com quem ele trouxe) fica de plantão e anuncia isso na presença. O pedido
   chega como um aviso fora da janela com Convidar/Recusar (e uma tecla de atalho "convidar o próximo"); o convite é
-  sempre um clique (o jogo exige). Cada pessoa trazida (uma vez por pessoa por dia) conta um hop servido; os hops
+  sempre um clique (o jogo exige). Cada pessoa que **chega** na camada (o cliente dela avisa; uma vez por pessoa
+  por dia) conta um hop servido; os hops
   dão patentes (Faísca, Lanterna, Farol, Luz-guia, Estrela do norte, Lenda), com barra de progresso, "+1" animado e
   aviso de patente nova. A contagem vai na presença e pesa na escolha do beacon.
 - R9 Invocação: lista quem do grupo precisa de summon e anuncia por clique.

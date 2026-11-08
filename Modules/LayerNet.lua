@@ -9,13 +9,18 @@ local L = _G[ADDON_NAME .. "_Localization"].L
 -- (any Chehul addon reports mapID:zoneUID). A beacon is a PartyLens player on duty: beacon setting on (the default),
 -- open world, out of combat, not away, alone or only with the people it brought. The player picks a layer; the
 -- addon whispers the request to that layer's best beacon, and on a "no" or 40 s of silence to the next one. The
--- beacon's player invites with a click (the game requires one); joining its group moves the requester to its layer.
+-- beacon's player invites with a click (the game requires one). In the beacon's group, the game moves the requester
+-- to the beacon's copy of the zone when they click its switch prompt, or by itself after about five minutes; the
+-- requester's client then says "arrived" and the hop counts. Layers are per zone on Forever: each zone runs its own
+-- copies, as many as its population needs (measured 2026-11-08: Thunder Bluff one copy for ten random players, The
+-- Barrens eight copies for eight guildmates at the same time), so a beacon only helps inside its own zone.
 -- Prefix "PLLnet":
 --   PLL2|S|mapID|zoneUID|beacon|hops          presence (GUILD + group + directory), on a change and every 60 s;
 --                                             beacon = 1 while on duty, hops = people it brought over
 --   PLL2|R|mapID|myZoneUID|targetZoneUID      a request, whispered to the chosen beacon
 --   PLL2|A|mapID|zoneUID                      "invite on its way", whispered back by the beacon that clicked
 --   PLL2|N|mapID|zoneUID                      "not now", whispered back by a beacon that cannot take it
+--   PLL2|T|mapID|zoneUID                      "arrived", whispered by the requester once its layer is the beacon's
 -- No invite, whisper or uninvite ever leaves from a timer or an event. Layers are numbered only from what this
 -- client saw itself (Layer.Observe): a presence names a node's layer, it never adds one to my numbering.
 local LayerNet = {}
@@ -71,10 +76,15 @@ end
 -- ---------------------------------------------------------------------------
 -- Beacon: on duty or not, and the hops it served
 -- ---------------------------------------------------------------------------
+-- Joined my group (served) or already on my layer (arrived): my hoppers.
+local function IsHopper(r)
+    return r.state == "served" or r.state == "arrived"
+end
+
 local function ServedKeys(partyLens)
     local set = {}
     for key, r in pairs(RT(partyLens).inbound) do
-        if r.state == "served" then
+        if IsHopper(r) then
             set[key] = true
         end
     end
@@ -274,6 +284,14 @@ function LayerNet.OnMessage(partyLens, payload, sender, dist)
         if my and my.state == "sent" and Utils.SameName(my.name, name) then
             LayerNet.AskNext(partyLens)
         end
+    elseif kind == "T" and dist == "WHISPER" then
+        -- Only someone I invited, in my group, arriving on the layer I served: that is a hop.
+        local r = rt.inbound[key]
+        if r and r.state == "served" and mapID == r.mapID and zoneUID == r.targetZone then
+            r.state, r.stateAt = "arrived", time()
+            CountHop(partyLens, r)
+            Changed(partyLens)
+        end
     end
 end
 
@@ -282,7 +300,7 @@ function LayerNet.MakeRoom(rt)
     local count, oldestKey, oldestAt = 0, nil, nil
     for key, r in pairs(rt.inbound) do
         count = count + 1
-        if r.state ~= "served" and (not oldestAt or r.t < oldestAt) then
+        if not IsHopper(r) and (not oldestAt or r.t < oldestAt) then
             oldestKey, oldestAt = key, r.t
         end
     end
@@ -518,9 +536,8 @@ function LayerNet.OnRoster(partyLens)
         local grouped = Roster.Contains(members, r.name)
         if r.state == "invited" and grouped then
             r.state, r.stateAt = "served", time()
-            CountHop(partyLens, r)
             changed = true
-        elseif r.state == "served" and not grouped then
+        elseif IsHopper(r) and not grouped then
             rt.inbound[key] = nil -- uninvited, or gone on their own: the hop is over
             changed = true
         end
@@ -535,6 +552,7 @@ function LayerNet.OnLayerChanged(partyLens, cur)
     local my = RT(partyLens).my
     if my and my.state == "served" and cur.mapID == my.mapID and cur.zoneUID == my.targetZone then
         my.state, my.stateAt = "hopped", time()
+        Net.Whisper(LayerNet.PREFIX, table.concat({ LayerNet.PROTO, "T", cur.mapID, cur.zoneUID }, "|"), my.name)
         partyLens:Notice(L("NOTICE_LAYER_HOPPED"))
         Changed(partyLens)
     end
@@ -545,7 +563,7 @@ end
 local function ServedHoppers(partyLens)
     local out, members = {}, Roster.Members()
     for key, r in pairs(RT(partyLens).inbound) do
-        if r.state == "served" and Roster.Contains(members, r.name) then
+        if IsHopper(r) and Roster.Contains(members, r.name) then
             out[#out + 1] = key
         end
     end

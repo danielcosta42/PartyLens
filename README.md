@@ -36,13 +36,15 @@ players are there, how many beacons are on duty, groups forming, and what change
 on duty, someone was brought over, the layer filled up). It shows layers, never names.
 
 **Go here** asks a beacon on that layer to invite you; if it can't, the next one is asked by itself.
-Accept the invite and you are on the new layer; leave the group with a click when you are done.
+Accept the invite, then click the game's prompt to switch layers (or wait about five minutes and the game
+moves you). Leave the group with a click when you are done. Layers on Forever belong to each zone, so a
+beacon brings you over inside the zone you are both in.
 
 **Be a beacon.** It is on by default and works while you are in the open world, out of combat, not away
 and not in someone else's group. When a player asks for your layer, a prompt drops from the top of the
 screen (window open or not) with Invite and Decline, and a key binding invites the next one. The game
-needs a click for every invite. Each player you bring over is one hop; hops earn ranks, from Spark to
-Legend. Turn it off in Settings.
+needs a click for every invite. Each player who arrives on your layer is one hop; hops earn ranks, from
+Spark to Legend. Turn it off in Settings.
 
 ## Summon
 
