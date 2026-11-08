@@ -31,9 +31,10 @@ invite and whisper; it never sends anything on its own.
 
 ## Layer
 
-PartyLens reads your layer from nearby creatures and lists every layer it hears, zone by zone: how many
-players are there, how many beacons are on duty, groups forming, and what changed lately (a beacon went
-on duty, someone was brought over, the layer filled up). It shows layers, never names.
+PartyLens reads your layer from nearby creatures and draws the layers of the zone you are in as a stack of
+plates: dots on each plate are the players heard there, lights on its edge the beacons on duty, and yours
+glows amber. Pick a plate to see its numbers and what changed lately (a beacon went on duty, someone was
+brought over, the layer filled up). It shows layers, never names.
 
 **Go here** asks a beacon on that layer to invite you; if it can't, the next one is asked by itself.
 Accept the invite, then click the game's prompt to switch layers (or wait about five minutes and the game

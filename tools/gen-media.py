@@ -325,6 +325,40 @@ def role_dps(x, y):
     return cov(union(blade, guard, grip, pommel))
 
 
+# A layer as an isometric plate, 256 x 128: the top face is a 2:1 rhombus (T, R, B, L), with a 10 px edge under its
+# two front sides. White with the shading in the alpha (top face brighter at the back, the edge dimmer), so one tint
+# colours the whole plate. slab-edge is the top face's outline, for the selected, hovered and own plate.
+SLAB_T, SLAB_R, SLAB_B, SLAB_L, SLAB_DEPTH = (128, 8), (248, 56), (128, 104), (8, 56), 10
+
+
+def slab_top(x, y):
+    return poly(x, y, [SLAB_T, SLAB_R, SLAB_B, SLAB_L])
+
+
+def slab_side(x, y):
+    d = SLAB_DEPTH
+    left = poly(x, y, [SLAB_L, SLAB_B, (SLAB_B[0], SLAB_B[1] + d), (SLAB_L[0], SLAB_L[1] + d)])
+    right = poly(x, y, [SLAB_B, SLAB_R, (SLAB_R[0], SLAB_R[1] + d), (SLAB_B[0], SLAB_B[1] + d)])
+    return union(left, right)
+
+
+def slab():
+    def a(x, y):
+        top = cov(slab_top(x, y))
+        if top > 0.0:
+            depth = clamp((y - SLAB_T[1]) / float(SLAB_B[1] - SLAB_T[1]))
+            return top * (0.95 - 0.25 * depth) + (1.0 - top) * 0.5 * cov(slab_side(x, y))
+        side = cov(slab_side(x, y))
+        shade = 0.42 if x < SLAB_B[0] else 0.55  # the right front side catches more light
+        return side * shade
+
+    return white(256, 128, a, ss=2)
+
+
+def slab_edge():
+    return white(256, 128, lambda x, y: cov(abs(slab_top(x, y)) - 1.4), ss=2)
+
+
 def icon(fn):
     return lambda: white(64, 64, fn, ss=2)
 
@@ -337,6 +371,8 @@ TEXTURES = [
     ("ring", thin_ring),
     ("ring-thick", thick_ring),
     ("gradient", gradient),
+    ("slab", slab),
+    ("slab-edge", slab_edge),
     ("mark", mark),
     ("logo", logo),
     ("icon-groups", icon(icon_groups)),

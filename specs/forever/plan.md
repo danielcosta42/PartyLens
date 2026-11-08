@@ -102,7 +102,10 @@ linha de mensagem, ações à direita (Whisper principal; Convidar para LFG; Who
 - **Botões**: escala 0,96 ao apertar (0,08 s); Whisper vira "enviado" com um flash verde.
 - **Alerta de grupo que serve**: um aviso desce do topo da janela e some sozinho.
 - **Vazio**: o radar girando com "Ouvindo o canal…".
-- **Camada**: anel de progresso enquanto espera o convite; o blip de camada pisca quando servido.
+- **Camada**: as camadas da zona atual como uma pilha de placas isométricas (`slab.tga`, `slab-edge.tga`): pontos
+  na superfície = jogadores ouvidos, luzes na borda = beacons de plantão, a minha em âmbar com um "você" que pulsa.
+  Placa nova cai na pilha; sob o mouse ela sobe 3 px; o clique seleciona (contorno branco) e o painel ao lado faz
+  fade. Ao trocar de camada o "você" viaja até a placa nova. Anel de progresso enquanto espera o beacon e a troca.
 Implementação: `AnimationGroup` (`Alpha`, `Translation`, `Scale`, `Rotation`) criados uma vez por widget e
 reaproveitados; texturas próprias geradas em `Media/` (`radar-sweep.tga` cônico com alfa, `ring.tga`, `blip.tga`,
 `dot.tga`) — TGA 32 bits sem compressão.

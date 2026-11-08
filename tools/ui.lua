@@ -621,17 +621,44 @@ local function textsUnder(root)
 end
 local lp = UI:Open("layer")
 S.advance(0.3)
-local function layerRow(zoneUID) return rowOf(lp.layers, function(it) return it.zoneUID == zoneUID end) end
-check(lp.card.number.__text == "1", "my layer: the first of the layers known here")
-local mineRow, anaRow, gilRow = layerRow(101), layerRow(202), layerRow(303)
-check(mineRow and mineRow.here.__shown and not mineRow.go.__shown and mineRow.zone.__text == "You are here",
-	"my layer's row says I am here, with no button")
-check(anaRow and anaRow.title.__text == "Another layer" and anaRow.pop.__text == "1 player heard"
-	and anaRow.beacons.__text:find("1 beacon", 1, true) and anaRow.beacons.__text:find("1 group forming", 1, true),
-	"layer 202: unnumbered (never seen), one player, one beacon, her group forming")
-check(gilRow and gilRow.beacons.__text == "No beacon" and gilRow.go.__enabled == false, "layer 303: no beacon, no asking")
-check(layerRow(404) and layerRow(404).title.__text == "Layer 1" and layerRow(404).go.__enabled == false,
-	"another zone's layer is listed, numbered there, not askable from here")
+local function plateOf(zoneUID)
+	for _, pl in ipairs(lp.plates) do
+		if pl.__shown and pl.item and pl.item.zoneUID == zoneUID then return pl end
+	end
+end
+local function shownCount(list)
+	local n = 0
+	for _, t in ipairs(list) do if t.__shown then n = n + 1 end end
+	return n
+end
+local mine, ana, gil = plateOf(101), plateOf(202), plateOf(303)
+check(mine and ana and gil and not plateOf(404), "the stack has my zone's three layers; another zone's layer is left out")
+check(mine.y > ana.y and mine.y > gil.y, "my layer (number 1) at the bottom, the unvisited ones above it")
+check(mine.label.__text == "Layer 1" and near(mine.label.__color[1], UI.T.amber[1]) and mine.edge.__alpha > 0.9,
+	"my plate: Layer 1, amber, outlined")
+check(lp.you.__shown and lp.you.__points[1][2] == mine and plays(lp.you.ring.motion and lp.you.ring.motion.ping) >= 1,
+	"the you-are-here ping sits on my plate")
+check(ana.label.__text == "Unvisited layer" and shownCount(ana.dots) == 1 and shownCount(ana.lights) == 1,
+	"layer 202: unvisited, one player dot, one beacon light")
+check(shownCount(gil.lights) == 0 and shownCount(gil.dots) == 1, "layer 303: one player, no beacon light")
+local d = lp.detail
+check(d.status.__text ~= "" and d.statusSub.__text == "You are on layer 1; 3 layers heard here", "where I am, in words")
+check(d.body.title.__text == "Unvisited layer" and d.body.tag.__text == "You never stood here"
+	and d.body.players.value.__text == "1" and d.body.beacons.value.__text == "1" and d.body.groups.value.__text == "1",
+	"the layer with a beacon is picked first: one player, one beacon, her group forming")
+check(d.body.go.__shown and d.body.go.__enabled ~= false and d.body.go.label.__text == "Go to this layer", "and it can be asked")
+click(gil)
+S.advance(0.3)
+check(d.body.title.__text == "Unvisited layer" and d.body.beacons.value.__text == "0" and d.body.go.__enabled == false
+	and d.body.why.__text == "No beacon on duty here right now.", "a click picks layer 303: no beacon, no way there")
+check(gil.edge.__alpha > 0.8 and plays(d.body.motion and d.body.motion.fade) >= 1, "its plate is outlined and the panel fades in")
+click(mine)
+S.advance(0.3)
+check(d.body.tag.__text == "You are here" and not d.body.go.__shown, "my own layer: here, nothing to ask")
+gil:GetScript("OnEnter")(gil)
+check(gil.lift == 3 and plays(gil.motion and gil.motion.slide) >= 1, "a plate under the mouse lifts")
+gil:GetScript("OnLeave")(gil)
+check(gil.lift == 0, "and settles back")
 local seen = textsUnder(lp)
 check(not seen:find("Ana Lima", 1, true) and not seen:find("Gil Paz", 1, true) and not seen:find("Hugo Luz", 1, true),
 	"no name anywhere on the page")
@@ -639,32 +666,35 @@ local b = lp.beacon
 check(b.rank.__text == "Spark" and b.hops.__text == "0 brought over, 0 today" and b.next.__text == "3 more to Lantern",
 	"my beacon: first rank, nothing yet, 3 to the next")
 check(b.duty.__text:find("On duty", 1, true) and b.toggle.checked, "on duty by default")
-if check(anaRow, "Ana's layer has a row") then
-	click(anaRow.go)
-	check(PL:GetMyLayerRequest() and PL:GetMyLayerRequest().state == "sent", "Go here asks its beacon, from the click")
-	S.advance(0.3)
-	check(lp.card.ring.__shown and lp.card.ring.__scripts.OnUpdate and lp.card.wait.__text == "Asking a beacon",
-		"the ring runs while a beacon is asked")
-	S.advance(10)
-	local frac = lp.card.ring.fill.__radial or 0
-	check(frac > 0.2 and frac < 0.32, "after 10 s of 40 the ring is a quarter full (" .. frac .. ")")
-	W.deliver("PLLnet", "PLL2|A|1453|202", "WHISPER", "Ana Lima-ClassicBetaPvE2")
-	S.advance(0.3)
-	check(lp.card.wait.__text == "A beacon is inviting you" and plays(lp.card.halo.motion and lp.card.halo.motion.ripple) == 1,
-		"its accept: the ring flashes once")
-	W.setGroup({ { name = "Ana", surname = "Lima" } })
-	S.advance(0.3)
-	check(lp.card.wait.__text == "In the beacon's group" and lp.card.waitSub.__text:find("switch prompt", 1, true)
-		and lp.card.ring.__scripts.OnUpdate, "in the beacon's group: click the game's switch prompt or wait, the ring runs")
-	W.npc("target", 202)
-	W.fire("PLAYER_TARGET_CHANGED")
-	S.advance(0.3)
-	check(PL:GetMyLayerRequest().state == "hopped" and lp.card.wait.__text == "On the new layer", "on the new layer")
-	check(lp.card.action.__shown and lp.card.action.label.__text == "Leave group", "with a button to leave the group")
-	click(lp.card.action)
-	check(#W.left == 1, "leaving the group, from the click")
-	W.setGroup({})
-end
+click(ana)
+S.advance(0.3)
+click(d.body.go)
+check(PL:GetMyLayerRequest() and PL:GetMyLayerRequest().state == "sent", "Go asks its beacon, from the click")
+S.advance(0.3)
+check(d.ring.__shown and d.ring.__scripts.OnUpdate and d.status.__text == "Asking a beacon",
+	"the ring runs while a beacon is asked")
+check(plateOf(202).count.__text == "Asking a beacon" and plateOf(202).edge.__alpha > 0.9, "and its plate says so")
+S.advance(10)
+local frac = d.ring.fill.__radial or 0
+check(frac > 0.2 and frac < 0.32, "after 10 s of 40 the ring is a quarter full (" .. frac .. ")")
+W.deliver("PLLnet", "PLL2|A|1453|202", "WHISPER", "Ana Lima-ClassicBetaPvE2")
+S.advance(0.3)
+check(d.status.__text == "A beacon is inviting you" and plays(d.halo.motion and d.halo.motion.ripple) == 1,
+	"its accept: the ring flashes once")
+W.setGroup({ { name = "Ana", surname = "Lima" } })
+S.advance(0.3)
+check(d.status.__text == "In the beacon's group" and d.statusSub.__text:find("switch prompt", 1, true)
+	and d.ring.__scripts.OnUpdate, "in the beacon's group: click the game's switch prompt or wait, the ring runs")
+W.npc("target", 202)
+W.fire("PLAYER_TARGET_CHANGED")
+S.advance(0.3)
+check(PL:GetMyLayerRequest().state == "hopped" and d.status.__text == "On the new layer", "on the new layer")
+check(lp.you.__points[1][2] == plateOf(202) and plays(lp.you.motion and (lp.you.motion.slide or lp.you.motion.pop)) >= 1,
+	"the ping moves to the new plate")
+check(d.action.__shown and d.action.label.__text == "Leave group", "with a button to leave the group")
+click(d.action)
+check(#W.left == 1, "leaving the group, from the click")
+W.setGroup({})
 -- Someone asks for my layer: the prompt drops from the top of the screen, window open or not.
 UI:Close()
 W.deliver("PLLnet", "PLL2|R|1453|303|202", "WHISPER", "Jon Mar-ClassicBetaPvE2")
