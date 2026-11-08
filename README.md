@@ -31,9 +31,18 @@ invite and whisper; it never sends anything on its own.
 
 ## Layer
 
-PartyLens reads your layer from nearby creatures and shows which PartyLens users are on another layer
-of the same zone. Ask one of them for their layer; they see your request and invite you with a click.
-Once you arrive, either side can leave the group with a click.
+PartyLens reads your layer from nearby creatures and lists every layer it hears, zone by zone: how many
+players are there, how many beacons are on duty, groups forming, and what changed lately (a beacon went
+on duty, someone was brought over, the layer filled up). It shows layers, never names.
+
+**Go here** asks a beacon on that layer to invite you; if it can't, the next one is asked by itself.
+Accept the invite and you are on the new layer; leave the group with a click when you are done.
+
+**Be a beacon.** It is on by default and works while you are in the open world, out of combat, not away
+and not in someone else's group. When a player asks for your layer, a prompt drops from the top of the
+screen (window open or not) with Invite and Decline, and a key binding invites the next one. The game
+needs a click for every invite. Each player you bring over is one hop; hops earn ranks, from Spark to
+Legend. Turn it off in Settings.
 
 ## Summon
 

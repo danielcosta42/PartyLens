@@ -17,8 +17,16 @@ PartyLens agora é do **WoW: Forever** (interface 16001). A linha 0.33 continua 
 - **Só com clique:** convite, chat visível, /who e desfazer grupo saem de um botão, como o jogo exige.
 - **Atividades do Forever**, incluindo City of Dalaran, Ruins of Lordaeron, Excavation Site: Wetlands,
   The Hall of Thanes e Manor Mistmantle.
-- **Troca de camada por clique:** presença de camada na rede, pedido por sussurro, convite e saída de
-  grupo por clique de quem serve. Sem beacon automático.
+- **Camadas e beacons:** a página Camada mostra camadas, não pessoas: cada camada ouvida, por zona, com a
+  população, os beacons de plantão, os grupos se formando e as novidades (camada nova, beacon entrou ou
+  saiu, beacon trouxe alguém, população subiu ou caiu, grupo começou). "Ir para cá" pede a um beacon da
+  camada, e o próximo é pedido sozinho se ele não puder.
+- **Beacon gamificado, ligado por padrão:** de plantão quando você está no mundo aberto, fora de combate,
+  não ausente e sem grupo (ou só com quem trouxe). O pedido aparece na tela com Convidar e Recusar, mesmo
+  com a janela fechada, e há uma tecla de atalho para convidar o próximo; o convite é sempre um clique.
+  Cada pessoa trazida conta um hop (uma vez por pessoa por dia), e os hops dão patentes: Faísca, Lanterna,
+  Farol, Luz-guia, Estrela do norte e Lenda. Desliga em Ajustes.
+- **Rede:** a página mostra só números, sem nomes.
 - **Autopilot em modo sugestão:** ele lista quem fecha as funções que faltam; você confirma cada convite.
 - **Interface nova:** radar com varredura e pontos para cada grupo, cartões com as funções que faltam,
   transições, botões animados, avisos que descem do topo. As animações desligam em Ajustes.

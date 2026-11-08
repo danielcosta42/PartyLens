@@ -27,10 +27,10 @@ morre e várias APIs mudam. Fatos medidos no jogo (backoffice CehulNet, build 70
 1. **Só Forever.** TOC só com `16001`. A versão atual (0.33.x) continua no CurseForge para quem joga Anniversary.
 2. **Núcleo (sempre):** radar de grupos (canal LookingForGroup + listagens da rede ChehulNet), whisper e convite em
    um clique, anunciar grupo (post visível no LFG por clique + listagem na rede), /who por clique.
-3. **Extras:** troca de camada (pedido pela rede, convite por clique de quem serve; sem beacon automático),
+3. **Extras:** troca de camada (pedido pela rede a um beacon de plantão, convite por clique do beacon),
    Autopilot em **modo sugestão** (ele monta, você confirma cada convite e whisper), invocação (bruxo).
 4. **Saem:** reputação, world bosses, world buffs + NovaWorldBuffs, a ferramenta de Group Finder, NetDiag (o
-   backoffice CehulNet cobre), beacon automático (mutar sons, esconder party frames, engolir erros), comandos de dev.
+   backoffice CehulNet cobre), o convite automático do beacon antigo (mutar sons, esconder party frames, engolir erros), comandos de dev.
 5. **Visual novo**, mais impactante: identidade própria, transições, ações animadas (ver plan.md §5).
 6. **Entrega única**: um PR, testado no jogo no fim. Publicação só com o ok do dono.
 
@@ -49,9 +49,17 @@ morre e várias APIs mudam. Fatos medidos no jogo (backoffice CehulNet, build 70
   clique e publica a listagem na rede.
 - R7 Autopilot (sugestão): com uma listagem ativa, sugere jogadores do radar que fecham os papéis que faltam, com
   botões Convidar/Whisper; nada sai sozinho.
-- R8 Troca de camada: mostra minha camada (mapID:zoneUID), quem da rede está em outra camada da mesma zona, e permite
-  pedir a camada de um nó (whisper pela rede); quem recebe vê o pedido e convida por clique; ao entrar no grupo, o
-  pedido é marcado como servido e quem serviu pode desfazer o grupo por clique.
+- R8 Camadas (revisto no teste do dono, 2026-11-08): a página mostra **camadas, não pessoas**. Cada camada ouvida
+  (por zona) traz a população (nós ChehulNet ouvidos nela), quantos beacons estão de plantão, grupos se formando e as
+  **novidades** dela (camada nova, beacon entrou/saiu, beacon trouxe alguém, população subiu/caiu, grupo começou a se
+  formar). "Ir para esta camada" pede a um beacon dela, escolhido pelo addon (mais hops servidos primeiro); se ele
+  recusa ou não responde em 40 s, o próximo é pedido sozinho. Nomes só aparecem para o beacon (quem ele convida).
+- R12 Beacon gamificado, **ligado por padrão** (opt-out em Ajustes e na página): quem está no mundo aberto, fora de
+  combate, não ausente e sozinho (ou só com quem ele trouxe) fica de plantão e anuncia isso na presença. O pedido
+  chega como um aviso fora da janela com Convidar/Recusar (e uma tecla de atalho "convidar o próximo"); o convite é
+  sempre um clique (o jogo exige). Cada pessoa trazida (uma vez por pessoa por dia) conta um hop servido; os hops
+  dão patentes (Faísca, Lanterna, Farol, Luz-guia, Estrela do norte, Lenda), com barra de progresso, "+1" animado e
+  aviso de patente nova. A contagem vai na presença e pesa na escolha do beacon.
 - R9 Invocação: lista quem do grupo precisa de summon e anuncia por clique.
 - R10 /who por clique completa nível/classe de quem não usa o addon.
 - R11 Integração ChehulNet: tag `pl` no HELLO, alertas do operador com a identidade do PartyLens, DIAG `pl.*`,

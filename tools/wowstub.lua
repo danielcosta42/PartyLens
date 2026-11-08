@@ -199,6 +199,7 @@ local function install(o)
       level = o.level or 30, guid = "Player-1-0001" },
   }
   W.group = { members = {}, raid = false, leader = true }
+  W.afk, W.combat = false, false
 
   issecretvalue = isSecret
   type = secretType
@@ -208,6 +209,7 @@ local function install(o)
   time = function() return math.floor(W.epoch) end
   GetTime = function() return W.now end
   GetServerTime = time
+  date = function(fmt, t) return os.date(fmt, t or math.floor(W.epoch)) end
   GetFramerate = function() return 60 end
   GetLocale = function() return o.locale or "enUS" end
   GetBuildInfo = function() return "1.60.1", "70862", "Nov 1 2026", 16001 end
@@ -254,6 +256,8 @@ local function install(o)
   UnitGroupRolesAssigned = function(u) local d = unit(u) return d and d.role or "NONE" end
   UnitIsGroupLeader = function(u) return u == "player" and W.group.leader end
   UnitIsGroupAssistant = function() return false end
+  UnitIsAFK = function(u) return u == "player" and W.afk == true end
+  UnitAffectingCombat = function(u) return u == "player" and W.combat == true end
   UnitInRange = function() return W.secret(true), W.secret(true) end -- always secret on 12.x
   UnitDistanceSquared = function(u)
     local d = unit(u)

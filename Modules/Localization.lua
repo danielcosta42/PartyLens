@@ -8,6 +8,7 @@ Localization.CurrentLocale = GetLocale() or "enUS"
 Localization.Strings = {
     enUS = {
         BINDING_TOGGLE = "Toggle PartyLens window",
+        BINDING_SERVE = "Beacon: invite the next layer request",
         LOADED = "loaded. Use /partylens.",
         HELP = "/pl opens the window. /pl announce, /pl layer, /pl help.",
 
@@ -39,10 +40,11 @@ Localization.Strings = {
         NOTICE_INVITED = "Invited %s.",
         NOTICE_BLOCKED = "Blocked %s.",
         NOTICE_WHO_THROTTLED = "Wait a moment between /who lookups.",
-        NOTICE_LAYER_REQUESTED = "Layer request sent to %s.",
+        NOTICE_LAYER_REQUESTED = "Asking a beacon on that layer.",
+        NOTICE_LAYER_NOBODY = "No beacon on that layer could take you now. Try again in a moment.",
         NOTICE_LAYER_ACCEPTED = "%s is inviting you to their layer: accept the invite.",
         NOTICE_LAYER_INCOMING = "%s asks to come to your layer.",
-        NOTICE_LAYER_HOPPED = "You are on %s's layer now.",
+        NOTICE_LAYER_HOPPED = "You are on the new layer.",
 
         SUMMON_NEEDED_MSG = "summon needed — %s",
         SUMMON_NEXT_MSG = "summoning %s next — to the stone!",
@@ -50,6 +52,7 @@ Localization.Strings = {
     },
     ptBR = {
         BINDING_TOGGLE = "Abrir/fechar o PartyLens",
+        BINDING_SERVE = "Beacon: convidar o próximo pedido de camada",
         LOADED = "carregado. Use /partylens.",
         HELP = "/pl abre a janela. /pl announce, /pl layer, /pl help.",
 
@@ -81,10 +84,11 @@ Localization.Strings = {
         NOTICE_INVITED = "Convidou %s.",
         NOTICE_BLOCKED = "Bloqueou %s.",
         NOTICE_WHO_THROTTLED = "Espere um pouco entre buscas de /who.",
-        NOTICE_LAYER_REQUESTED = "Pedido de camada enviado para %s.",
+        NOTICE_LAYER_REQUESTED = "Pedindo a um beacon daquela camada.",
+        NOTICE_LAYER_NOBODY = "Nenhum beacon daquela camada pôde te levar agora. Tente de novo daqui a pouco.",
         NOTICE_LAYER_ACCEPTED = "%s está te convidando para a camada dele: aceite o convite.",
         NOTICE_LAYER_INCOMING = "%s pede para vir para a sua camada.",
-        NOTICE_LAYER_HOPPED = "Você está na camada de %s agora.",
+        NOTICE_LAYER_HOPPED = "Você está na nova camada.",
 
         SUMMON_NEEDED_MSG = "precisa summon — %s",
         SUMMON_NEXT_MSG = "invocando %s agora — pra pedra!",

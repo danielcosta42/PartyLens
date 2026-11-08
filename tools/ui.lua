@@ -30,7 +30,7 @@ local CORE_KEYS = { ROLE_TANK = true, ROLE_HEAL = true, ROLE_DPS = true, TYPE_LF
 -- The contract's click-only calls (section 3 to 7, "Click? yes"). The game itself blocks the bold ones; the
 -- harness wraps all of them so a call outside W.click is recorded the same way.
 local CLICK_ONLY = { "Whisper", "OpenWhisper", "Invite", "Who", "StartListing", "StopListing", "PostLFG",
-	"RequestLayer", "ServeLayerRequest", "UndoLayerGroup", "AnnounceSummon" }
+	"RequestLayer", "ServeLayerRequest", "ServeNextLayerRequest", "UndoLayerGroup", "AnnounceSummon" }
 
 local checks, failures = 0, 0
 local function check(cond, what)
@@ -281,7 +281,7 @@ W.channelLine("LFG RoL tank, warrior 36", "Bia Rocha", "")
 W.channelLine("LFG any dungeon dps mage", "Caio Nunes", "Player-1-0103")
 W.channelLine("LFM Wailing Caverns need tank", "Fabi Reis", "")
 W.deliver("PartyLens", listing("Ana Lima"), "WHISPER", "Ana Lima-ClassicBetaPvE2")
-W.deliver("PLLnet", "PLL2|S|1453|202", "GUILD", "Ana Lima-ClassicBetaPvE2")
+W.deliver("PLLnet", "PLL2|S|1453|202|1|4", "GUILD", "Ana Lima-ClassicBetaPvE2")
 W.deliver("ChehulNet", "CHN1|H|pl|DRUID|30|v=1|1453:303", "GUILD", "Gil Paz-ClassicBetaPvE2")
 W.deliver("ChehulNet", "CHN1|H|gos|MAGE|44|v=1|1454:404", "GUILD", "Hugo Luz-ClassicBetaPvE2")
 check(#PL:GetEntries() >= 5, "the core has entries from chat and the network (" .. #PL:GetEntries() .. ")")
@@ -610,67 +610,108 @@ noErrors("the announce page")
 noViolations("the announce page")
 
 --------------------------------------------------------------------------------
--- Layer: ask, accept, serve, hop, undo; and a request for my layer
+-- Layer: layers, not people. Go to a layer through its beacon; my beacon, its rank and its prompt.
 --------------------------------------------------------------------------------
+local function textsUnder(root)
+	local out = {}
+	for _, o in ipairs(S.descendants(root)) do
+		if o.__text and o.__shown ~= false then out[#out + 1] = o.__text end
+	end
+	return table.concat(out, " | ")
+end
 local lp = UI:Open("layer")
 S.advance(0.3)
+local function layerRow(zoneUID) return rowOf(lp.layers, function(it) return it.zoneUID == zoneUID end) end
 check(lp.card.number.__text == "1", "my layer: the first of the layers known here")
-local node = rowOf(lp.nodes, function(n) return n.name == "Ana Lima" end)
-if check(node, "Ana, on another layer, is listed") then
-	check(node.ask.__enabled ~= false, "and can be asked")
-	click(node.ask)
-	check(PL:GetMyLayerRequest() and PL:GetMyLayerRequest().state == "sent", "Ask whispers her the request, from the click")
+local mineRow, anaRow, gilRow = layerRow(101), layerRow(202), layerRow(303)
+check(mineRow and mineRow.here.__shown and not mineRow.go.__shown and mineRow.zone.__text == "You are here",
+	"my layer's row says I am here, with no button")
+check(anaRow and anaRow.title.__text == "Another layer" and anaRow.pop.__text == "1 player heard"
+	and anaRow.beacons.__text:find("1 beacon", 1, true) and anaRow.beacons.__text:find("1 group forming", 1, true),
+	"layer 202: unnumbered (never seen), one player, one beacon, her group forming")
+check(gilRow and gilRow.beacons.__text == "No beacon" and gilRow.go.__enabled == false, "layer 303: no beacon, no asking")
+check(layerRow(404) and layerRow(404).title.__text == "Layer 1" and layerRow(404).go.__enabled == false,
+	"another zone's layer is listed, numbered there, not askable from here")
+local seen = textsUnder(lp)
+check(not seen:find("Ana Lima", 1, true) and not seen:find("Gil Paz", 1, true) and not seen:find("Hugo Luz", 1, true),
+	"no name anywhere on the page")
+local b = lp.beacon
+check(b.rank.__text == "Spark" and b.hops.__text == "0 brought over, 0 today" and b.next.__text == "3 more to Lantern",
+	"my beacon: first rank, nothing yet, 3 to the next")
+check(b.duty.__text:find("On duty", 1, true) and b.toggle.checked, "on duty by default")
+if check(anaRow, "Ana's layer has a row") then
+	click(anaRow.go)
+	check(PL:GetMyLayerRequest() and PL:GetMyLayerRequest().state == "sent", "Go here asks its beacon, from the click")
 	S.advance(0.3)
-	check(lp.card.ring.__shown and lp.card.ring.__scripts.OnUpdate, "the progress ring runs while waiting")
-	S.advance(30)
+	check(lp.card.ring.__shown and lp.card.ring.__scripts.OnUpdate and lp.card.wait.__text == "Asking a beacon",
+		"the ring runs while a beacon is asked")
+	S.advance(10)
 	local frac = lp.card.ring.fill.__radial or 0
-	check(frac > 0.2 and frac < 0.35, "after 30 s of 120 the ring is a quarter full (" .. frac .. ")")
-	check(lp.card.wait.__text:find("Ana Lima", 1, true), "and says who it waits for")
+	check(frac > 0.2 and frac < 0.32, "after 10 s of 40 the ring is a quarter full (" .. frac .. ")")
 	W.deliver("PLLnet", "PLL2|A|1453|202", "WHISPER", "Ana Lima-ClassicBetaPvE2")
 	S.advance(0.3)
-	check(lp.card.wait.__text == "Ana Lima is inviting you" and plays(lp.card.halo.motion and lp.card.halo.motion.ripple) == 1,
-		"her accept: the ring flashes once")
+	check(lp.card.wait.__text == "A beacon is inviting you" and plays(lp.card.halo.motion and lp.card.halo.motion.ripple) == 1,
+		"its accept: the ring flashes once")
 	W.setGroup({ { name = "Ana", surname = "Lima" } })
 	W.npc("target", 202)
 	W.fire("PLAYER_TARGET_CHANGED")
 	S.advance(0.3)
-	check(PL:GetMyLayerRequest().state == "hopped" and lp.card.wait.__text:find("layer now", 1, true), "on her layer now")
+	check(PL:GetMyLayerRequest().state == "hopped" and lp.card.wait.__text == "On the new layer", "on the new layer")
 	check(lp.card.action.__shown and lp.card.action.label.__text == "Leave group", "with a button to leave the group")
 	click(lp.card.action)
 	check(#W.left == 1, "leaving the group, from the click")
 	W.setGroup({})
 end
--- Someone asks for my layer: a toast with Invite and Decline
+-- Someone asks for my layer: the prompt drops from the top of the screen, window open or not.
+UI:Close()
 W.deliver("PLLnet", "PLL2|R|1453|303|202", "WHISPER", "Jon Mar-ClassicBetaPvE2")
 S.advance(0.3)
-check(toast.__shown and toast.title.__text == "Jon Mar wants your layer" and toast.actions[1].__shown, "a request for my layer: a toast with Invite")
-click(toast.actions[1])
-check(W.invites[#W.invites] == "Jon Mar" and PL:GetLayerRequests()[1].state == "invited", "Invite on the toast serves it, from its click")
-S.advance(0.3)
-local req = rowOf(lp.requests, function(r) return r.name == "Jon Mar" end)
-check(req and req.state.__text == "Invite sent", "the request reads invite sent")
-W.setGroup({ { name = "Jon", surname = "Mar" } })
-S.advance(0.3)
-req = rowOf(lp.requests, function(r) return r.name == "Jon Mar" end)
-if check(req and req.undo.__shown, "served: the row offers to remove him from the group") then
-	click(req.undo)
-	check(W.uninvites[#W.uninvites] == "Jon Mar", "undo uninvites him, from the click")
-end
-W.setGroup({})
+local prompt = UI.prompt
+check(prompt and prompt.__shown and prompt:GetParent() == UIParent and prompt.title.__text == "Jon Mar wants your layer"
+	and prompt.actions[1].__shown, "a request with the window closed: a prompt on the screen with Invite")
 W.deliver("PLLnet", "PLL2|R|1453|303|202", "WHISPER", "Kai Rio-ClassicBetaPvE2")
 S.advance(0.3)
-req = rowOf(lp.requests, function(r) return r.name == "Kai Rio" end)
-if check(req and req.invite.__shown and req.decline.__shown, "an open request: Invite and Decline on its row") then
-	click(req.decline)
-	check(PL:GetLayerRequests()[1].state == "declined", "Decline declines it")
-	S.advance(0.3)
-	check(not rowOf(lp.requests, function(r) return r.name == "Kai Rio" end), "and a declined request leaves the page")
+check(prompt.title.__text == "Jon Mar wants your layer" and prompt.body.__text:find("1 more waiting", 1, true),
+	"a second one waits behind the first")
+click(prompt.actions[1])
+local function reqOf(name)
+	for _, r in ipairs(PL:GetLayerRequests()) do if r.name == name then return r end end
 end
--- A node on my map, on a layer I have not seen myself: listed with no number.
-W.deliver("PLLnet", "PLL2|S|1453|909", "GUILD", "Uma Sol-ClassicBetaPvE2")
+check(W.invites[#W.invites] == "Jon Mar" and reqOf("Jon Mar").state == "invited", "Invite serves it, from its click")
+S.advance(0.6)
+check(prompt.__shown and prompt.title.__text == "Kai Rio wants your layer", "then the next one shows")
+click(prompt.actions[2])
+check(reqOf("Kai Rio").state == "declined", "Decline declines it")
+S.advance(0.6)
+check(not prompt.__shown or prompt.__alpha == 0, "and with none left the prompt goes")
+lp = UI:Open("layer")
 S.advance(0.3)
-local uma = rowOf(lp.nodes, function(n) return n.name == "Uma Sol" end)
-check(uma and uma.item.ordinal == nil and uma.layer.__text == "another layer", "a layer I have not seen: another layer, no number")
+W.setGroup({ { name = "Jon", surname = "Mar" } })
+S.advance(0.3)
+check(plays(lp.beacon.plus.motion and lp.beacon.plus.motion.float) == 1, "his joining throws a +1 off the light")
+check(lp.beacon.hops.__text == "1 brought over, 1 today" and lp.beacon.next.__text == "2 more to Lantern", "and counts")
+check(lp.beacon.undo.__shown, "the beacon card offers to remove him")
+click(lp.beacon.undo)
+check(W.uninvites[#W.uninvites] == "Jon Mar", "remove uninvites him, from the click")
+W.setGroup({})
+-- A new rank ripples
+PL.db.beacon.hops = 2
+W.deliver("PLLnet", "PLL2|R|1453|303|202", "WHISPER", "Lia Sol-ClassicBetaPvE2")
+S.advance(0.3)
+check(lp.beacon.serve.__shown and lp.beacon.serve.label.__text == "Invite next (1)", "Invite next shows the queue")
+click(lp.beacon.serve)
+check(W.invites[#W.invites] == "Lia Sol", "and serves it, from the click")
+W.setGroup({ { name = "Lia", surname = "Sol" } })
+S.advance(0.3)
+check(lp.beacon.rank.__text == "Lantern" and plays(lp.beacon.halo.motion and lp.beacon.halo.motion.ripple) >= 1,
+	"the third hop is Lantern, with a ripple")
+W.setGroup({})
+-- Off
+click(lp.beacon.toggle)
+S.advance(0.3)
+check(PL.db.beacon.on == false and lp.beacon.duty.__text:find("Off", 1, true), "the toggle turns the beacon off")
+click(lp.beacon.toggle)
+check(PL.db.beacon.on == true, "and on again")
 -- The API opens the Layer page on a layer
 PL.API.RequestLayer(1453, 202)
 S.advance(0.3)

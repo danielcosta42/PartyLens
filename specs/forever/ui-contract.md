@@ -39,8 +39,10 @@ PartyLens:Fire(event, ...) -- core use; a handler error goes to geterrorhandler(
 | `LISTING_CHANGED` | `listing` (same shape as `GetListing()`) | draft edited, listing started/stopped/updated, roster changed while active, a post went out |
 | `SUGGESTIONS_CHANGED` | `suggestions` (same as `GetSuggestions()`) | the ranked list changed (checked every 5 s while a listing is active, and on entry/roster changes) |
 | `LAYER_CHANGED` | `layer` (same as `GetLayer()`) | my detected layer changed, after a loading screen, and on a zone change (then usually with `zoneUID = nil` until an NPC is seen) |
-| `LAYER_NODES_CHANGED` | — | a node's presence/layer arrived or expired |
-| `LAYER_REQUEST_RECEIVED` | `req` (an inbound request, see §6) | someone asked to come to my layer (show a toast with Invite/Decline) |
+| `LAYER_NODES_CHANGED` | — | a node's presence/layer arrived or expired, or a layer has news |
+| `LAYER_REQUEST_RECEIVED` | `req` (an inbound request, see §6) | someone asked to come to my layer (show the beacon prompt with Invite/Decline, window open or not) |
+| `BEACON_CHANGED` | `status` (same as `GetBeacon()`) | the beacon setting or my duty changed (away, combat, group, layer, instance) |
+| `BEACON_SERVED` | `status` + `rankUp` (bool), `name` (who joined) | someone I invited joined my group: one more hop (once per person per day) |
 | `LAYER_REQUESTS_CHANGED` | — | an inbound request or my own request changed state |
 | `SUMMON_CHANGED` | — | roster changed, a member was marked summoned |
 | `ROSTER_CHANGED` | — | `GROUP_ROSTER_UPDATE` (already secret-guarded) |
@@ -54,7 +56,8 @@ PartyLens:Fire(event, ...) -- core use; a handler error goes to geterrorhandler(
 Any older save (schemaVersion < 100) is wiped on load. Read freely; write core keys only with
 `PartyLens:Set(path, value)` (dotted path, fires `SETTINGS_CHANGED`). `Set` returns `false` and changes nothing
 for an unknown path, a value of another type than the default's, a table value, or the keys that have their own
-calls (`listing.*` → `SetListing`, `blacklist` → `Block`/`Unblock`, `alertDismissed`, `schemaVersion`).
+calls (`listing.*` → `SetListing`, `blacklist` → `Block`/`Unblock`, `beacon.*` → `SetBeacon`, `alertDismissed`,
+`schemaVersion`).
 The UI may write `db.ui`, `db.minimap`, `db.animations` directly.
 
 | Path | Default | Meaning |
@@ -79,6 +82,7 @@ The UI may write `db.ui`, `db.minimap`, `db.animations` directly.
 | `animations` | `true` | UI-owned |
 | `minimap.hide` / `minimap.angle` | `false` / `225` | UI-owned |
 | `ui` | `{}` | free table for the UI (window position, last page, ...) |
+| `beacon.on` / `beacon.hops` / `beacon.today` | `true` / `0` / `0` | read only (write with `SetBeacon`): beacon setting (opt-out), people brought over in all, today |
 | `blacklist` | `{}` | `[key] = name`; use `Block`/`Unblock`, not direct writes |
 
 ## 3. Radar entries
@@ -173,19 +177,24 @@ hides it until the listing stops. Contacted entries stay listed with `entry.cont
 
 ## 6. Layer
 
+Rows are layers, never people: the page shows no names except to the beacon, for the people who ask it.
+
 | Call | Click? | Returns / does |
 |---|---|---|
 | `PartyLens:GetLayer()` | | `{ mapID, zoneUID|nil, ordinal|nil, count, since|nil, inInstance }` (`count` = layers known on the map). `zoneUID` nil until a nearby NPC was targeted, moused over or shown with a nameplate on this map. `ordinal` is this client's own numbering of the layers it saw itself on the map (1 = lowest zoneUID); network presences never add to it, so `count` = layers I saw |
-| `PartyLens:GetLayerNodes()` | | array `{ name, key, mapID, zoneUID, ordinal, sameMap, sameLayer, canRequest, source = "pl"|"cn", ago }`, same map first. `canRequest` = runs PartyLens, same map, other layer. `ordinal` is nil for a layer I have not seen myself |
-| `PartyLens:GetLayerSummary()` | | layers on my map: array `{ zoneUID, ordinal, nodes, requestable, mine }`, the ones I saw by ordinal, then the ones only nodes report (`ordinal = nil`) by zoneUID |
-| `PartyLens:RequestLayer(node)` | yes | whispers the request to that node (`node` from `GetLayerNodes()`). `false, reason`: `"cannot_request"` (not PartyLens or other map), `"same_layer"`, `"pending"` (one at a time), `"offline"` (no longer heard), `"cannot_send"` (instance or chat lockdown) |
-| `PartyLens:GetMyLayerRequest()` | | nil or `{ name, mapID, targetZone, state, t, stateAt }`, `state` = `"sent"` → `"accepted"` (they clicked invite) → `"served"` (I joined their group) → `"hopped"` (my layer is now theirs); or `"expired"` (120 s without answer) / `"cancelled"` |
+| `PartyLens:GetLayers()` | | one row per layer heard, my zone first, then zones by population, inside a zone by zoneUID: `{ mapID, zoneUID, ordinal|nil, mine, sameMap, population, zonePopulation, beacons, meBeacon, groups, canRequest, news }`. `population` = ChehulNet nodes heard there (me included on mine); `beacons` = PartyLens beacons on duty there (me included when on duty); `groups` = network lfm listings that carry that layer. `ordinal`: on my map my own numbering (nil for a layer only the network reports), elsewhere the order among the layers heard on that map. `canRequest` = my map, not mine, a beacon on duty. `news` = newest first, at most 4, 30 min: `{ t, kind, n }`, `kind` = `"new"` (layer heard for the first time) \| `"beacon_on"` (`n` beacons now) \| `"beacon_off"` \| `"hop"` (beacons there brought `n` people over) \| `"group"` (`n` groups started forming) \| `"grow"` / `"shrink"` (population up/down by `n` over 5 to 10 min) |
+| `PartyLens:GetLayerNodes()` | | the raw nodes behind `GetLayers()` (network status only; the UI shows no names): `{ name, key, mapID, zoneUID, source = "pl"|"cn", pl, beacon, hops, sameMap, sameLayer, ago }` |
+| `PartyLens:RequestLayer(layer)` | yes | `layer` = a row of `GetLayers()` (or `{ mapID, zoneUID }`): whispers the request to that layer's beacon with the most hops; on its no (`N`) or 40 s of silence, to the next one, by itself. `false, reason`: `"other_map"`, `"same_layer"`, `"no_beacon"`, `"pending"` (one at a time), `"cannot_send"` (instance or chat lockdown) |
+| `PartyLens:GetMyLayerRequest()` | | nil or `{ name, mapID, targetZone, state, t, stateAt, askedAt, asked }` (`name` = the beacon asked now, internal: the UI says "a beacon"), `state` = `"sent"` (`askedAt` = when the current beacon was asked, 40 s each) → `"accepted"` (it clicked invite; 120 s to join) → `"served"` (I joined its group) → `"hopped"` (my layer is now that one); or `"expired"` (no beacon took it) / `"cancelled"` |
 | `PartyLens:CancelLayerRequest()` | | |
-| `PartyLens:GetLayerRequests()` | | inbound, newest first: `{ name, key, mapID, fromZone, targetZone, t, stateAt, state = "open"|"invited"|"served"|"declined" }`. One per person: a repeat never toasts again and never reopens it. `open` goes after 90 s, `invited` after 150 s unless they joined (then `served`, until they leave), `declined` is held 10 min (that person is not heard meanwhile). At most 10: a new one evicts the oldest not in my group |
+| `PartyLens:GetBeacon()` | | `{ on, available, why|nil, hops, today, rank, rankAt, nextAt|nil, queue }`. `why` when not on duty: `"off"`, `"instance"`, `"no_layer"`, `"combat"`, `"afk"`, `"grouped"` (in a group I did not form, or not leader), `"group_full"`. `rank` 1..6 by hops (thresholds 0, 3, 10, 25, 60, 150; `rankAt` this rank's, `nextAt` the next one's, nil at the top). `queue` = open requests |
+| `PartyLens:SetBeacon(on)` | | the beacon setting (opt-out); fires `BEACON_CHANGED` and tells the network |
+| `PartyLens:GetLayerRequests()` | | inbound, newest first: `{ name, key, mapID, fromZone, targetZone, t, seq, stateAt, state = "open"|"invited"|"served"|"declined" }` (`seq` = arrival order). Only while on duty (otherwise the asker gets a no). One per person: a repeat never prompts again and never reopens it. `open` goes after 90 s, `invited` after 150 s unless they joined (then `served`, until they leave), `declined` is held 10 min (that person gets a no meanwhile). At most 10: a new one evicts the oldest not in my group |
 | `PartyLens:ServeLayerRequest(req)` | **yes** | invites the requester and tells them. `false, reason`: `"cannot_invite"`, `"group_full"`, `"not_on_layer"` (I moved), `"gone"` (declined or expired) |
-| `PartyLens:DeclineLayerRequest(req)` | | |
+| `PartyLens:ServeNextLayerRequest()` | **yes** | the same for the oldest open request (also the key binding "Beacon: invite the next layer request"); `false, "gone"` with none |
+| `PartyLens:DeclineLayerRequest(req)` | | tells them no |
 | `PartyLens:CanUndoLayer()` | | true after a served hop (either side) while still grouped |
-| `PartyLens:UndoLayerGroup()` | **yes** | server side: uninvites the hopper (or leaves when not leader); requester side: leaves the group. States follow the roster: the served request goes (server) or stays `"hopped"` with `CanUndoLayer()` false (requester) on the next `LAYER_REQUESTS_CHANGED`/`ROSTER_CHANGED` |
+| `PartyLens:UndoLayerGroup()` | **yes** | beacon side: uninvites the hopper (or leaves when not leader); requester side: leaves the group. States follow the roster: the served request goes (beacon) or stays `"hopped"` with `CanUndoLayer()` false (requester) on the next `LAYER_REQUESTS_CHANGED`/`ROSTER_CHANGED` |
 
 ## 7. Summon (warlock)
 

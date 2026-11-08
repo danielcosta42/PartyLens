@@ -1,7 +1,7 @@
 local ADDON_NAME = ...
 
 -- The Forever line starts from a clean save: nothing of the Anniversary schema (specs, autopilot tiers,
--- reputation, layer beacon, Group Finder keys) means anything here.
+-- reputation, the old auto-inviting beacon, Group Finder keys) means anything here.
 local Database = {}
 
 Database.SCHEMA = 100
@@ -35,6 +35,8 @@ local function Defaults()
         minimap = { hide = false, angle = 225 },
         ui = {},
         alertDismissed = {},
+        -- Beacon: on by default (opt-out). hops = people brought over, one per person per day (todayKeys).
+        beacon = { on = true, hops = 0, day = "", today = 0, todayKeys = {} },
     }
 end
 

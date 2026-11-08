@@ -6,9 +6,9 @@
 -- SetListing. Every core event is forwarded to the UI's own bus (UI:Notify), which redraws the open page.
 --
 -- CLICK ONLY: D.Whisper, D.OpenWhisper, D.Invite, D.Who, D.StartListing, D.StopListing, D.PostLFG,
--- D.RequestLayer, D.Serve, D.Undo and D.AnnounceSummon forward straight to the core and must be called directly
--- from a button's OnClick (a hardware event), never from a timer, an event or an animation callback. Nothing in
--- this file defers one.
+-- D.RequestLayer, D.Serve, D.ServeNext, D.Undo and D.AnnounceSummon forward straight to the core and must be
+-- called directly from a button's OnClick (a hardware event), never from a timer, an event or an animation
+-- callback. Nothing in this file defers one.
 --=============================================================================
 local _, ns = ...
 local UI = ns.UI
@@ -18,8 +18,8 @@ local L = UI.L
 
 -- How long an entry lives without news (contract section 3): the scale of the freshness rings and the radar.
 D.CHAT_TTL, D.NET_TTL = 30 * 60, 3 * 60
--- My layer request expires after 120 s without an answer (section 6).
-D.REQUEST_TTL = 120
+-- Each beacon asked for a layer gets 40 s before the next one is asked (section 6).
+D.ASK_TTL = 40
 
 local FILTER_DEFAULTS = {
 	["roles.tank"] = false, ["roles.heal"] = false, ["roles.dps"] = false, type = "all", activityType = "all",
@@ -135,19 +135,17 @@ function D.PostLFG() return Core():PostLFG() end
 -- Layer (section 6)
 --------------------------------------------------------------------------------
 function D.Layer() local pl = Core() return pl and pl:GetLayer() or { count = 0 } end
-function D.LayerNodes() local pl = Core() return pl and pl:GetLayerNodes() or {} end
+function D.Layers() local pl = Core() return pl and pl:GetLayers() or {} end
 function D.MyRequest() local pl = Core() return pl and pl:GetMyLayerRequest() end
 function D.CancelRequest() local pl = Core() if pl then pl:CancelLayerRequest() end end
 function D.LayerRequests() local pl = Core() return pl and pl:GetLayerRequests() or {} end
-
--- The requests worth a row: a declined one stays in the core for 10 min, out of sight here.
-function D.ActiveRequests()
-	local out = {}
-	for _, r in ipairs(D.LayerRequests()) do if r.state ~= "declined" then out[#out + 1] = r end end
-	return out
-end
 function D.Decline(req) local pl = Core() if pl then pl:DeclineLayerRequest(req) end end
 function D.CanUndo() local pl = Core() return pl and pl:CanUndoLayer() or false end
+function D.Beacon()
+	local pl = Core()
+	return pl and pl:GetBeacon() or { on = false, available = false, hops = 0, today = 0, rank = 1, rankAt = 0, queue = 0 }
+end
+function D.SetBeacon(on) local pl = Core() if pl then pl:SetBeacon(on) end end
 
 function D.OpenRequests()
 	local n = 0
@@ -156,8 +154,9 @@ function D.OpenRequests()
 end
 
 -- Click only.
-function D.RequestLayer(node) return Core():RequestLayer(node) end
+function D.RequestLayer(layer) return Core():RequestLayer(layer) end
 function D.Serve(req) return Core():ServeLayerRequest(req) end
+function D.ServeNext() return Core():ServeNextLayerRequest() end
 function D.Undo() return Core():UndoLayerGroup() end
 
 --------------------------------------------------------------------------------
@@ -189,8 +188,8 @@ end
 local REASONS = {
 	empty = L["Nothing to send"], cannot_invite = L["Not the leader"], in_group = L["Already grouped"],
 	throttled = L["Wait a moment"], cooldown = L["Wait a moment"], no_channel = L["Joining the channel"],
-	cannot_request = L["Can't ask them"], same_layer = L["Same layer"], pending = L["One at a time"],
-	offline = L["Not heard now"], cannot_send = L["Can't send now"], group_full = L["Group full"],
+	same_layer = L["Same layer"], pending = L["One at a time"], no_beacon = L["No beacon now"],
+	other_map = L["Other zone"], cannot_send = L["Can't send now"], group_full = L["Group full"],
 	not_on_layer = L["You moved"], gone = L["Gone"], not_in_group = L["Not in a group"],
 }
 function D.Reason(code)
@@ -206,7 +205,7 @@ local FORWARD = {
 	SUGGESTIONS_CHANGED = "suggestions", LAYER_CHANGED = "layer", LAYER_NODES_CHANGED = "layer",
 	LAYER_REQUEST_RECEIVED = "layerRequest", LAYER_REQUESTS_CHANGED = "layer", SUMMON_CHANGED = "summon",
 	ROSTER_CHANGED = "roster", NETWORK_CHANGED = "network", SETTINGS_CHANGED = "settings", NOTICE = "notice",
-	LFG_CHANNEL_CHANGED = "channel",
+	LFG_CHANNEL_CHANGED = "channel", BEACON_CHANGED = "layer", BEACON_SERVED = "beaconServed",
 }
 
 local core = rawget(_G, "PartyLens")

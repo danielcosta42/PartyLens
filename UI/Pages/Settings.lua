@@ -57,7 +57,12 @@ local function Build(page)
 		L["The radar reads that channel; without it only the network fills it."],
 		function() return D.Get("joinLFGChannel") end, function(on) D.Set("joinLFGChannel", on) end)
 	page.alert = check(L["Sound when a group needs my role"], L["Only while this window is closed."],
-		function() return D.Get("alertOnMatch") end, function(on) D.Set("alertOnMatch", on) end)
+		function() return D.Get("alertOnMatch") end, function(on) D.Set("alertOnMatch", on) end, 22)
+
+	section(L["Layer"])
+	page.beacon = check(L["Be a beacon"],
+		L["Players on other layers of your zone can ask to come to yours; you invite each one with a click."],
+		function() return D.Beacon().on end, function(on) D.SetBeacon(on) end)
 
 	-- Right column
 	local rx = COL + 40
@@ -120,6 +125,7 @@ local function Refresh(page)
 	page.spam:SetChecked(D.Get("filters.hideSpam"))
 	page.join:SetChecked(D.Get("joinLFGChannel"))
 	page.alert:SetChecked(D.Get("alertOnMatch"))
+	page.beacon:SetChecked(D.Beacon().on)
 	local mine = D.MyRoles()
 	for role, chip in pairs(page.roles) do chip:SetSelected(mine[role], true) end
 	page.comment:SetValue(D.Get("comment") or "")

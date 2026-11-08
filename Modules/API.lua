@@ -45,7 +45,7 @@ function API.StartQuestGroup(ctx)
     return true
 end
 
--- Opens the Layer page on a map and layer (say, a quest NPC's): the player picks a node there.
+-- Opens the Layer page on a map and layer (say, a quest NPC's): that layer's row is marked; the player goes from there.
 function API.RequestLayer(mapID, zoneUID)
     local pl = PL()
     mapID, zoneUID = tonumber(mapID), tonumber(zoneUID)

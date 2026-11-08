@@ -17,6 +17,7 @@ local Comm = Mod("Comm")
 local Who = Mod("Who")
 local Layer = Mod("Layer")
 local LayerNet = Mod("LayerNet")
+local LayerWatch = Mod("LayerWatch")
 local Listing = Mod("Listing")
 local Autopilot = Mod("Autopilot")
 local Search = Mod("Search")
@@ -33,6 +34,7 @@ PartyLens.VERSION = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version") or "?"
 
 _G.BINDING_HEADER_PARTYLENS = "PartyLens"
 _G.BINDING_NAME_PARTYLENS_TOGGLE = L("BINDING_TOGGLE")
+_G.BINDING_NAME_PARTYLENS_SERVE = L("BINDING_SERVE")
 
 -- ---------------------------------------------------------------------------
 -- Event bus
@@ -109,7 +111,7 @@ function PartyLens:AddStrings(locale, strings)
 end
 
 -- Keys with their own calls (SetListing, Block, ...), never written through Set.
-local OWN_API = { listing = true, blacklist = true, alertDismissed = true, schemaVersion = true }
+local OWN_API = { listing = true, blacklist = true, alertDismissed = true, schemaVersion = true, beacon = true }
 
 -- A dotted path into db for a key that exists, with a value of the same type.
 function PartyLens:Set(path, value)
@@ -285,12 +287,24 @@ function PartyLens:GetLayerNodes()
     return LayerNet.Nodes(self)
 end
 
-function PartyLens:GetLayerSummary()
-    return LayerNet.Summary(self)
+function PartyLens:GetLayers()
+    return LayerWatch.Layers(self)
 end
 
-function PartyLens:RequestLayer(node)
-    return LayerNet.Request(self, node)
+function PartyLens:RequestLayer(layer)
+    return LayerNet.RequestLayer(self, layer)
+end
+
+function PartyLens:GetBeacon()
+    return LayerNet.BeaconStatus(self)
+end
+
+function PartyLens:SetBeacon(on)
+    LayerNet.SetBeacon(self, on)
+end
+
+function PartyLens:ServeNextLayerRequest()
+    return LayerNet.ServeNext(self)
 end
 
 function PartyLens:GetMyLayerRequest()
@@ -393,6 +407,7 @@ function PartyLens:OnLoad()
         Chat.RefreshLFGChannel(self)
         LayerNet.Prune(self)
         Layer.Prune(self)
+        LayerWatch.Watch(self)
     end)
     C_Timer.NewTicker(LayerNet.PRESENCE_INTERVAL, function() LayerNet.SendPresence(self) end)
 
@@ -457,6 +472,16 @@ local EVENTS = {
     end,
     WHO_LIST_UPDATE = function(self)
         Who.OnWhoList(self)
+    end,
+    -- Beacon duty: away, combat. Their payloads are not read.
+    PLAYER_FLAGS_CHANGED = function(self)
+        LayerNet.CheckDuty(self)
+    end,
+    PLAYER_REGEN_DISABLED = function(self)
+        LayerNet.CheckDuty(self)
+    end,
+    PLAYER_REGEN_ENABLED = function(self)
+        LayerNet.CheckDuty(self)
     end,
 }
 

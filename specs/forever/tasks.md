@@ -25,6 +25,13 @@ Ordem de execução. [ ] por fazer.
 - [x] B5 Minimap + AddonCompartment.
 - [x] B6 Harness `tools/ui.lua` (todas as páginas montam e desenham).
 
+## D. Ajustes do teste no jogo (2026-11-08)
+- [x] D1 Rede: só contagens (por addon), sem nomes.
+- [x] D2 Camada: camadas por zona com população, beacons, grupos e novidades; "ir para esta camada" pede a um beacon.
+- [x] D3 Beacon gamificado ligado por padrão: plantão, recusa `N`, próximo beacon sozinho, hops e patentes, aviso
+  fora da janela, tecla de atalho, opção em Ajustes.
+- [x] D4 Harnesses `layer.lua`/`ui.lua`/`contract.lua` e o contrato (§6) atualizados.
+
 ## C. Fechamento
 - [x] C1 README/CURSEFORGE-DESCRIPTION para o Forever; CHANGELOG; VERSION 1.0.0.
 - [x] C2 Revisão local (review + preflight) até zero achados.

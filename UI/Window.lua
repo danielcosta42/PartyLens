@@ -131,7 +131,7 @@ function UI:BuildHeader(f)
 	net:SetScript("OnLeave", function(btn) UI.TextColor(btn.label, T.muted) end)
 	net:SetScript("OnClick", function() UI:Open("network") end)
 	Kit.Tip(net, L["Network"],
-		L["Players with PartyLens or another ChehulNet addon heard in the last minutes. Click for the list."])
+		L["Players with PartyLens or another ChehulNet addon heard in the last minutes. Click for the numbers."])
 	head.net = net
 	head.status:SetPoint("RIGHT", net, "LEFT", -12, 0)
 end

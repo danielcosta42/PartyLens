@@ -62,13 +62,9 @@ CN:RegisterDiag("pl", function()
     for _ in pairs(pl.entries or {}) do
         entries = entries + 1
     end
-    local inbound = 0
-    for _, r in ipairs(Mod("LayerNet").Inbound(pl)) do
-        if r.state == "open" then
-            inbound = inbound + 1
-        end
-    end
+    local beacon = Mod("LayerNet").BeaconStatus(pl)
     local listing = Mod("Listing").IsActive(pl) and pl.db.listing.type or "0"
     return table.concat({ "v=" .. tostring(pl.VERSION), "entries=" .. entries, "listing=" .. listing,
-        "heard=" .. Mod("Comm").HeardCount(pl), "nodes=" .. Mod("LayerNet").NodeCount(pl), "req=" .. inbound }, ";")
+        "heard=" .. Mod("Comm").HeardCount(pl), "nodes=" .. Mod("LayerNet").NodeCount(pl), "req=" .. beacon.queue,
+        "beacon=" .. (beacon.available and "duty" or (beacon.why or "off")), "hops=" .. beacon.hops }, ";")
 end)

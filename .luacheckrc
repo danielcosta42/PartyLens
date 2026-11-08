@@ -25,7 +25,7 @@ globals = {
 
 read_globals = {
     -- Lua environment WoW adds
-    "strsplit", "wipe", "time", "issecretvalue", "geterrorhandler",
+    "strsplit", "wipe", "time", "date", "issecretvalue", "geterrorhandler",
     -- frames and chat frames
     "CreateFrame", "DEFAULT_CHAT_FRAME", "ChatFrameUtil", "WhoFrame",
     -- constants
@@ -35,7 +35,7 @@ read_globals = {
     -- units and names
     "Ambiguate", "UnitName", "UnitFullName", "UnitClass", "UnitLevel", "UnitExists", "UnitGUID", "UnitIsUnit",
     "UnitIsPlayer", "UnitPlayerControlled", "UnitGroupRolesAssigned", "UnitIsGroupLeader", "UnitIsGroupAssistant",
-    "UnitDistanceSquared", "UnitIsVisible", "GetPlayerInfoByGUID",
+    "UnitDistanceSquared", "UnitIsVisible", "GetPlayerInfoByGUID", "UnitIsAFK", "UnitAffectingCombat",
     -- group, guild, instance
     "GetNumGroupMembers", "IsInGroup", "IsInRaid", "IsInGuild", "IsInInstance",
     -- channels

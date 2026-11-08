@@ -44,8 +44,11 @@ true)` com guarda de segredo.
   listagem nova (versão maior) repassa uma vez por `Realm` com saltos+1, até 2, em 4 chaves de coalescência
   compartilhadas. Descartado: `seq` não inteiro, mais de 120 s no futuro ou mais velho que 15 min; `hops` fora de
   0..2. `off` só vale vindo direto da própria pessoa e nunca é repassado (cópias repassadas expiram em 3 min).
-- `PLLnet` (camada): `S|map|zone` presença (GUILD + Realm, 60 s e na troca de camada); `R|reqMap|myZone|targetZone`
-  pedido (WHISPER ao nó escolhido); `A|...` aceite/servido (WHISPER). Sem `SD` gossip, sem bridge por YELL.
+- `PLLnet` (camada): `S|map|zone|beacon|hops` presença (GUILD + grupo + Realm, 60 s e na troca de camada ou de
+  plantão; `beacon` = 1 quando de plantão, `hops` = hops servidos); `R|reqMap|myZone|targetZone` pedido (WHISPER ao
+  beacon escolhido); `A|map|zone` convite a caminho; `N|map|zone` "não posso agora" (o pedinte passa ao próximo
+  beacon). Sem `SD` gossip, sem bridge por YELL. Novidades por camada (`Modules/LayerWatch.lua`) saem só do que já
+  chega: presença, HELLO e listagens com mapID/zoneUID, comparados a cada 30 s.
 - Nada sai de dentro de instância ou em lockdown (a lib já segura o diretório; os envios diretos também checam).
 
 ## 4. Testes

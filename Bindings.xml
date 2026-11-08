@@ -2,4 +2,7 @@
 	<Binding name="PARTYLENS_TOGGLE" header="PARTYLENS" category="ADDONS">
 		if PartyLens and PartyLens.Toggle then PartyLens:Toggle() end
 	</Binding>
+	<Binding name="PARTYLENS_SERVE" category="ADDONS">
+		if PartyLens and PartyLens.ServeNextLayerRequest then PartyLens:ServeNextLayerRequest() end
+	</Binding>
 </Bindings>
