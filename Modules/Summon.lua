@@ -1,102 +1,80 @@
 local ADDON_NAME = ...
 local Utils = _G[ADDON_NAME .. "_Utils"]
 local Localization = _G[ADDON_NAME .. "_Localization"]
+local Roster = _G[ADDON_NAME .. "_Roster"]
 
--- Summon coordination. TBC reality: an addon cannot click the meeting stone, cast
--- a summon, or read exact world positions. What it CAN do (all unprotected) is
--- use UnitInRange (out of range ~= likely needs a summon), spot warlocks (Ritual
--- of Summoning), and post a clear, ordered announcement to the party/raid.
+local L = Localization.L
+
+-- Warlock summon help. An addon cannot cast or click the stone; it can tell who is far (the best proxy for "not
+-- here yet") and post the list to the group, from a click.
 local Summon = {}
 
-local function IterateUnits(callback)
-    local n = (GetNumGroupMembers and GetNumGroupMembers()) or 0
-    if IsInRaid and IsInRaid() then
-        for i = 1, n do
-            callback("raid" .. i)
-        end
-    else
-        callback("player")
-        for i = 1, n - 1 do
-            callback("party" .. i)
-        end
+Summon.RANGE_SQ = 40 * 40
+
+-- UnitInRange answers only secrets on 12.x; the squared distance does not, outside instances. Where the client
+-- cannot measure it, whether the unit is drawn at all.
+local function Near(unit)
+    local d, checked = UnitDistanceSquared(unit)
+    if not Utils.IsSecret(d, checked) and checked then
+        return d <= Summon.RANGE_SQ
     end
+    local visible = UnitIsVisible(unit)
+    return not Utils.IsSecret(visible) and visible == true
 end
 
--- Snapshot of the group with each member's summon-relevant status. `marked` is a
--- set of lowercased names the player has ticked as already summoned.
-function Summon.Snapshot(marked)
-    marked = marked or {}
-    local list = {}
-    IterateUnits(function(unit)
-        if not UnitExists(unit) then
-            return
-        end
-        local name = UnitName(unit)
-        local _, classFile = UnitClass(unit)
-        local isPlayer = UnitIsUnit(unit, "player")
-        -- UnitInRange ~ within 40yd; self is always "here". Out of range is our
-        -- best (unprotected) proxy for "not with the group yet".
-        local inRange = isPlayer or (UnitInRange and UnitInRange(unit)) or false
-        list[#list + 1] = {
-            name = name,
-            classFile = classFile,
-            isPlayer = isPlayer,
+local function Marked(partyLens)
+    partyLens.summonMarked = partyLens.summonMarked or {}
+    return partyLens.summonMarked
+end
+
+function Summon.Snapshot(partyLens)
+    local marked = Marked(partyLens)
+    local members = {}
+    for _, m in ipairs(Roster.Members(partyLens.db)) do
+        local inRange = m.isPlayer or Near(m.unit)
+        members[#members + 1] = {
+            name = m.name,
+            classFile = m.classFile,
+            isPlayer = m.isPlayer,
             inRange = inRange,
-            isWarlock = (classFile == "WARLOCK"),
-            summoned = marked[Utils.SafeLower(name or "")] or false,
+            isWarlock = m.classFile == "WARLOCK",
+            summoned = marked[Utils.NameKey(m.name)] == true,
         }
-    end)
-    return list
-end
-
--- Names that likely still need summoning: out of range, not the player, not ticked.
-function Summon.Needed(marked)
-    local needs = {}
-    for _, m in ipairs(Summon.Snapshot(marked)) do
-        if not m.summoned and not m.inRange and not m.isPlayer then
-            needs[#needs + 1] = m.name
-        end
     end
-    return needs
-end
-
--- Warlocks present (and in range) who could open a Ritual of Summoning.
-function Summon.Warlocks()
-    local locks = {}
-    for _, m in ipairs(Summon.Snapshot()) do
+    local needed, warlocks = {}, {}
+    for _, m in ipairs(members) do
+        if not m.isPlayer and not m.inRange and not m.summoned then
+            needed[#needed + 1] = m.name
+        end
         if m.isWarlock and m.inRange then
-            locks[#locks + 1] = Utils.PlayerShortName(m.name)
+            warlocks[#warlocks + 1] = m.name
         end
     end
-    return locks
+    return { inGroup = IsInGroup(), members = members, needed = needed, warlocks = warlocks }
 end
 
-local function Channel()
-    return (IsInRaid and IsInRaid()) and "RAID" or "PARTY"
+function Summon.Mark(partyLens, name, summoned)
+    local key = Utils.NameKey(name)
+    if key then
+        Marked(partyLens)[key] = summoned and true or nil
+        partyLens:Fire("SUMMON_CHANGED")
+    end
 end
 
--- Announce the whole "needs summon" list to the group.
-function Summon.AnnounceNeeded(partyLens, marked)
-    local needs = Summon.Needed(marked)
-    if #needs == 0 then
-        Utils.SendChat(Localization.L("SUMMON_ALL_HERE"), Channel())
-        return
+-- Click only: visible party/raid chat.
+function Summon.Announce(partyLens, mode)
+    if not IsInGroup() then
+        return false, "not_in_group"
     end
-    local names = {}
-    for _, n in ipairs(needs) do
-        names[#names + 1] = Utils.PlayerShortName(n)
+    local needed = Summon.Snapshot(partyLens).needed
+    local chatType = IsInRaid() and "RAID" or "PARTY"
+    if #needed == 0 then
+        return Utils.SendChat(L("SUMMON_ALL_HERE"), chatType)
     end
-    Utils.SendChat(Localization.L("SUMMON_NEEDED_MSG", table.concat(names, ", ")), Channel())
-end
-
--- Announce just the next person to summon (sequential summoning).
-function Summon.AnnounceNext(partyLens, marked)
-    local needs = Summon.Needed(marked)
-    if needs[1] then
-        Utils.SendChat(Localization.L("SUMMON_NEXT_MSG", Utils.PlayerShortName(needs[1])), Channel())
-    else
-        Utils.SendChat(Localization.L("SUMMON_ALL_HERE"), Channel())
+    if mode == "next" then
+        return Utils.SendChat(L("SUMMON_NEXT_MSG", needed[1]), chatType)
     end
+    return Utils.SendChat(L("SUMMON_NEEDED_MSG", table.concat(needed, ", ")), chatType)
 end
 
 _G[ADDON_NAME .. "_Summon"] = Summon

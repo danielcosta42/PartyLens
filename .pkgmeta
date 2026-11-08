@@ -23,3 +23,6 @@ ignore:
   - CURSEFORGE-DESCRIPTION.md
   - ARCHITECTURE.md
   - LOCALIZATION.md
+  - chehulnet.lock
+  - tools
+  - specs

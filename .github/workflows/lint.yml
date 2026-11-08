@@ -1,32 +1,41 @@
 name: Lint
 
-# Lints the Lua on every push / PR so mistakes surface in CI (the author can't
-# always run the addon in-game). Config is in .luacheckrc.
+# Blocking checks on every push and pull request: luacheck (undefined globals included, see .luacheckrc), every
+# harness in tools/ and the ChehulNet lock. The author cannot always run the addon in game, so this is the net.
 on:
   push:
   pull_request:
 
 jobs:
-  luacheck:
+  check:
     runs-on: ubuntu-latest
     steps:
       - name: Clone do projeto
         uses: actions/checkout@v4
 
-      - name: Set up Lua 5.1
-        uses: leafo/gh-actions-lua@v10
-        with:
-          luaVersion: "5.1"
-
-      - name: Set up LuaRocks
-        uses: leafo/gh-actions-luarocks@v4
+      - name: Install Lua 5.1, LuaRocks and LuaJIT
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.1 luarocks luajit > /dev/null
 
       - name: Install luacheck
-        run: luarocks install luacheck
+        run: sudo luarocks install luacheck > /dev/null
 
-      # Informational: luacheck runs and reports any findings in the log, but
-      # doesn't fail the build over style/unused nits (the author can read the
-      # output and tighten as desired). Flip continue-on-error off to enforce.
-      - name: Run luacheck
-        continue-on-error: true
-        run: luacheck Modules Core.lua
+      - name: luacheck
+        run: luacheck Modules Core.lua UI
+
+      - name: Textures
+        # Media/*.tga come from tools/gen-media.py (standard library only); a hand-edited or stale texture fails.
+        run: python3 -I tools/gen-media.py --check
+
+      - name: Harnesses
+        # Every tools/*.lua runs the real addon files under a simulated Forever client and exits 1 on the first
+        # failed check. Files named *stub.lua are the simulated clients themselves (libraries), not harnesses.
+        run: |
+          for f in tools/*.lua; do
+            case "$f" in *stub.lua) continue ;; esac
+            luajit "$f" || { echo "$f failed" >&2; exit 1; }
+          done
+
+      - name: ChehulNet copies
+        # Libs/LibChehulMesh.lua and Modules/ChehulNet.lua come from danielcosta42/chehulnet through its
+        # tools/sync.sh; a copy edited here would be lost at the next sync.
+        run: bash tools/chehulnet-lock.sh

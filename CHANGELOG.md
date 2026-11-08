@@ -5,6 +5,45 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [1.0.0]
+
+PartyLens agora é do **WoW: Forever** (interface 16001). A linha 0.33 continua sendo a do TBC Anniversary.
+
+- **Rede nova sobre a ChehulNet.** No Forever, SAY e YELL recusam mensagem de addon e canal criado não
+  entrega. As listagens agora vão por guilda, grupo e o diretório da ChehulNet (sussurro para alguns
+  membros da facção, com repasse de no máximo dois saltos). Protocolo novo (`2`); nada sai de instância.
+- **Nomes "Nome Sobrenome"** em toda chave, comparação, whisper e convite; o próprio cliente se reconhece.
+- **Valores secretos** do 12.x tratados em toda entrada de evento: nada quebra em lockdown de chat.
+- **Só com clique:** convite, chat visível, /who e desfazer grupo saem de um botão, como o jogo exige.
+- **Atividades do Forever**, incluindo City of Dalaran, Ruins of Lordaeron, Excavation Site: Wetlands,
+  The Hall of Thanes e Manor Mistmantle.
+- **Camadas e beacons:** a página Camada mostra as camadas da zona em que você está como uma pilha de
+  placas (pontos = jogadores ouvidos, luzes = beacons de plantão, a sua em âmbar com um "você"). Cada camada
+  leva o número que o próprio jogo dá àquela cópia da zona, igual para todos. Clicar
+  numa placa mostra a população, os beacons, os grupos se formando e as novidades (camada nova, beacon entrou ou
+  saiu, beacon trouxe alguém, população subiu ou caiu, grupo começou). "Ir para cá" pede a um beacon da
+  camada, e o próximo é pedido sozinho se ele não puder. No grupo do beacon, a página lembra de clicar no
+  aviso de troca do jogo (ou esperar uns 5 minutos). Camadas no Forever são por zona.
+- **Beacon gamificado, ligado por padrão:** de plantão quando você está no mundo aberto, fora de combate,
+  não ausente e sem grupo (ou só com quem trouxe). O pedido aparece na tela com Convidar e Recusar, mesmo
+  com a janela fechada, e há uma tecla de atalho para convidar o próximo; o convite é sempre um clique.
+  Cada pessoa que chega na sua camada conta um hop (uma vez por pessoa por dia), e os hops dão patentes: Faísca, Lanterna,
+  Farol, Luz-guia, Estrela do norte e Lenda. Desliga em Ajustes.
+- **Rede:** a página mostra só números, sem nomes.
+- **Quadro do PartyLens:** a listagem do PartyLens é o canal principal e o chat a reserva. Cada cliente lembra
+  quem usa PartyLens, pede o quadro de grupos a dois deles a cada 90 s e empurra a mudança da própria listagem
+  direto a alguns; quem acabou de entrar recebe o quadro em segundos. O radar conta os grupos listados no
+  PartyLens, que aparecem antes dos do canal.
+- **Radar mais exigente:** conversa ("where the locks at when you need em") e anúncio de guilda não viram
+  grupo; "need/precisa" só conta junto de uma função, atividade ou quest.
+- **Autopilot em modo sugestão:** ele lista quem fecha as funções que faltam; você confirma cada convite.
+- **Interface nova:** radar com varredura e pontos para cada grupo, cartões com as funções que faltam,
+  transições, botões animados, avisos que descem do topo. As animações desligam em Ajustes.
+- **Saíram:** a ferramenta do Group Finder (não existe no Forever), world bosses, buffs de mundo e o
+  NovaWorldBuffs, reputação, o NetDiag (o backoffice da ChehulNet cobre) e os comandos de dev.
+- **Dados salvos recomeçam do zero** (esquema novo).
+- **Testes:** harnesses em `tools/` e luacheck bloqueantes no CI, mais a checagem da cópia da ChehulNet.
+
 ## [0.33.3]
 
 Confiabilidade cross-layer, aprendida estudando o AutoLayer:

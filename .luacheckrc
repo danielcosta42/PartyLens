@@ -1,37 +1,65 @@
--- luacheck config for PartyLens (WoW TBC Anniversary addon, Lua 5.1).
+-- luacheck for PartyLens on WoW: Forever (interface 16001, Lua 5.1).
 --
--- The WoW client injects hundreds of engine globals (CreateFrame, C_LFGList, …)
--- that luacheck can't know about, so we DON'T fail on undefined globals/fields.
--- We keep the high-value checks that actually catch our mistakes: unused locals,
--- shadowing/redefinition, and dead control flow.
+-- Undefined globals are errors. read_globals is every engine global the core reads: it doubles as the API
+-- inventory, each name checked against the client's Blizzard_APIDocumentationGenerated (a namespace function
+-- there) or known from FrameXML / the Lua environment WoW adds (strsplit, wipe, time, ...). A new one goes here
+-- only after that check.
+--
+-- CI runs `luacheck Modules Core.lua UI`. Out of it: the vendored ChehulNet copies (danielcosta42/chehulnet owns
+-- them) and the harnesses' stubs. The UI (UI/) adds its own engine globals in the files["UI/"] block below.
 
 std = "lua51"
-max_line_length = false
+max_line_length = 120
 codes = true
+self = false -- an unused implicit self in a method is the method shape, not a mistake
 
--- Our own writable globals (saved variable + the global addon handles).
 globals = {
     "PartyLensDB",
     "PartyLens",
-    "L",
     "SlashCmdList",
     "SLASH_PARTYLENS1",
+    "SLASH_PARTYLENS2",
+    "BINDING_HEADER_PARTYLENS",
+    "BINDING_NAME_PARTYLENS_TOGGLE",
 }
 
-ignore = {
-    "111", -- setting an undefined global (WoW handles / our _G assigns)
-    "112", -- mutating an undefined global
-    "113", -- accessing an undefined global (WoW API)
-    "142", -- setting an undefined field of a global
-    "143", -- accessing an undefined field of a global
-    "212", -- unused argument (event/callback signatures often ignore some)
-    "213", -- unused loop variable
-    "311", -- value assigned to a local is never used (intentional in spots)
-    "4..", -- shadowing / redefining locals (this code reuses key/name/label/btn)
-    "542", -- empty if branch
-    "6..", -- whitespace / formatting nits
+read_globals = {
+    -- Lua environment WoW adds
+    "strsplit", "wipe", "time", "date", "issecretvalue", "geterrorhandler",
+    -- frames and chat frames
+    "CreateFrame", "DEFAULT_CHAT_FRAME", "ChatFrameUtil", "WhoFrame",
+    -- constants
+    "RAID_CLASS_COLORS", "WHO_TAG_EXACT",
+    -- client and time
+    "GetLocale", "GetTime", "GetServerTime",
+    -- units and names
+    "Ambiguate", "UnitName", "UnitFullName", "UnitClass", "UnitLevel", "UnitExists", "UnitGUID", "UnitIsUnit",
+    "UnitIsPlayer", "UnitPlayerControlled", "UnitGroupRolesAssigned", "UnitIsGroupLeader", "UnitIsGroupAssistant",
+    "UnitDistanceSquared", "UnitIsVisible", "GetPlayerInfoByGUID", "UnitIsAFK", "UnitAffectingCombat",
+    -- group, guild, instance
+    "GetNumGroupMembers", "IsInGroup", "IsInRaid", "IsInGuild", "IsInInstance",
+    -- channels
+    "GetChannelName", "JoinPermanentChannel", "EnumerateServerChannels",
+    -- namespaces
+    "C_AddOns", "C_ChatInfo", "C_FriendList", "C_Map", "C_NameUtil", "C_PartyInfo", "C_PlayerInfo", "C_QuestLog",
+    "C_Timer",
 }
+
+-- The UI: the widget side of the client on top of the core's list, each name checked the same way (frames and
+-- regions from FrameXML; C_Sound.PlaySound in the client's SoundDocumentation; SOUNDKIT from FrameXML, used
+-- guarded). The ptBR table in UI/Locale.lua is one long string per line.
+files["UI/"] = {
+    globals = { "PartyLens_UI" },
+    read_globals = {
+        "UIParent", "GameTooltip", "Minimap", "UISpecialFrames", "STANDARD_TEXT_FONT", "tinsert",
+        "GetCursorPosition", "C_Sound", "SOUNDKIT",
+    },
+}
+files["UI/Locale.lua"] = { max_line_length = false }
 
 exclude_files = {
     ".release/",
+    "Libs/",
+    "tools/",
+    "Modules/ChehulNet.lua",
 }
