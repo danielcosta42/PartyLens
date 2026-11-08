@@ -710,8 +710,8 @@ local st = PL:GetNetworkStatus()
 check(np.stats[1].value.__text == tostring(st.nodes) and np.stats[3].value.__text == tostring(st.directory),
 	"the numbers are the core's network status")
 check(np.buses.__text:find("realm directory", 1, true), "and which ways out work")
-local gil = rowOf(np.list, function(p) return p.name == "Gil Paz" end)
-check(gil and gil.addons.__text == "PartyLens", "peers with their addons")
+check(np.addons.__text:find("PartyLens %d"), "counts per addon")
+check(not np.list and not np.addons.__text:find("Gil Paz", 1, true), "and no names of who was heard")
 
 local setp = UI:Open("settings")
 S.advance(0.3)

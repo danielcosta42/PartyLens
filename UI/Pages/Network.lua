@@ -1,5 +1,6 @@
 --=============================================================================
--- Network: how much of the ChehulNet mesh this client hears, which ways out work right now, and who.
+-- Network: how much of the ChehulNet mesh this client hears and which ways out work right now. Counts only:
+-- the page never lists who was heard.
 -- The directory size has no event, so the page re-reads it on the window's 5 s refresh while it is open.
 --=============================================================================
 local _, ns = ...
@@ -9,41 +10,19 @@ local L = UI.L
 
 local ADDONS = { pl = "PartyLens", gos = "GuildOS", ls = "Lodestar", bo = "CehulNet" }
 
-local function AddonList(set)
-	local names = {}
-	for tag in pairs(set or {}) do names[#names + 1] = ADDONS[tag] or tag end
-	table.sort(names)
-	return table.concat(names, ", ")
-end
-
-local function CreatePeer(row)
-	row.bg = UI.Fill(row, T.panel)
-	row.bg:SetAllPoints()
-	row.dot = UI.Tex(row, "dot", 8, T.amber)
-	row.dot:SetPoint("LEFT", 14, 0)
-	row.name = UI.Text(row, "data", 13)
-	row.name:SetPoint("LEFT", 32, 0)
-	row.addons = UI.Text(row, "data", 12, T.muted)
-	row.addons:SetPoint("LEFT", 220, 0)
-	row.where = UI.Text(row, "data", 12, T.muted)
-	row.where:SetPoint("LEFT", 420, 0)
-	row.heard = UI.Text(row, "data", 12, T.muted, "RIGHT")
-	row.heard:SetPoint("RIGHT", -14, 0)
-end
-
-local function BindPeer(row, p, _, list)
-	local me = list.layer or {}
-	UI.Paint(row.dot, p.addons and p.addons.pl and T.amber or T.faint)
-	row.name:SetText(UI.ClassName(p.name, p.classFile))
-	row.addons:SetText(UI.Esc(AddonList(p.addons)))
-	local where = ""
-	if p.mapID and me.mapID and p.mapID == me.mapID then
-		where = (p.zoneUID and p.zoneUID == me.zoneUID) and L["same layer"] or L["same zone"]
-	elseif p.mapID then
-		where = L["elsewhere"]
+-- How many heard nodes run each addon ("GuildOS 12, Lodestar 3"); counts only, names stay private.
+local function ByAddon(peers)
+	local n = {}
+	for _, p in ipairs(peers) do
+		for tag in pairs(p.addons or {}) do
+			local name = ADDONS[tag] or tag
+			n[name] = (n[name] or 0) + 1
+		end
 	end
-	row.where:SetText(where)
-	row.heard:SetText(UI.Ago(p.ago or 0))
+	local out = {}
+	for name, c in pairs(n) do out[#out + 1] = name .. " " .. c end
+	table.sort(out)
+	return table.concat(out, ", ")
 end
 
 local function Build(page)
@@ -58,19 +37,9 @@ local function Build(page)
 	page.buses = UI.Text(page, "data", 12, T.muted)
 	page.buses:SetPoint("TOPLEFT", 0, -118)
 	page.buses:SetPoint("RIGHT", page, "RIGHT", 0, 0)
-	local s1 = Kit.Section(page, L["Heard recently"])
-	s1:SetPoint("TOPLEFT", 0, -144)
-	s1:SetPoint("RIGHT", page, "RIGHT", 0, 0)
-	local legend = UI.Text(page, "data", 12, T.muted)
-	legend:SetPoint("TOPLEFT", 0, -166)
-	legend:SetPoint("RIGHT", page, "RIGHT", 0, 0)
-	legend:SetText(L["Amber: runs PartyLens. Grey: another ChehulNet addon."])
-	page.list = Kit.List(page, { rowHeight = 36, gap = 4, create = CreatePeer, bind = BindPeer, width = UI.PAGE_W - 12,
-		viewHeight = 300 })
-	page.list:SetPoint("TOPLEFT", 0, -190)
-	page.list:SetPoint("BOTTOMRIGHT", 0, 0)
-	page.list:SetEmpty(L["Nobody heard yet"],
-		L["Each player announces themselves every few minutes. Joining a guild with PartyLens users helps."])
+	page.addons = UI.Text(page, "data", 12, T.muted)
+	page.addons:SetPoint("TOPLEFT", 0, -140)
+	page.addons:SetPoint("RIGHT", page, "RIGHT", 0, 0)
 end
 
 local function Refresh(page)
@@ -94,8 +63,8 @@ local function Refresh(page)
 	else
 		page.buses:SetText(L["No way out yet: join a guild or a group, or wait for the realm directory."])
 	end
-	page.list.layer = D.Layer()
-	page.list:SetItems(D.Peers())
+	local by = ByAddon(D.Peers())
+	page.addons:SetText(by ~= "" and string.format(L["By addon: %s."], by) or "")
 end
 
 UI:RegisterPage("network", {
