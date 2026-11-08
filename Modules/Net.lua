@@ -48,6 +48,16 @@ function Net.Whisper(prefix, payload, target)
     return mesh:Whisper(prefix, payload, target) and true or false
 end
 
+-- A whisper to someone who may have logged off since: the mesh hides the game's "No player named X" line for a
+-- name it was told about (its directory does the same for its own whispers).
+function Net.WhisperQuiet(prefix, payload, target)
+    local mesh = Mesh()
+    if mesh and type(mesh.dir) == "table" and type(mesh.dir.tried) == "table" and GetTime then
+        mesh.dir.tried[target] = GetTime() + (mesh.TRIED_SECONDS or 30)
+    end
+    return Net.Whisper(prefix, payload, target)
+end
+
 function Net.Status()
     local mesh = Mesh() or {}
     local dir = mesh.dir or {}

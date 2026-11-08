@@ -58,8 +58,12 @@ See who in your group still needs a summon and announce it to the group with one
 
 WoW: Forever refuses addon messages on SAY and YELL, and custom channels deliver nothing. PartyLens rides
 on **ChehulNet**, the mesh it shares with GuildOS and Lodestar: guild, group, and a hidden member list
-that lets users whisper a few others of the faction, who pass a listing on at most twice. Nothing is
-sent from inside an instance.
+that lets users whisper a few others of the faction, who pass a listing on at most twice.
+
+On top of it, PartyLens users carry each other's listings: every client remembers who runs PartyLens, asks
+two of them for their board every 90 seconds, and sends a change to its own listing straight to a few. Someone
+who just logged in has the board in seconds. The LookingForGroup channel fills in behind: PartyLens listings
+come first on the radar. Nothing is sent from inside an instance.
 
 The game requires a real click for invites, visible chat and /who, so every one of those comes from a
 button you press.

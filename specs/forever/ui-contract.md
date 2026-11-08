@@ -121,7 +121,7 @@ goes at once). Own lines and own listings are never entries.
 | Call | Click? | Returns / does |
 |---|---|---|
 | `PartyLens:GetEntries()` | | array (above) |
-| `PartyLens:GetCounts()` | | `{ total, visible, needsMe }`: `total` = rows stored, `visible` = `#GetEntries()`, `needsMe` = visible rows with `needsMe` (blocked, spam and filtered-out rows never count) |
+| `PartyLens:GetCounts()` | | `{ total, visible, needsMe, listed }`: `total` = rows stored, `visible` = `#GetEntries()`, `needsMe` = visible rows with `needsMe`, `listed` = visible rows from PartyLens users (their listing or a signed post; they sort first, the channel's lines after them). Blocked, spam and filtered-out rows never count |
 | `PartyLens:LFGChannel()` | | `{ id = n, name = "LookingForGroup" }` (the joined channel the radar listens on, in the client's language: e.g. `ProcurandoGrupo` on ptBR), or nil when none is joined. Changes come with `LFG_CHANNEL_CHANGED` |
 | `PartyLens:WhisperText(entry)` | | the whisper that `Whisper` would send (preview) |
 | `PartyLens:Whisper(entry)` | **yes** | sends it (`C_ChatInfo.SendChatMessage` WHISPER to `entry.name`). `true` or `false, reason` (`"empty"`) |
@@ -211,7 +211,7 @@ party/raid chat; `false, "not_in_group"` alone.
 `PartyLens:GetNetworkStatus()` →
 ```lua
 { nodes = n,        -- ChehulNet peers heard (any Chehul addon) within 10 min
-  plNodes = n,      -- of those, running PartyLens
+  plNodes = n,      -- PartyLens users known: tagged pl in a HELLO, or known to the board (heard or named lately)
   directory = n,    -- members in the ChehulNet directory channel (realm-wide reach)
   listingsHeard = n, layerNodes = n,
   buses = { guild = bool, group = bool, realm = bool }, -- usable now

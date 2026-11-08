@@ -66,7 +66,7 @@ end
 -- needsMe counts what the list shows (blocked, spam and filtered rows out), decorated just now.
 function Search.Counts(partyLens)
     local list = Search.Entries(partyLens)
-    local total, needsMe = 0, 0
+    local total, needsMe, listed = 0, 0, 0
     for _ in pairs(partyLens.entries or {}) do
         total = total + 1
     end
@@ -74,8 +74,11 @@ function Search.Counts(partyLens)
         if e.needsMe then
             needsMe = needsMe + 1
         end
+        if e.isAddonUser then
+            listed = listed + 1
+        end
     end
-    return { total = total, visible = #list, needsMe = needsMe }
+    return { total = total, visible = #list, needsMe = needsMe, listed = listed }
 end
 
 _G[ADDON_NAME .. "_Search"] = Search

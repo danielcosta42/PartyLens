@@ -23,10 +23,19 @@ local function spy()
   return calls
 end
 
+-- Our listings and layer messages; the board's own asks and peer lists ("2|q", "2|p|...") are counted apart.
+local function isBoard(m) return m.prefix == "PartyLens" and (m.msg == "2|q" or m.msg:find("^2|p|") ~= nil) end
 local function ours(filter)
   local out = {}
   for _, m in ipairs(W.sentWhere(filter)) do
-    if OURS[m.prefix] then out[#out + 1] = m end
+    if OURS[m.prefix] and not isBoard(m) then out[#out + 1] = m end
+  end
+  return out
+end
+local function board(filter)
+  local out = {}
+  for _, m in ipairs(W.sentWhere(filter)) do
+    if isBoard(m) then out[#out + 1] = m end
   end
   return out
 end
@@ -274,5 +283,115 @@ check(slots >= 1 and slots <= Comm.RELAY_SLOTS, "20 relays wait in at most " .. 
 
 noSayYell(calls, "receiving")
 check(#W.violations == 0 and #W.errors == 0, "nothing protected ran and nothing raised")
+
+-- ── the board: PartyLens users carry the listings between them ────────────
+local function listingFrom(origin, seq, hops, kind)
+  return table.concat({ "2", kind or "lfm", "heal", "dungeon", "rol", "0", "PRIEST", "34", "202", "1453", "1.0.2",
+    "1.1.3", tostring(seq), tostring(hops), origin, "chill" }, "|")
+end
+local function to(name)
+  local out = {}
+  for _, m in ipairs(W.sentWhere({ prefix = "PartyLens", dist = "WHISPER", target = name })) do out[#out + 1] = m.msg end
+  return out
+end
+PL = W.boot({})
+W.directory(DIR)
+W.sent = {}
+W.advance(16)
+local q = board({ dist = "WHISPER" })
+check(#q == 2 and q[1].msg == "2|q", "alone, the first sync asks two directory members for their board (got " .. #q .. ")")
+check(_G.ChehulMesh.dir.tried[q[1].target] ~= nil, "quietly: one who logged off prints no chat line")
+W.deliver("ChehulNet", "CHN1|H|pl|DRUID|30|v=1|1453:202", "GUILD", "Pia Lens")
+W.deliver("ChehulNet", "CHN1|H|gos|DRUID|30|v=1|1453:202", "GUILD", "Gus Only")
+W.sent = {}
+W.advance(90)
+q = board({ dist = "WHISPER" })
+check(#q == 1 and q[1].target == "Pia Lens", "a PartyLens user known from a HELLO is asked; a GuildOS-only one and the directory are not")
+local now = time()
+W.deliver("PartyLens", listingFrom("Ana Lima", now, 1), "WHISPER", "Pia Lens")
+check(PL.entries["ana lima"] and PL.entries["ana lima"].source == "net", "her answer puts Ana's listing on my radar")
+W.deliver("PartyLens", "2|p|Lia Paz,Rui Novo", "WHISPER", "Pia Lens")
+W.sent = {}
+W.advance(90)
+q = board({ dist = "WHISPER" })
+check(#q == 2 and q[1].target ~= "Pia Lens" and q[2].target ~= "Pia Lens",
+  "the next sync asks peers never asked yet: the ones Pia named, or a lister seen")
+check(PL:GetNetworkStatus().plNodes >= 4, "the network page counts the PartyLens users the board knows")
+
+W.deliver("PartyLens", listingFrom("Bia Rocha", now, 2), "WHISPER", "Pia Lens")
+W.deliver("PartyLens", listingFrom("Caio Nunes", now - 400, 0), "WHISPER", "Caio Nunes")
+W.sent = {}
+W.deliver("PartyLens", "2|q", "WHISPER", "Rui Novo")
+W.advance(3)
+local answer = to("Rui Novo")
+local ana, bia, caio, peers
+for _, m in ipairs(answer) do
+  if m:find("|Ana Lima|", 1, true) then ana = m end
+  if m:find("|Bia Rocha|", 1, true) then bia = m end
+  if m:find("|Caio Nunes|", 1, true) then caio = m end
+  if m:find("^2|p|") then peers = m end
+end
+check(ana and select(14, strsplit("|", ana)) == "2", "asked, I hand Ana's listing on one hop further")
+check(not bia, "not one already at the hop limit")
+check(not caio and PL.entries["caio nunes"], "nor one not refreshed in the last minutes (it stays on my own radar)")
+check(peers and peers:find("Pia Lens", 1, true) and not peers:find("Rui Novo", 1, true),
+  "and the PartyLens users I know, the asker left out")
+W.sent = {}
+W.deliver("PartyLens", "2|q", "WHISPER", "Rui Novo")
+W.advance(3)
+check(#to("Rui Novo") == 0, "the same asker again within a minute gets nothing")
+W.deliver("PartyLens", "2|q", "GUILD", "Lia Paz")
+W.advance(3)
+check(#to("Lia Paz") == 0, "an ask heard on GUILD is not answered: asks are whispered")
+local answered = 0
+for i = 1, 8 do
+  local name = "Asker" .. string.char(64 + i) .. " Paz"
+  W.deliver("PartyLens", "2|q", "WHISPER", name)
+  W.advance(1)
+  if #to(name) > 0 then answered = answered + 1 end
+end
+check(answered == 3, "at most four answers a minute (Rui's was one): " .. answered)
+local junk = {}
+for i = 1, 20 do junk[#junk + 1] = "Many" .. string.char(64 + i) .. " Names" end
+local before = PL:GetNetworkStatus().plNodes
+W.deliver("PartyLens", "2|p|" .. table.concat(junk, ","), "WHISPER", "Pia Lens")
+check(PL:GetNetworkStatus().plNodes - before <= 8, "a peer list counts eight names at most")
+ok = pcall(_G.ChehulMesh.handlers.PartyLens, W.secret("2|q"), "Hugo Luz", "WHISPER")
+check(ok, "a secret ask raises nothing")
+
+-- Push: a change to my listing goes straight to a few PartyLens users, its "off" to the same ones.
+W.advance(61)
+W.sent = {}
+W.click(PL.StartListing, PL, { type = "lfm", activity = "rol" })
+W.advance(3)
+local inDir = {}
+for _, name in ipairs(DIR) do inDir[name] = true end
+local pushed, n = {}, 0
+for _, m in ipairs(W.sentWhere({ prefix = "PartyLens", dist = "WHISPER" })) do
+  if m.msg:find("^2|lfm|") and not inDir[m.target] and not pushed[m.target] then pushed[m.target], n = true, n + 1 end
+end
+check(n == 4, "starting a listing pushes it straight to four PartyLens users (got " .. n .. ")")
+W.sent = {}
+W.advance(61)
+local again = 0
+for _, m in ipairs(W.sentWhere({ prefix = "PartyLens", dist = "WHISPER" })) do
+  if m.msg:find("^2|lfm|") and not inDir[m.target] then again = again + 1 end
+end
+check(again == 0, "a heartbeat is no change: nothing pushed")
+W.sent = {}
+W.click(PL.StopListing, PL)
+W.advance(3)
+local offs = 0
+for _, m in ipairs(W.sentWhere({ prefix = "PartyLens", dist = "WHISPER" })) do
+  if m.msg:find("^2|off|") and pushed[m.target] then offs = offs + 1 end
+end
+check(offs >= 1, "stopping tells the ones it was pushed to")
+
+PL = W.boot({})
+W.directory(DIR)
+W.instance = true
+W.advance(200)
+check(#board({}) == 0, "nothing of the board leaves an instance")
+W.instance = false
 
 W.done("net")

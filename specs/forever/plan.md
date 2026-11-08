@@ -47,7 +47,11 @@ true)` com guarda de segredo.
 - `PLLnet` (camada): `S|map|zone|beacon|hops` presença (GUILD + grupo + Realm, 60 s e na troca de camada ou de
   plantão; `beacon` = 1 quando de plantão, `hops` = hops servidos); `R|reqMap|myZone|targetZone` pedido (WHISPER ao
   beacon escolhido); `A|map|zone` convite a caminho; `N|map|zone` "não posso agora" (o pedinte passa ao próximo
-  beacon); `T|map|zone` "cheguei" (o pedinte, quando a camada dele vira a do beacon; conta o hop). Sem `SD` gossip, sem bridge por YELL. Novidades por camada (`Modules/LayerWatch.lua`) saem só do que já
+  beacon); `T|map|zone` "cheguei" (o pedinte, quando a camada dele vira a do beacon; conta o hop).
+- Quadro (prefixo `PartyLens`): `2|q` pede o quadro (só WHISPER; resposta limitada a 1 por pessoa por minuto e 4
+  por minuto no total); a resposta são listagens comuns com `hops+1` (só as renovadas nos últimos 6,5 min e com
+  saltos < 2) e `2|p|Nome Sobrenome,...` (até 8 usuários do PartyLens). Sussurros a pares passam por
+  `Net.WhisperQuiet`, que marca o nome na malha para o "No player named" de quem saiu não aparecer. Sem `SD` gossip, sem bridge por YELL. Novidades por camada (`Modules/LayerWatch.lua`) saem só do que já
   chega: presença, HELLO e listagens com mapID/zoneUID, comparados a cada 30 s.
 - Nada sai de dentro de instância ou em lockdown (a lib já segura o diretório; os envios diretos também checam).
 

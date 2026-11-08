@@ -31,6 +31,7 @@ Ordem de execução. [ ] por fazer.
 - [x] D3 Beacon gamificado ligado por padrão: plantão, recusa `N`, próximo beacon sozinho, hops e patentes, aviso
   fora da janela, tecla de atalho, opção em Ajustes.
 - [x] D4 Harnesses `layer.lua`/`ui.lua`/`contract.lua` e o contrato (§6) atualizados.
+- [x] D8 Quadro do PartyLens: pares, pedido `2|q`, troca de nomes `2|p`, push da mudança e do off; radar conta as listagens.
 - [x] D7 Radar: conversa e anúncio de guilda não viram grupo (sinal forte ou "need" com contexto).
 - [x] D6 Camada só da zona atual, em pilha de placas (texturas `slab`/`slab-edge`), painel de detalhe e faixa do beacon.
 - [x] D5 Camadas por zona (medido); hop conta na chegada (`T`); revisão independente: 9 achados corrigidos com teste.

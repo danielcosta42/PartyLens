@@ -19,6 +19,7 @@ local Layer = Mod("Layer")
 local LayerNet = Mod("LayerNet")
 local LayerWatch = Mod("LayerWatch")
 local Listing = Mod("Listing")
+local Board = Mod("Board")
 local Autopilot = Mod("Autopilot")
 local Search = Mod("Search")
 
@@ -373,7 +374,7 @@ function PartyLens:GetNetworkStatus()
             pl = pl + 1
         end
     end
-    status.nodes, status.plNodes = #peers, pl
+    status.nodes, status.plNodes = #peers, math.max(pl, Board.PeerCount(self))
     status.listingsHeard = Comm.HeardCount(self)
     status.layerNodes = LayerNet.NodeCount(self)
     status.cnVersion = (_G.ChehulNet and _G.ChehulNet.version) or 0
@@ -408,7 +409,10 @@ function PartyLens:OnLoad()
         LayerNet.Prune(self)
         Layer.Prune(self)
         LayerWatch.Watch(self)
+        Board.Prune(self)
     end)
+    C_Timer.After(Board.SYNC_FIRST, function() Board.Sync(self) end)
+    C_Timer.NewTicker(Board.SYNC_INTERVAL, function() Board.Sync(self) end)
     C_Timer.NewTicker(LayerNet.PRESENCE_INTERVAL, function() LayerNet.SendPresence(self) end)
 
     _G.SLASH_PARTYLENS1 = "/partylens"

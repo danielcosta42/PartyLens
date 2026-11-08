@@ -327,6 +327,9 @@ W.fire("CHAT_MSG_CHANNEL_NOTICE", "YOU_CHANGED")
 S.advance(0.3)
 check(UI.head.status.__text:find("Listening to LookingForGroup", 1, true), "and says it again when the channel is back")
 check(UI.head.net.label.__text == "Network " .. PL:GetNetworkStatus().nodes, "the network badge counts the nodes heard")
+local gstats = UI.pageFrames.groups.nodes
+check(gstats and gstats.label.__text == "listed on PartyLens" and gstats.value.__text == tostring(PL:GetCounts().listed)
+	and PL:GetCounts().listed >= 1, "the radar counts the groups listed on PartyLens, which sort before the channel's")
 
 -- The radar from real entries
 local radar = page.radar

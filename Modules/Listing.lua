@@ -68,8 +68,18 @@ end
 
 local function Publish(partyLens, kind)
     local rt = RT(partyLens)
-    if Comm.Send(Comm.Build(Listing.State(partyLens), kind)) then
+    local payload = Comm.Build(Listing.State(partyLens), kind)
+    if Comm.Send(payload) then
         rt.lastSent = time()
+    end
+    return payload
+end
+
+-- A change (not a heartbeat) also goes straight to a few PartyLens peers (Board).
+local function Push(partyLens, payload, off)
+    local Board = _G[ADDON_NAME .. "_Board"]
+    if Board then
+        Board.Push(partyLens, payload, off)
     end
 end
 
@@ -109,7 +119,7 @@ function Listing.Set(partyLens, fields)
     local rt = RT(partyLens)
     if rt.active then
         Bump(rt)
-        Publish(partyLens)
+        Push(partyLens, Publish(partyLens))
     end
     Changed(partyLens)
 end
@@ -142,7 +152,7 @@ function Listing.Stop(partyLens)
         rt.ticker = nil
     end
     Bump(rt)
-    Publish(partyLens, "off")
+    Push(partyLens, Publish(partyLens, "off"), true)
     Changed(partyLens)
 end
 

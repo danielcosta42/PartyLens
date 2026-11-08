@@ -66,5 +66,6 @@ CN:RegisterDiag("pl", function()
     local listing = Mod("Listing").IsActive(pl) and pl.db.listing.type or "0"
     return table.concat({ "v=" .. tostring(pl.VERSION), "entries=" .. entries, "listing=" .. listing,
         "heard=" .. Mod("Comm").HeardCount(pl), "nodes=" .. Mod("LayerNet").NodeCount(pl), "req=" .. beacon.queue,
-        "beacon=" .. (beacon.available and "duty" or (beacon.why or "off")), "hops=" .. beacon.hops }, ";")
+        "beacon=" .. (beacon.available and "duty" or (beacon.why or "off")), "hops=" .. beacon.hops,
+        "plpeers=" .. Mod("Board").PeerCount(pl) }, ";")
 end)

@@ -33,6 +33,7 @@ Modules/Layer.lua
 Modules/LayerNet.lua
 Modules/LayerWatch.lua
 Modules/Listing.lua
+Modules/Board.lua
 Modules/Autopilot.lua
 Modules/Search.lua
 Modules/ChehulNet.lua

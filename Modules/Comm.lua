@@ -35,9 +35,16 @@ Comm.COMMENT_MAX = 80
 
 local TYPES = { dungeon = true, raid = true, quest = true, guild = true, other = true }
 
+-- [listerKey] = { seq, at, kind, hops, fields }: the last version heard from each lister (fields kept for the
+-- board, which hands fresh ones on).
 local function Seen(partyLens)
     partyLens.netSeen = partyLens.netSeen or {}
     return partyLens.netSeen
+end
+Comm.Seen = Seen
+
+local function Board()
+    return _G[ADDON_NAME .. "_Board"]
 end
 
 -- Cut on a UTF-8 boundary, with the field separator out.
@@ -146,6 +153,10 @@ function Comm.OnMessage(partyLens, payload, sender, dist)
         return
     end
     local f = { strsplit("|", payload) }
+    if f[1] == Comm.PROTO and (f[2] == "q" or f[2] == "p") and not Utils.IsMe(sender) then
+        Board().OnMessage(partyLens, f, sender, dist) -- the board's ask and its list of peers
+        return
+    end
     if f[1] ~= Comm.PROTO or not (f[2] == "lfg" or f[2] == "lfm" or f[2] == "off") or #f < 15 then
         return
     end
@@ -168,15 +179,21 @@ function Comm.OnMessage(partyLens, payload, sender, dist)
         return
     end
     local fresh = not last or seq > last.seq
-    seen[key] = { seq = seq, at = time() }
+    seen[key] = { seq = seq, at = time(), kind = f[2], hops = hops, fields = f }
+    Board().Learn(partyLens, sender, "heard")
+    Board().Learn(partyLens, origin, "named")
     if f[2] == "off" then
         Entry.DropNet(partyLens, key)
         return
     end
     Entry.Upsert(partyLens, EntryFrom(f, origin))
     if fresh and hops < Comm.MAX_HOPS and (dist ~= "GUILD" or math.random() < Comm.GUILD_RELAY_CHANCE) then
-        f[14] = tostring(hops + 1)
-        Net.Realm(Comm.PREFIX, table.concat(f, "|"), RelayKey(key))
+        local copy = {}
+        for i, v in ipairs(f) do
+            copy[i] = v
+        end
+        copy[14] = tostring(hops + 1)
+        Net.Realm(Comm.PREFIX, table.concat(copy, "|"), RelayKey(key))
     end
 end
 

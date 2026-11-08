@@ -44,7 +44,12 @@ morre e várias APIs mudam. Fatos medidos no jogo (backoffice CehulNet, build 70
   de papel, atividade ou quest; "more"/"mais" sozinhos e anúncio de guilda (tag `<Guilda>`, "guild", "recruiting")
   sem atividade nomeada não entram (visto no teste do dono, 2026-11-08).
 - R3 Radar: recebe e mostra listagens de outros usuários pela rede (prefixo `PartyLens`), que chegam por GUILD,
-  grupo e o diretório da ChehulNet (`Mesh:Realm`), com repasse limitado para alcançar a facção.
+  grupo e o diretório da ChehulNet (`Mesh:Realm`), com repasse limitado para alcançar a facção. A listagem do
+  PartyLens é o canal principal e o chat do LookingForGroup a reserva (listagens primeiro no radar, contadas à
+  parte). O **quadro** (`Modules/Board.lua`, 2026-11-08) faz dos usuários do PartyLens os carregadores: cada cliente
+  lembra quem usa PartyLens (tráfego `PartyLens`, HELLO com `pl`, nomes passados por outros), a cada 90 s pede o
+  quadro a dois deles (`2|q`; resposta: até 6 listagens frescas um salto adiante + `2|p|` com até 8 nomes), empurra
+  a mudança da própria listagem a 4 e o "off" aos mesmos. Sem ninguém conhecido, sonda 2 membros do diretório.
 - R4 Cada grupo mostra papéis que faltam, preenchimento, frescor, atividade, líder (cor da classe) e mensagem;
   ações: Whisper (mensagem montada a partir dos seus papéis), Convidar (para quem procura grupo), Who, Bloquear.
 - R5 Filtros: papel que eu faço, tipo (LFG/LFM), atividade, busca por texto, só abertos, esconder spam.

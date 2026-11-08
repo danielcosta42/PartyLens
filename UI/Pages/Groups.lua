@@ -288,7 +288,8 @@ local function Refresh(page)
 	wipe(page.pops)
 	page.groups:Set(tostring(counts.total), L["on the radar"])
 	page.needYou:Set(tostring(counts.needsMe), L["need your role"])
-	page.nodes:Set(tostring(D.Network().nodes or 0), L["nodes on the network"])
+	-- PartyLens listings come first; the channel's posts fill in behind them.
+	page.nodes:Set(tostring(counts.listed or 0), L["listed on PartyLens"])
 
 	local F = D.Filters()
 	for role, chip in pairs(page.roleChips) do chip:SetSelected(F.roles[role], true) end
