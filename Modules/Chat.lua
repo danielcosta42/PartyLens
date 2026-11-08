@@ -5,212 +5,190 @@ local Needs = _G[ADDON_NAME .. "_Needs"]
 local Entry = _G[ADDON_NAME .. "_Entry"]
 local LocalizedKeywords = _G[ADDON_NAME .. "_LocalizedKeywords"]
 local Spam = _G[ADDON_NAME .. "_Spam"]
+local L = _G[ADDON_NAME .. "_Localization"].L
 
+-- The radar's ear on the LookingForGroup channel.
 local Chat = {}
 
-local PLAYER_GROUP_PHRASES = {
-    "need group",
-    "need grp",
-    "need a group",
-    "lf group",
-    "looking for group",
-    "procuro grupo",
-    "busco grupo",
-    "preciso de grupo",
-    "preciso grupo",
+local PLAYER_PHRASES = {
+    "need group", "need grp", "need a group", "lf group", "looking for group", "procuro grupo", "busco grupo",
+    "preciso de grupo", "preciso grupo",
 }
 
-local GROUP_RECRUIT_PHRASES = {
-    "lfm",
-    "lf1m",
-    "lf2m",
-    "lf3m",
-    "lf4m",
-    "forming",
-    "montando",
-    "recrutando",
-    "vaga",
-    "vagas",
-    -- "more"/"mais" alone matched inside words like "anymore"/"demais"; use the
-    -- explicit recruiting forms instead.
-    "1 more",
-    "2 more",
-    "3 more",
-    "need more",
-    "mais 1",
-    "mais um",
-    "+1",
+local RECRUIT_PHRASES = {
+    "lfm", "forming", "montando", "recrutando", "vaga", "vagas", "1 more", "2 more", "3 more", "need more",
+    "mais 1", "mais um", "+1",
 }
 
-local GUILD_RECRUIT_PHRASES = {
-    "guild",
-    "guilda",
-    "guilds",
-    "recruit",
-    "recruiting",
-    "recrutando",
-    "recruta",
-    "core",
-    "raid core",
-    "progress",
-    "progression",
-    "progressao",
-    "progressão",
-    "semi-hardcore",
-    "hardcore",
-    "casual",
-    "apply",
-    "application",
-    "discord",
-    "loot council",
-    "dkp",
+local GUILD_PHRASES = {
+    "guild", "guilda", "guilds", "recruit", "recruiting", "recruta", "raid core", "progression", "progressao",
+    "progressão", "semi-hardcore", "apply", "application", "discord", "loot council", "dkp",
 }
 
 local QUEST_PHRASES = {
-    "quest",
-    "quests",
-    "elite quest",
-    "group quest",
-    "daily",
-    "dailies",
-    "attune",
-    "attunement",
-    "prequest",
-    "pre quest",
-    "pre-quest",
-    "missao",
-    "missão",
-    "missoes",
-    "missões",
+    "quest", "quests", "elite quest", "group quest", "attune", "attunement", "prequest", "pre-quest", "missao",
+    "missão", "missoes", "missões",
 }
 
-local NEED_WORDS = {
-    "need",
-    "needs",
-    "precisa",
-    "precisamos",
-}
-
-local function HasAnyRoleWord(text)
+local function HasRoleWord(text)
     for _, words in pairs(LocalizedKeywords.GetRoleKeywords()) do
-        if Utils.ContainsAny(text, words) then
+        if Utils.ContainsAnyWord(text, words) then
             return true
         end
     end
     return false
 end
 
-local function GuessIntent(text, hasLFG, hasLFM)
-    if Utils.ContainsAny(text, PLAYER_GROUP_PHRASES) then
-        return "player"
+-- "lf1m".."lf9m", or "lf" right before a role ("LF healer for RoL").
+local function LooksLFM(text)
+    if text:find("%f[%w]lf%d?m%f[%W]") then
+        return true
     end
-
-    if Utils.ContainsAny(text, GROUP_RECRUIT_PHRASES) then
-        return "group"
+    for _, words in pairs(LocalizedKeywords.GetRoleKeywords()) do
+        for _, w in ipairs(words) do
+            if text:find("%f[%w]lf%s+" .. w:gsub("%p", "%%%0") .. "%f[%W]") then
+                return true
+            end
+        end
     end
-
-    if hasLFM and Utils.ContainsAny(text, NEED_WORDS) and HasAnyRoleWord(text) then
-        return "group"
-    end
-
-    if hasLFG then
-        return "player"
-    end
-
-    return "group"
+    return false
 end
 
-local function GuessContentType(text, isRaid, activityKey)
-    if Utils.ContainsAny(text, GUILD_RECRUIT_PHRASES) then
+-- "lfg" or "lfm" for a line, or nil when it is neither.
+function Chat.GuessType(text)
+    local hasLFG = Utils.ContainsAnyWord(text, LocalizedKeywords.GetLFGKeywords())
+    local hasLFM = LooksLFM(text) or Utils.ContainsAnyWord(text, LocalizedKeywords.GetLFMKeywords())
+    if not hasLFG and not hasLFM then
+        return nil
+    end
+    if Utils.ContainsAny(text, PLAYER_PHRASES) then
+        return "lfg"
+    end
+    if LooksLFM(text) or Utils.ContainsAnyWord(text, RECRUIT_PHRASES) then
+        return "lfm"
+    end
+    if hasLFM and HasRoleWord(text) then
+        return "lfm"
+    end
+    return hasLFG and "lfg" or "lfm"
+end
+
+local function GuessActivityType(text, activity)
+    if Utils.ContainsAnyWord(text, GUILD_PHRASES) then
         return "guild"
     end
-
-    -- A concretely recognised dungeon/raid wins over the (looser) quest
-    -- heuristic, so e.g. "LFM Kara attune run" is not mis-filed as a quest and
-    -- dropped from the default Raid/Dungeon view.
-    if isRaid then
-        return "raid"
+    if activity then
+        return activity.type
     end
-
-    if activityKey and activityKey ~= "other" then
-        return "dungeon"
-    end
-
-    if Utils.ContainsAny(text, QUEST_PHRASES) then
+    if Utils.ContainsAnyWord(text, QUEST_PHRASES) then
         return "quest"
     end
-
     return "other"
 end
 
-local function LooksLikeLFGChannel(channelName, baseName)
-    local channel = Utils.SafeLower((baseName or "") .. " " .. (channelName or ""))
-    return string.find(channel, "lookingforgroup", 1, true)
-        or string.find(channel, "looking for group", 1, true)
-        or string.find(channel, "procurando", 1, true)
-        or string.find(channel, "lfg", 1, true)
-        or string.find(channel, "找团", 1, true)
+-- The channel's name is localized, so it is recognized by its words (lowercase; Cyrillic and CJK as written,
+-- string.lower leaves them alone).
+local LFG_CHANNEL_WORDS = {
+    "lookingforgroup", "looking for group", "lfg", "procurandogrupo", "procurando", "suchenachgruppe",
+    "recherchedegroupe", "buscargrupo", "cercagruppo", "ПоискСпутников", "파티찾기", "寻求组队", "尋求組隊", "找团",
+}
+
+function Chat.IsLFGChannel(channelName, baseName)
+    return Utils.ContainsAny(Utils.SafeLower((baseName or "") .. " " .. (channelName or "")), LFG_CHANNEL_WORDS)
 end
 
-function Chat.HandleChatMessage(partyLens, msg, sender, _, channelName, _, _, _, channelNumber, baseName, _, lineID, guid)
-    if not LooksLikeLFGChannel(channelName, baseName) then
-        return
-    end
+Chat.MAX_CHANNELS = 20
 
-    -- Realm-wide mesh recognition: a PartyLens user's posts are signed, so a
-    -- signed LFG line means the poster runs the addon. Flag them (the "PL" badge
-    -- + trusted merge in Entry) and strip the sign so parsing/display see the
-    -- clean line. No addon-message transport needed — this rides the visible post
-    -- every client already scans, which is how we reach realm-wide.
+-- The joined channel the radar listens to, as { id, name }, or nil.
+function Chat.FindLFGChannel()
+    for i = 1, Chat.MAX_CHANNELS do
+        local id, name = GetChannelName(i)
+        if not Utils.IsSecret(id, name) and type(id) == "number" and id > 0 and type(name) == "string"
+            and Chat.IsLFGChannel(name) then
+            return { id = id, name = name }
+        end
+    end
+end
+
+-- Re-reads it and fires LFG_CHANNEL_CHANGED when it changed. Returns it.
+function Chat.RefreshLFGChannel(partyLens)
+    local found, old = Chat.FindLFGChannel(), partyLens.lfgChannel
+    if (found and found.id) ~= (old and old.id) or (found and found.name) ~= (old and old.name) then
+        partyLens.lfgChannel = found
+        partyLens:Fire("LFG_CHANNEL_CHANGED", found and { id = found.id, name = found.name } or nil)
+    end
+    return found
+end
+
+-- The name to join it by: the server's own (localized) channel list when the client gives it, the English name
+-- only on an English client, where it is the right one (anywhere else it would make a custom channel).
+function Chat.LFGJoinName()
+    for _, name in ipairs(EnumerateServerChannels and { EnumerateServerChannels() } or {}) do
+        if type(name) == "string" and not Utils.IsSecret(name) and Chat.IsLFGChannel(name) then
+            return name
+        end
+    end
+    local locale = GetLocale()
+    if locale == "enUS" or locale == "enGB" then
+        return "LookingForGroup"
+    end
+end
+
+-- Parses a line into the fields an entry takes, or nil. Exposed for the harnesses.
+function Chat.Parse(msg)
     local isAddonUser = false
     local sign = Utils.CHAT_SIGN
-    if msg and string.sub(msg, 1, #sign) == sign then
+    if msg:sub(1, #sign) == sign then
         isAddonUser = true
-        msg = Utils.Trim(string.sub(msg, #sign + 1))
+        msg = Utils.Trim(msg:sub(#sign + 1))
     end
-
     local text = Utils.SafeLower(msg)
-    local lfgKeywords = LocalizedKeywords.GetLFGKeywords()
-    local lfmKeywords = LocalizedKeywords.GetLFMKeywords()
-    local hasLFG = Utils.ContainsAny(text, lfgKeywords)
-    local hasLFM = Utils.ContainsAny(text, lfmKeywords)
-    
-    if not hasLFG and not hasLFM then
+    local kind = Chat.GuessType(text)
+    if not kind then
+        return nil
+    end
+    local activity = Activity.Guess(text)
+    return {
+        type = kind,
+        roles = Needs.Guess(text),
+        activityKey = activity and activity.key or nil,
+        activity = activity and activity.name or L("ACTIVITY_OTHER"),
+        activityType = GuessActivityType(text, activity),
+        message = msg,
+        isAddonUser = isAddonUser,
+        isSpam = Spam.IsSpam(msg),
+    }
+end
+
+-- CHAT_MSG_CHANNEL(text, sender, language, channelName, sender2, flags, zoneChannelID, channelIndex, baseName,
+-- languageID, lineID, guid). Any argument it reads arriving secret drops the line.
+function Chat.HandleChatMessage(partyLens, msg, sender, _, channelName, _, _, _, _, baseName, _, _, guid)
+    if Utils.IsSecret(msg, sender, channelName, baseName, guid) then
         return
     end
-
-    local intent = GuessIntent(text, hasLFG, hasLFM)
-
-    local activityName, activityKey, isRaid = Activity.GuessActivity(msg)
-    local activityType = GuessContentType(text, isRaid, activityKey)
-    local needs = Needs.GuessNeeds(msg)
-    local id = "chat:" .. tostring(lineID or guid or sender or "") .. ":" .. tostring(channelNumber or "")
-
-    local classFile
-    if guid and GetPlayerInfoByGUID then
-        local _, englishClass = GetPlayerInfoByGUID(guid)
-        classFile = englishClass
+    if type(msg) ~= "string" or type(sender) ~= "string" or not Chat.IsLFGChannel(channelName, baseName) then
+        return
     end
-
-    Entry.AddOrUpdateEntry(partyLens, {
-        id = id,
-        source = "chat",
-        leader = sender,
-        leaderDisplay = Utils.PlayerShortName(sender),
-        classFile = classFile,
-        activity = activityName,
-        activityKey = activityKey,
-        activityType = activityType,
-        isRaid = isRaid,
-        intent = intent,
-        message = msg,
-        channelName = baseName or channelName,
-        timestamp = time(),
-        open = true,
-        isAddonUser = isAddonUser,
-        needs = table.concat(needs, ", "),
-        isSpam = Spam and Spam.IsSpam(msg) or false,
-    })
+    local key = Utils.NameKey(sender)
+    if not key or Utils.IsMe(sender) then
+        return
+    end
+    local data = Chat.Parse(msg)
+    if not data then
+        return
+    end
+    data.key, data.name, data.source = key, Utils.FullName(sender), "chat"
+    data.channel = baseName or channelName
+    if not partyLens.lfgChannel then
+        Chat.RefreshLFGChannel(partyLens)
+    end
+    if type(guid) == "string" and guid ~= "" then
+        local _, classFile = GetPlayerInfoByGUID(guid)
+        if not Utils.IsSecret(classFile) then
+            data.classFile = classFile
+        end
+    end
+    return Entry.Upsert(partyLens, data)
 end
 
 _G[ADDON_NAME .. "_Chat"] = Chat

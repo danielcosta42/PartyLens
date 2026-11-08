@@ -1,99 +1,129 @@
 local ADDON_NAME = ...
 local Utils = _G[ADDON_NAME .. "_Utils"]
 local Localization = _G[ADDON_NAME .. "_Localization"]
+local Needs = _G[ADDON_NAME .. "_Needs"]
+local Roster = _G[ADDON_NAME .. "_Roster"]
+local Chat = _G[ADDON_NAME .. "_Chat"]
 
+local L = Localization.L
+
+-- Whispers and invites: built here, sent only from a click (the game requires a hardware event for both).
 local Messaging = {}
 
--- In Lua string.gsub the REPLACEMENT string is interpreted: a '%' must be
--- followed by a digit (capture ref) or another '%', else it raises "invalid use
--- of '%' in replacement string". Our tokens are filled with user free-text
--- (comment, spec, activity...), so any '%' the player types (e.g. "50% off")
--- would crash message building. Double every '%' before it lands in a replacement.
-local function EscRepl(s)
-    return (string.gsub(tostring(s or ""), "%%", "%%%%"))
-end
-
--- Readable role token(s) for {role}: all roles the player offers (derived from
--- their specs), e.g. "heal/dps". Falls back to the single db.role.
-local function RoleText(db)
-    local mr = db.myRoles
-    if mr then
-        local parts = {}
-        if mr.tank then parts[#parts + 1] = "tank" end
-        if mr.heal then parts[#parts + 1] = "heal" end
-        if mr.dps then parts[#parts + 1] = "dps" end
-        if #parts > 0 then
-            return table.concat(parts, "/")
+local function RoleNames(set)
+    local parts = {}
+    for _, role in ipairs(Needs.ROLES) do
+        if set[role] then
+            parts[#parts + 1] = L(role == "tank" and "ROLE_TANK" or role == "heal" and "ROLE_HEAL" or "ROLE_DPS")
         end
     end
-    return db.role or ""
+    return table.concat(parts, "/")
+end
+Messaging.RoleNames = RoleNames
+
+-- string.gsub reads '%' in a replacement as a capture: a player's "50%" would raise.
+local function Fill(template, tokens)
+    local msg = template:gsub("{(%w+)}", function(token)
+        local v = tokens[token]
+        return v ~= nil and tostring(v) or nil
+    end)
+    return Utils.Trim(msg:gsub("%s+", " "))
 end
 
-function Messaging.BuildMessageForLeader(db, leader, activity)
-    local _, classFile = UnitClass("player")
-    local className = db.className or select(1, UnitClass("player")) or ""
-    local spec = db.spec or ""
-    local role = RoleText(db)
-    local comment = db.comment or ""
-    local msg = db.template or Localization.L("TEMPLATE_LABEL")
-
-    msg = string.gsub(msg, "{class}", EscRepl(className))
-    msg = string.gsub(msg, "{classFile}", EscRepl(classFile or ""))
-    msg = string.gsub(msg, "{spec}", EscRepl(spec))
-    msg = string.gsub(msg, "{role}", EscRepl(role))
-    msg = string.gsub(msg, "{comment}", EscRepl(comment))
-    msg = string.gsub(msg, "{leader}", EscRepl(Utils.PlayerShortName(leader)))
-    msg = string.gsub(msg, "{activity}", EscRepl(activity or ""))
-    msg = string.gsub(msg, "%s+", " ")
-    return Utils.Trim(msg)
+-- The one-line summary of a listing, the same for my LFG post and for a listing heard on the network.
+function Messaging.PostText(kind, activityName, roles, level, comment)
+    local roleText = RoleNames(roles or {})
+    local text
+    if kind == "lfg" then
+        text = L("POST_LFG", activityName, roleText ~= "" and roleText or L("ROLE_DPS"), tonumber(level) or 0)
+    else
+        text = L("POST_LFM", activityName, roleText ~= "" and roleText or L("POST_ANY_ROLE"))
+    end
+    comment = Utils.Trim(comment)
+    if comment ~= "" then
+        text = text .. " - " .. comment
+    end
+    return text
 end
 
--- Builds the short whisper the autopilot fires at a recruiting leader when in
--- "find a group" mode. Tokens: {class} {spec} {role} {activity} {comment}.
-function Messaging.BuildAutopilotFind(db, activity)
-    local ap = db.autopilot or {}
-    local className = db.className or select(1, UnitClass("player")) or ""
-    local role = RoleText(db)
-    local spec = db.spec or ""
-    local template = ap.findTemplate or Localization.L("AP_WHISPER_FIND")
-
-    local msg = template
-    msg = string.gsub(msg, "{class}", EscRepl(className))
-    msg = string.gsub(msg, "{spec}", EscRepl(spec))
-    msg = string.gsub(msg, "{role}", EscRepl(role))
-    msg = string.gsub(msg, "{activity}", EscRepl(activity or ""))
-    msg = string.gsub(msg, "{comment}", EscRepl(db.comment or ""))
-    msg = string.gsub(msg, "%s+", " ")
-    return Utils.Trim(msg)
+-- To a group leader: who I am. To a player looking for a group: an offer to join mine.
+function Messaging.BuildWhisper(partyLens, entry)
+    local db = partyLens.db
+    local className = UnitClass("player")
+    local level = UnitLevel("player")
+    local tokens = {
+        name = (entry.name or ""):match("^%S+") or "",
+        class = (not Utils.IsSecret(className)) and className or "",
+        level = (not Utils.IsSecret(level)) and level or "",
+        activity = entry.activity or "",
+        comment = db.comment or "",
+    }
+    if entry.type == "lfg" then
+        local listing = partyLens:GetListing()
+        local offered = entry.roles or {}
+        local wanted = (listing.active and listing.type == "lfm") and Needs.FromCounts(listing.missing) or offered
+        local both = {}
+        for _, role in ipairs(Needs.ROLES) do
+            both[role] = (wanted[role] and offered[role]) or nil
+        end
+        tokens.role = RoleNames(Needs.IsEmpty(both) and wanted or both)
+        tokens.activity = listing.active and listing.name or tokens.activity
+        return Fill(L("WHISPER_RECRUIT"), tokens)
+    end
+    tokens.role = RoleNames(db.roles)
+    local template = (db.whisperTemplate ~= "" and db.whisperTemplate) or L("WHISPER_TEMPLATE")
+    return Fill(template, tokens)
 end
 
 function Messaging.SendWhisper(partyLens, entry)
-    if not entry or not entry.leader then
-        return
+    local message = Messaging.BuildWhisper(partyLens, entry)
+    if message == "" or not entry.name then
+        return false, "empty"
     end
-
-    local message = Messaging.BuildMessageForLeader(partyLens.db, entry.leader, entry.activity)
-    if message == "" then
-        Utils.Print(Localization.L("NO_MESSAGE"))
-        return
-    end
-
-    Utils.SendChat(message, "WHISPER", nil, entry.leader)
-    Utils.Print(Localization.L("WHISPER_SENT", Utils.PlayerShortName(entry.leader), message))
+    Utils.SendChat(message, "WHISPER", entry.name)
+    partyLens:Notice(L("WHISPER_SENT", entry.name, message))
+    return true
 end
 
+-- Opens the edit box on the full name; "/w First Surname text" would whisper "First" the word "Surname".
 function Messaging.OpenWhisper(partyLens, entry)
-    if not entry or not entry.leader then
-        return
+    if not (ChatFrameUtil and ChatFrameUtil.SendTell and entry.name) then
+        return false
     end
-
-    ChatFrame_OpenChat("/w " .. entry.leader .. " " .. Utils.CHAT_SIGN
-        .. Messaging.BuildMessageForLeader(partyLens.db, entry.leader, entry.activity))
+    ChatFrameUtil.SendTell(entry.name)
+    local box = ChatFrameUtil.GetActiveWindow and ChatFrameUtil.GetActiveWindow()
+    if box and box.Insert then
+        box:Insert(Utils.CHAT_SIGN .. Messaging.BuildWhisper(partyLens, entry))
+    end
+    return true
 end
 
-function Messaging.JoinLookingForGroup()
-    JoinPermanentChannel("LookingForGroup")
-    Utils.Print(Localization.L("LFG_JOIN_ATTEMPT"))
+function Messaging.Invite(partyLens, name)
+    if not Roster.CanInvite() then
+        partyLens:Notice(L("NOTICE_CANNOT_INVITE"))
+        return false, "cannot_invite"
+    end
+    if Roster.IsInGroup(name) then
+        return false, "in_group"
+    end
+    C_PartyInfo.InviteUnit(name)
+    partyLens:Notice(L("NOTICE_INVITED", name))
+    return true
+end
+
+-- The LFG channel's number, joining it when it is missing (CHAT_MSG_CHANNEL only fires for a joined channel,
+-- and the channel is opt-in).
+function Messaging.LFGChannel(partyLens, join)
+    local found = Chat.RefreshLFGChannel(partyLens)
+    if found then
+        return found.id
+    end
+    local name = join and Chat.LFGJoinName()
+    if name then
+        JoinPermanentChannel(name)
+        C_Timer.After(2, function() Chat.RefreshLFGChannel(partyLens) end)
+    end
+    return nil
 end
 
 _G[ADDON_NAME .. "_Messaging"] = Messaging

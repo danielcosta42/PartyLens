@@ -5,39 +5,18 @@ function Utils.Print(message)
     DEFAULT_CHAT_FRAME:AddMessage("|cff35f0c5PartyLens|r " .. tostring(message))
 end
 
--- Brand sign prepended to every VISIBLE chat message PartyLens sends (whispers,
--- channel / party / raid announces) so recipients can tell it came from the
--- addon. Plain text (no color escape) so it survives every channel. NOT applied
--- to the hidden addon-comm mesh — that carries its own binary protocol.
-Utils.CHAT_SIGN = "[PartyLens]: "
-
--- Signed wrapper around SendChatMessage. Every outgoing chat send routes through
--- here so the sign is applied in exactly one place. Idempotent (won't double-sign)
--- and drops empty messages.
-function Utils.SendChat(message, chatType, language, target)
-    message = tostring(message or "")
-    if message == "" then
-        return
+-- A secret value (12.x restrictions, chat lockdown) errors when compared, concatenated or indexed: every event
+-- entry point drops its event when any argument it uses is one.
+function Utils.IsSecret(...)
+    if not issecretvalue then
+        return false
     end
-    if string.sub(message, 1, #Utils.CHAT_SIGN) ~= Utils.CHAT_SIGN then
-        message = Utils.CHAT_SIGN .. message
-    end
-    -- SendChatMessage caps at 255 BYTES and blind-cuts the tail, which can split
-    -- a multi-byte UTF-8 char (ptBR accents, CJK). Clamp on a code-point boundary
-    -- so the sign is preserved and no stray continuation byte is left behind.
-    if #message > 255 then
-        local cut = 255
-        while cut > 0 do
-            local b = string.byte(message, cut + 1)
-            if b and b >= 0x80 and b < 0xC0 then
-                cut = cut - 1 -- next byte is a UTF-8 continuation; back off the split
-            else
-                break
-            end
+    for i = 1, select("#", ...) do
+        if issecretvalue((select(i, ...))) then
+            return true
         end
-        message = string.sub(message, 1, cut)
     end
-    SendChatMessage(message, chatType, language, target)
+    return false
 end
 
 function Utils.SafeLower(value)
@@ -45,24 +24,11 @@ function Utils.SafeLower(value)
 end
 
 function Utils.Trim(value)
-    value = tostring(value or "")
-    value = string.gsub(value, "^%s+", "")
-    value = string.gsub(value, "%s+$", "")
-    return value
-end
-
-function Utils.PlayerShortName(name)
-    if not name or name == "" then
-        return UNKNOWN or "Unknown"
-    end
-    if Ambiguate then
-        return Ambiguate(name, "short")
-    end
-    return string.gsub(name, "%-.*$", "")
+    return (tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""))
 end
 
 function Utils.ContainsAny(text, words)
-    for _, word in ipairs(words) do
+    for _, word in ipairs(words or {}) do
         if string.find(text, word, 1, true) then
             return true
         end
@@ -70,9 +36,8 @@ function Utils.ContainsAny(text, words)
     return false
 end
 
--- Whole-word match for an ASCII word so e.g. "mage" doesn't match "damage" and
--- "lock" doesn't match "block". Non-ASCII words (CJK class names) have no letter
--- boundaries, so they fall back to a plain substring match.
+-- Whole word for an ASCII word, so "mage" misses "damage" and "lfg" misses "lfgroup"; a non-ASCII word (CJK, an
+-- accented alias) has no letter boundary to test and falls back to a plain substring.
 function Utils.ContainsWord(text, word)
     if not word or word == "" then
         return false
@@ -92,51 +57,143 @@ function Utils.ContainsAnyWord(text, words)
     return false
 end
 
-function Utils.SecondsAgo(timestamp)
-    local age = math.max(0, time() - (timestamp or time()))
-    if age < 60 then
-        return age .. "s"
-    end
-    if age < 3600 then
-        return math.floor(age / 60) .. "m"
-    end
-    return math.floor(age / 3600) .. "h"
+-- ---------------------------------------------------------------------------
+-- Names. On WoW: Forever every event sender is "First Surname" (sometimes "First Surname-Realm"), UnitName gives
+-- only the first name, and whispers and invites go to "First Surname". One canonical spelling for display and
+-- for targets, its lowercase as the table key.
+-- ---------------------------------------------------------------------------
+function Utils.HasSurnames()
+    return C_PlayerInfo ~= nil and C_PlayerInfo.ShouldDisplaySurname ~= nil
+        and C_PlayerInfo.ShouldDisplaySurname() == true
 end
 
-function Utils.ClassColoredName(name, classFile)
-    local CLASS_COLORS = {
-        WARRIOR = "C79C6E",
-        PALADIN = "F58CBA",
-        HUNTER = "ABD473",
-        ROGUE = "FFF569",
-        PRIEST = "FFFFFF",
-        SHAMAN = "0070DE",
-        MAGE = "69CCF0",
-        WARLOCK = "9482C9",
-        DRUID = "FF7D0A",
-    }
-    local color = CLASS_COLORS[classFile or ""] or "FFD100"
-    return "|cff" .. color .. Utils.PlayerShortName(name) .. "|r"
+-- Mirrors ChehulNet's MyShortName: the way every addon-message sender writes me.
+function Utils.MyName()
+    if Utils.HasSurnames() then
+        local first, surname = UnitFullName("player")
+        if not Utils.IsSecret(first, surname) and first and surname and surname ~= "" then
+            return first .. " " .. surname
+        end
+    end
+    local name = UnitName("player")
+    if Utils.IsSecret(name) then
+        return ""
+    end
+    return name or ""
 end
 
--- UTF-8-aware uppercase: string.upper only handles ASCII, so accented Latin
--- letters (á, ç, ã, …) would stay lowercase and look broken in UPPERCASE section
--- headers. Map the common ones explicitly. Non-Latin scripts are left as-is.
-local UPPER_ACCENTS = {
-    ["á"] = "Á", ["à"] = "À", ["â"] = "Â", ["ã"] = "Ã", ["ä"] = "Ä",
-    ["é"] = "É", ["è"] = "È", ["ê"] = "Ê", ["ë"] = "Ë",
-    ["í"] = "Í", ["ì"] = "Ì", ["î"] = "Î", ["ï"] = "Ï",
-    ["ó"] = "Ó", ["ò"] = "Ò", ["ô"] = "Ô", ["õ"] = "Õ", ["ö"] = "Ö",
-    ["ú"] = "Ú", ["ù"] = "Ù", ["û"] = "Û", ["ü"] = "Ü",
-    ["ç"] = "Ç", ["ñ"] = "Ñ",
-}
+-- "First Surname-Realm" whispers as "First Surname" on Forever (the mesh's rule); a name with no surname keeps
+-- a foreign realm, which it needs to be reached.
+function Utils.FullName(name)
+    if Utils.IsSecret(name) or type(name) ~= "string" or name == "" then
+        return nil
+    end
+    local surnamed = name:match("^(%S+ %S+)%-%S+$")
+    if surnamed then
+        return surnamed
+    end
+    return Ambiguate(name, "none")
+end
 
-function Utils.Upper(value)
-    local s = string.upper(tostring(value or ""))
-    s = string.gsub(s, "[\194-\223][\128-\191]", function(c)
-        return UPPER_ACCENTS[c] or c
-    end)
-    return s
+function Utils.NameKey(name)
+    local full = Utils.FullName(name)
+    return full and string.lower(full) or nil
+end
+
+function Utils.IsMe(name)
+    local key = Utils.NameKey(name)
+    return key ~= nil and key == Utils.NameKey(Utils.MyName())
+end
+
+-- Two spellings of one person. A group unit may give the first name alone where chat gives the surname too
+-- (GuildOS issue #48), so a side without a surname matches on the first name.
+function Utils.SameName(a, b)
+    local ka, kb = Utils.NameKey(a), Utils.NameKey(b)
+    if not ka or not kb then
+        return false
+    end
+    if ka == kb then
+        return true
+    end
+    if ka:find(" ", 1, true) and kb:find(" ", 1, true) then
+        return false
+    end
+    return ka:match("^[^%s%-]+") == kb:match("^[^%s%-]+")
+end
+
+-- A group unit's name as chat would write it, or nil when the client keeps it secret.
+function Utils.UnitFullName(unit)
+    local first, second = UnitFullName(unit)
+    if Utils.IsSecret(first, second) or type(first) ~= "string" or first == "" then
+        return nil
+    end
+    if not first:find(" ", 1, true) and Utils.HasSurnames() and type(second) == "string" and second ~= "" then
+        return first .. " " .. second
+    end
+    return first
+end
+
+function Utils.IsPlayerUnit(unit)
+    local same = UnitIsUnit(unit, "player")
+    if Utils.IsSecret(same) then
+        return false
+    end
+    return same and true or false
+end
+
+function Utils.ClassColor(classFile)
+    local c = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
+    if c then
+        return c.r, c.g, c.b, c.colorStr or string.format("ff%02x%02x%02x", c.r * 255, c.g * 255, c.b * 255)
+    end
+    return 1, 1, 1, "ffffffff"
+end
+
+-- ---------------------------------------------------------------------------
+-- Sending. Visible chat needs a hardware event on Forever, so SendChat is only ever reached from a click.
+-- Addon messages do not, but nothing leaves from an instance or a chat lockdown.
+-- ---------------------------------------------------------------------------
+-- The sign on every visible line PartyLens writes, so another PartyLens reading the LFG channel knows the
+-- poster runs it.
+Utils.CHAT_SIGN = "[PartyLens]: "
+
+-- Clamped to 255 bytes on a UTF-8 boundary: the server cuts blind and would split an accented letter.
+function Utils.SendChat(message, chatType, target)
+    message = tostring(message or "")
+    if message == "" then
+        return false
+    end
+    if message:sub(1, #Utils.CHAT_SIGN) ~= Utils.CHAT_SIGN then
+        message = Utils.CHAT_SIGN .. message
+    end
+    if #message > 255 then
+        local cut = 255
+        while cut > 0 do
+            local b = message:byte(cut + 1)
+            if b and b >= 0x80 and b < 0xC0 then
+                cut = cut - 1
+            else
+                break
+            end
+        end
+        message = message:sub(1, cut)
+    end
+    C_ChatInfo.SendChatMessage(message, chatType, nil, target)
+    return true
+end
+
+function Utils.InInstance()
+    local inside = IsInInstance()
+    return (not Utils.IsSecret(inside)) and inside == true
+end
+
+function Utils.InLockdown()
+    local lock = C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()
+    return (not Utils.IsSecret(lock)) and lock == true
+end
+
+function Utils.CanSendAddon()
+    return not Utils.InInstance() and not Utils.InLockdown()
 end
 
 _G[ADDON_NAME .. "_Utils"] = Utils

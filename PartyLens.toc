@@ -1,10 +1,9 @@
-## Interface: 20506
+## Interface: 16001
 ## Title: PartyLens
-## Notes: A modern group radar for chat and the built-in group finder.
+## Notes: Group radar for WoW: Forever: the LookingForGroup channel and the PartyLens network in one window.
 ## Author: Chehul (danielcosta42)
 ## Version: @project-version@
 ## SavedVariables: PartyLensDB
-## OptionalDeps: NovaWorldBuffs
 ## IconTexture: Interface\AddOns\PartyLens\Icon
 ## X-Curse-Project-ID: 1582736
 ## X-Website: https://github.com/danielcosta42/PartyLens
@@ -24,25 +23,32 @@ Modules/Database.lua
 Modules/Entry.lua
 Modules/Spam.lua
 Modules/Chat.lua
-Modules/LFGTool.lua
-Modules/Messaging.lua
 Modules/Roster.lua
+Modules/Messaging.lua
 Modules/Summon.lua
 Modules/Net.lua
 Modules/Comm.lua
 Modules/Who.lua
-Modules/Autopilot.lua
 Modules/Layer.lua
 Modules/LayerNet.lua
-Modules/WorldBoss.lua
-Modules/LayerBuffs.lua
-Modules/Reputation.lua
-Modules/UIElements.lua
+Modules/Listing.lua
+Modules/Autopilot.lua
 Modules/Search.lua
-Modules/Minimap.lua
-Modules/UIMain.lua
-Modules/NetDiag.lua
 Modules/ChehulNet.lua
 Modules/ChehulNetWire.lua
 Modules/API.lua
 Core.lua
+UI/Theme.lua
+UI/Locale.lua
+UI/Motion.lua
+UI/Widgets.lua
+UI/Radar.lua
+UI/Window.lua
+UI/Data.lua
+UI/Pages/Groups.lua
+UI/Pages/Announce.lua
+UI/Pages/Layer.lua
+UI/Pages/Summon.lua
+UI/Pages/Network.lua
+UI/Pages/Settings.lua
+UI/Minimap.lua

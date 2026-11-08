@@ -1,209 +1,139 @@
 local ADDON_NAME = ...
+local Needs = _G[ADDON_NAME .. "_Needs"]
 
+-- The radar: one row per person, keyed by their lowercased full name. A network listing is the person's own
+-- structured word, so a chat line from them afterwards updates only the message and the clock.
 local Entry = {}
 
-Entry.MAX_RESULTS = 160
-Entry.CHAT_TTL_SECONDS = 45 * 60
--- C_LFGList results are only meaningful for a short while after a search, so age
--- them out instead of pinning stale "open" groups at the top of the list.
-Entry.TOOL_TTL_SECONDS = 10 * 60
--- PartyLens-mesh broadcasts are a live heartbeat (~30s); if one goes silent the
--- user has stopped/left, so expire their presence quickly.
-Entry.ADDON_TTL_SECONDS = 3 * 60
+Entry.MAX = 200
+Entry.CHAT_TTL = 30 * 60
+Entry.NET_TTL = 3 * 60
 
-Entry.DEDUP_WINDOW_SECONDS = 10 * 60
+local NET_FIELDS = { "type", "roles", "activityKey", "activity", "activityType", "classFile", "level", "filled",
+    "max", "comp", "mapID", "zoneUID" }
 
--- Optional audible ping when a NEW open group in the selected category shows up
--- while the window is closed (you're not already watching). Opt-in + debounced.
-function Entry.MaybeAlert(partyLens, entry)
-    local db = partyLens.db
-    if not db or not db.alertOnMatch or not entry.open then
-        return
+local function Store(partyLens)
+    partyLens.entries = partyLens.entries or {}
+    return partyLens.entries
+end
+
+local function NetAlive(e, now)
+    return e.netAt ~= nil and (now - e.netAt) <= Entry.NET_TTL
+end
+
+-- Flags that depend on my own state (roles, layer), recomputed whenever entries are read.
+function Entry.Decorate(partyLens, e, layer)
+    local mine = partyLens.db and partyLens.db.roles or {}
+    e.needsMe = e.type == "lfm" and Needs.Intersects(e.roles or {}, mine)
+    e.open = not (e.filled and e.max and e.max > 0 and e.filled >= e.max)
+    e.sameLayer = layer ~= nil and layer.zoneUID ~= nil and e.zoneUID == layer.zoneUID and e.mapID == layer.mapID
+    return e
+end
+
+function Entry.Get(partyLens, key)
+    return key and Store(partyLens)[key] or nil
+end
+
+local function Count(entries)
+    local n = 0
+    for _ in pairs(entries) do
+        n = n + 1
     end
-    if partyLens.frame and partyLens.frame:IsShown() then
-        return
-    end
-    local cf = db.contentFilter or "all"
-    if cf ~= "all" then
-        local at = entry.activityType or (entry.isRaid and "raid" or "dungeon")
-        if at ~= cf then
-            return
+    return n
+end
+
+local function DropOldest(entries)
+    local oldestKey, oldestAt
+    for key, e in pairs(entries) do
+        if not oldestAt or (e.timestamp or 0) < oldestAt then
+            oldestKey, oldestAt = key, e.timestamp or 0
         end
     end
+    if oldestKey then
+        entries[oldestKey] = nil
+    end
+end
+
+-- data: key, name, source ("chat"|"net") and the fields it knows. Returns the stored entry.
+function Entry.Upsert(partyLens, data)
+    local entries = Store(partyLens)
     local now = time()
-    if partyLens._lastAlert and (now - partyLens._lastAlert) < 8 then
-        return
-    end
-    partyLens._lastAlert = now
-    if PlaySound then
-        pcall(PlaySound, (SOUNDKIT and SOUNDKIT.READY_CHECK) or 8960, "Master")
-    end
-end
-
-local function NormalizedLeader(entry)
-    return string.lower(entry.leaderDisplay or entry.leader or "")
-end
-
--- Finds an existing entry that almost certainly represents the same group
--- (same leader + same content type within a short window). This collapses a
--- leader who both spams chat and has a live listing into one row, and also
--- folds repeated chat spam from the same leader together. Source is NOT part of
--- the match: once a chat row is upgraded to a tool row, later tool updates must
--- still find it (otherwise they would double-insert).
-local function FindDuplicate(partyLens, entry)
-    local leaderKey = NormalizedLeader(entry)
-    if leaderKey == "" then
-        return nil
-    end
-
-    local now = entry.timestamp or time()
-    for _, candidate in ipairs(partyLens.entries) do
-        if candidate.id ~= entry.id
-            and NormalizedLeader(candidate) == leaderKey
-            and (candidate.activityType or "") == (entry.activityType or "")
-            and math.abs(now - (candidate.timestamp or now)) <= Entry.DEDUP_WINDOW_SECONDS then
-            return candidate
+    local e = entries[data.key]
+    local isNew = e == nil
+    if isNew then
+        if Count(entries) >= Entry.MAX then
+            DropOldest(entries)
         end
+        e = { id = data.key, key = data.key, firstSeen = now, roles = {}, activityType = "other" }
+        entries[data.key] = e
     end
-
-    return nil
-end
-
-local function MergeEntry(canonical, incoming)
-    -- The LFG tool is authoritative for group composition and naming; keep a
-    -- human-readable chat message when the tool has none.
-    local fromTool = incoming.source == "tool"
-    if fromTool then
-        canonical.source = "tool"
-        canonical.resultID = incoming.resultID or canonical.resultID
-        canonical.numMembers = incoming.numMembers or canonical.numMembers
-        canonical.maxMembers = incoming.maxMembers or canonical.maxMembers
-        canonical.open = incoming.open
-        canonical.isDelisted = incoming.isDelisted
-    end
-    if incoming.message and incoming.message ~= "" then
-        canonical.message = incoming.message
-    end
-    canonical.classFile = canonical.classFile or incoming.classFile
-    canonical.level = canonical.level or incoming.level
-    -- Only let a tool update (or a first value) overwrite the descriptive fields,
-    -- so chat guesses do not clobber the tool's authoritative activity name.
-    if fromTool or not canonical.activity or canonical.activity == "" then
-        canonical.activity = incoming.activity or canonical.activity
-        canonical.activityKey = incoming.activityKey or canonical.activityKey
-        canonical.intent = incoming.intent or canonical.intent
-    end
-    if incoming.needs and incoming.needs ~= "" then
-        canonical.needs = incoming.needs
-    end
-    -- PartyLens-mesh data is trusted: once a leader is known to run the addon,
-    -- keep the flag and their broadcast role even if a chat line merges in later.
-    canonical.isAddonUser = canonical.isAddonUser or incoming.isAddonUser
-    if incoming.role and incoming.role ~= "" then
-        canonical.role = incoming.role
-    end
-    -- Mesh-only live data (only the addon source ever sets these): keep the
-    -- broadcast composition + layer even when a chat line for the same leader
-    -- merges in. Don't clobber a tool's authoritative member counts if it has them.
-    if incoming.comp then
-        canonical.comp = incoming.comp
-        canonical.numMembers = canonical.numMembers or incoming.numMembers
-        canonical.maxMembers = canonical.maxMembers or incoming.maxMembers
-    end
-    if incoming.senderZoneUID then
-        canonical.senderZoneUID = incoming.senderZoneUID
-        canonical.senderMapID = incoming.senderMapID
-    end
-    canonical.timestamp = math.max(canonical.timestamp or 0, incoming.timestamp or 0)
-end
-
-function Entry.AddOrUpdateEntry(partyLens, entry)
-    if not entry or not entry.id then
-        return
-    end
-
-    if not partyLens.entriesById then
-        partyLens.entriesById = {}
-        partyLens.entries = {}
-    end
-
-    local existing = partyLens.entriesById[entry.id]
-    if existing then
-        for key, value in pairs(entry) do
-            existing[key] = value
+    e.name = data.name or e.name
+    e.isAddonUser = e.isAddonUser or data.isAddonUser == true
+    if data.source == "net" then
+        e.netAt = now
+        for _, field in ipairs(NET_FIELDS) do
+            e[field] = data[field]
         end
     else
-        local duplicate = FindDuplicate(partyLens, entry)
-        if duplicate then
-            -- Merge into the existing row; the incoming id is intentionally not
-            -- registered, so a later update re-merges instead of double-inserting.
-            MergeEntry(duplicate, entry)
-        else
-            table.insert(partyLens.entries, entry)
-            partyLens.entriesById[entry.id] = entry
-            Entry.MaybeAlert(partyLens, entry)
+        e.chatAt = now
+        if not NetAlive(e, now) then
+            for _, field in ipairs({ "type", "roles", "activityKey", "activity", "activityType" }) do
+                e[field] = data[field]
+            end
         end
+        e.classFile = data.classFile or e.classFile
+        e.isSpam = data.isSpam == true
+        e.channel = data.channel
     end
-
-    if #partyLens.entries > Entry.MAX_RESULTS then
-        table.sort(partyLens.entries, function(a, b)
-            return (a.timestamp or 0) > (b.timestamp or 0)
-        end)
-        for index = Entry.MAX_RESULTS + 1, #partyLens.entries do
-            partyLens.entriesById[partyLens.entries[index].id] = nil
-            partyLens.entries[index] = nil
-        end
+    e.source = data.source
+    e.message = data.message or e.message or ""
+    e.timestamp = now
+    Entry.Decorate(partyLens, e)
+    if isNew then
+        partyLens:Fire("ENTRY_ADDED", e, e.needsMe)
     end
+    partyLens:Fire("ENTRIES_CHANGED")
+    return e, isNew
+end
 
-    if partyLens.Refresh then
-        partyLens:Refresh()
+function Entry.Remove(partyLens, key)
+    local entries = Store(partyLens)
+    if entries[key] then
+        entries[key] = nil
+        partyLens:Fire("ENTRIES_CHANGED")
     end
 end
 
-function Entry.PruneOldEntries(partyLens)
-    if not partyLens.entries then
+-- A stopped or expired listing leaves the row only when no recent chat line keeps it.
+function Entry.DropNet(partyLens, key)
+    local e = Store(partyLens)[key]
+    if not e then
         return
     end
-
-    local now = time()
-    local kept = {}
-    partyLens.entriesById = {}
-
-    for _, entry in ipairs(partyLens.entries) do
-        local ttl = Entry.CHAT_TTL_SECONDS
-        if entry.source == "tool" then
-            ttl = Entry.TOOL_TTL_SECONDS
-        elseif entry.source == "addon" then
-            ttl = Entry.ADDON_TTL_SECONDS
-        end
-        if (now - (entry.timestamp or now)) <= ttl then
-            table.insert(kept, entry)
-            partyLens.entriesById[entry.id] = entry
-        end
+    if e.chatAt and (time() - e.chatAt) <= Entry.CHAT_TTL then
+        e.netAt, e.source = nil, "chat"
+        partyLens:Fire("ENTRIES_CHANGED")
+    else
+        Entry.Remove(partyLens, key)
     end
-
-    partyLens.entries = kept
 end
 
--- Backwards-compatible alias (chat-only pruning used to be the only path).
-Entry.PruneOldChat = Entry.PruneOldEntries
-
-function Entry.RemoveBySource(partyLens, source)
-    if not partyLens.entries then
-        return
-    end
-
-    local kept = {}
-    partyLens.entriesById = {}
-
-    for _, entry in ipairs(partyLens.entries) do
-        if entry.source ~= source then
-            table.insert(kept, entry)
-            partyLens.entriesById[entry.id] = entry
+function Entry.Prune(partyLens)
+    local entries = Store(partyLens)
+    local now, changed = time(), false
+    for key, e in pairs(entries) do
+        local chatAlive = e.chatAt ~= nil and (now - e.chatAt) <= Entry.CHAT_TTL
+        if not chatAlive and not NetAlive(e, now) then
+            entries[key] = nil
+            changed = true
+        elseif e.netAt and not NetAlive(e, now) then
+            e.netAt, e.source = nil, "chat"
+            changed = true
         end
     end
-
-    partyLens.entries = kept
+    if changed then
+        partyLens:Fire("ENTRIES_CHANGED")
+    end
 end
 
 _G[ADDON_NAME .. "_Entry"] = Entry

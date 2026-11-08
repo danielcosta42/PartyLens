@@ -5,6 +5,28 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [1.0.0]
+
+PartyLens agora é do **WoW: Forever** (interface 16001). A linha 0.33 continua sendo a do TBC Anniversary.
+
+- **Rede nova sobre a ChehulNet.** No Forever, SAY e YELL recusam mensagem de addon e canal criado não
+  entrega. As listagens agora vão por guilda, grupo e o diretório da ChehulNet (sussurro para alguns
+  membros da facção, com repasse de no máximo dois saltos). Protocolo novo (`2`); nada sai de instância.
+- **Nomes "Nome Sobrenome"** em toda chave, comparação, whisper e convite; o próprio cliente se reconhece.
+- **Valores secretos** do 12.x tratados em toda entrada de evento: nada quebra em lockdown de chat.
+- **Só com clique:** convite, chat visível, /who e desfazer grupo saem de um botão, como o jogo exige.
+- **Atividades do Forever**, incluindo City of Dalaran, Ruins of Lordaeron, Excavation Site: Wetlands,
+  The Hall of Thanes e Manor Mistmantle.
+- **Troca de camada por clique:** presença de camada na rede, pedido por sussurro, convite e saída de
+  grupo por clique de quem serve. Sem beacon automático.
+- **Autopilot em modo sugestão:** ele lista quem fecha as funções que faltam; você confirma cada convite.
+- **Interface nova:** radar com varredura e pontos para cada grupo, cartões com as funções que faltam,
+  transições, botões animados, avisos que descem do topo. As animações desligam em Ajustes.
+- **Saíram:** a ferramenta do Group Finder (não existe no Forever), world bosses, buffs de mundo e o
+  NovaWorldBuffs, reputação, o NetDiag (o backoffice da ChehulNet cobre) e os comandos de dev.
+- **Dados salvos recomeçam do zero** (esquema novo).
+- **Testes:** harnesses em `tools/` e luacheck bloqueantes no CI, mais a checagem da cópia da ChehulNet.
+
 ## [0.33.3]
 
 Confiabilidade cross-layer, aprendida estudando o AutoLayer:

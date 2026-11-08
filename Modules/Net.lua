@@ -1,142 +1,81 @@
 local ADDON_NAME = ...
 local Utils = _G[ADDON_NAME .. "_Utils"]
-local Mesh = _G.ChehulMesh
 
--- ===========================================================================
--- Net — PartyLens's transport. The hidden addon-message buses now delegate to
--- the shared LibChehulMesh (_G.ChehulMesh), so PartyLens, ProfessionHelper and
--- GuildOS all speak over one instrumented mesh (ChehulMesh:Stats).
---
--- The VISIBLE LookingForGroup posting below (the autopilot's human-readable
--- "LFM ..." line) stays here on purpose: it targets real players reading the LFG
--- channel, not the hidden structured mesh. It is hardware-gated (flushed on a
--- click), just like the shared mesh's realm-wide bus.
--- ===========================================================================
-
+-- PartyLens's transport: the shared LibChehulMesh. On Forever SAY and YELL addon messages are refused and a
+-- custom channel delivers nothing, so the buses are GUILD, the group, WHISPER and the mesh's directory
+-- (Realm: whispers to a few members of a hidden channel's roster). Nothing goes from an instance or a chat
+-- lockdown.
 local Net = {}
 
--- Hidden buses -> shared mesh.
-function Net.SendAddon(prefix, payload, dist, target)
-    return (Mesh and Mesh.SendAddon(prefix, payload, dist, target)) or false
+local function Mesh()
+    return _G.ChehulMesh
 end
 
-function Net.Guild(prefix, payload)
-    return (Mesh and Mesh:Guild(prefix, payload)) or false
+function Net.Register(prefix, handler)
+    local mesh = Mesh()
+    if mesh and mesh.Register then
+        mesh:Register(prefix, handler)
+    end
 end
 
-function Net.Group(prefix, payload)
-    return (Mesh and Mesh:Group(prefix, payload)) or false
+function Net.Broadcast(prefix, payload, realmKey)
+    local mesh = Mesh()
+    if not mesh or not Utils.CanSendAddon() then
+        return false
+    end
+    mesh:Guild(prefix, payload)
+    mesh:Group(prefix, payload)
+    if realmKey then
+        mesh:Realm(prefix, payload, realmKey)
+    end
+    return true
 end
 
-function Net.Proximity(prefix, payload)
-    return (Mesh and Mesh:Proximity(prefix, payload)) or false
+function Net.Realm(prefix, payload, realmKey)
+    local mesh = Mesh()
+    if mesh and Utils.CanSendAddon() then
+        mesh:Realm(prefix, payload, realmKey)
+        return true
+    end
+    return false
 end
 
 function Net.Whisper(prefix, payload, target)
-    return (Mesh and Mesh:Whisper(prefix, payload, target)) or false
+    local mesh = Mesh()
+    if not mesh or not Utils.CanSendAddon() then
+        return false
+    end
+    return mesh:Whisper(prefix, payload, target) and true or false
 end
 
--- Zone-wide YELL bus (automatic, timer-safe; layer-local). Reaches everyone in your
--- zone/layer — the whole city in a hub. Callers usually reach realm-wide via Net.Realm.
-function Net.Yell(prefix, payload)
-    return (Mesh and Mesh:Yell(prefix, payload)) or false
-end
-
--- Realm-wide bus. Now rides YELL (zone-wide, coalesced by key, sent probabilistically on
--- a timer) — the old click-flushed CHANNEL is dead on this client. Callers already do
--- Guild/Proximity themselves, so this adds the wide zone reach. Use a STABLE per-message-
--- type/per-source key so the queue holds only the latest of each.
-function Net.Realm(prefix, payload, coalesceKey)
-    if Mesh and Mesh.Realm then
-        Mesh:Realm(prefix, payload, coalesceKey)
+function Net.Status()
+    local mesh = Mesh() or {}
+    local dir = mesh.dir or {}
+    local stats = mesh.stats or {}
+    local dead = {}
+    for dist in pairs(mesh.dead or {}) do
+        dead[#dead + 1] = dist
     end
-end
-
--- ---------------------------------------------------------------------------
--- Visible LookingForGroup posting (autopilot LFM). Hardware-gated: queue + flush
--- one on the user's next WorldFrame click. Coalesced by key, time-gated.
--- ---------------------------------------------------------------------------
-Net.channelQueue = {}
-Net.chan = { queued = 0, sent = 0, dropped = 0 }
-local FLUSH_MIN_GAP = 1.5
-local lastFlush = 0
-
-function Net.QueueChannelPost(key, text, channelName)
-    if not key or not text or text == "" then
-        return
-    end
-    Net.channelQueue[key] = { text = text, channel = channelName or "LookingForGroup" }
-    Net.chan.queued = Net.chan.queued + 1
-end
-
-function Net.ClearChannelPost(key)
-    if key then
-        Net.channelQueue[key] = nil
-    end
-end
-
-local function FlushChannel()
-    local key, entry = next(Net.channelQueue)
-    if not key then
-        return
-    end
-    if (GetTime() - lastFlush) < FLUSH_MIN_GAP then
-        return
-    end
-    local num = GetChannelName and GetChannelName(entry.channel)
-    if type(num) ~= "number" or num == 0 then
-        return -- channel not joined yet; retry on the next click
-    end
-    Net.channelQueue[key] = nil
-    lastFlush = GetTime()
-    local ok = pcall(Utils.SendChat, entry.text, "CHANNEL", nil, num)
-    if ok then
-        Net.chan.sent = Net.chan.sent + 1
-    else
-        Net.chan.dropped = Net.chan.dropped + 1
-    end
-end
-
-function Net.InstallHooks()
-    if Net._hooked then
-        return
-    end
-    Net._hooked = true
-    -- SendChatMessage to a CHANNEL is hardware-event-gated (a timer send is dropped), so
-    -- queued visible posts can only leave the client from within a real input event. A
-    -- WorldFrame OnMouseDown hook alone is a THIN surface — it never fires while the cursor
-    -- is over the UI or while the user is typing — which is very likely why the channel
-    -- relay measured delivering almost nothing. AutoLayer flushes on every keystroke too, via
-    -- a frame that listens OnKeyDown and re-propagates the key so it never eats input.
-    -- Replicate both so the relay actually drains on the user's natural play.
-    if WorldFrame and WorldFrame.HookScript then
-        WorldFrame:HookScript("OnMouseDown", FlushChannel)
-    end
-    if CreateFrame and not Net._keyFlush then
-        local keyFlush = CreateFrame("Frame", nil, UIParent)
-        keyFlush:EnableKeyboard(true)
-        keyFlush:SetPropagateKeyboardInput(true) -- pass every key straight through, untouched
-        keyFlush:SetScript("OnKeyDown", function(self)
-            self:SetPropagateKeyboardInput(true) -- re-assert each key so we never swallow input
-            FlushChannel()
-        end)
-        Net._keyFlush = keyFlush
-    end
-end
-
--- ---------------------------------------------------------------------------
--- Diagnostics (delegate to the shared mesh; add the LFG-post counters).
--- ---------------------------------------------------------------------------
-function Net.Stats()
-    return (Mesh and Mesh:Stats()) or {}
-end
-
-function Net.HealthLine()
-    local line = (Mesh and Mesh:HealthLine()) or "no mesh"
-    if Net.chan.queued > 0 then
-        line = line .. " \194\183 lfg " .. Net.chan.sent .. "/" .. Net.chan.queued
-    end
-    return line
+    table.sort(dead)
+    local canSend = Utils.CanSendAddon()
+    return {
+        directory = dir.count or 0,
+        dead = dead,
+        canSend = canSend,
+        inInstance = Utils.InInstance(),
+        lockdown = Utils.InLockdown(),
+        buses = {
+            guild = canSend and IsInGuild() == true,
+            group = canSend and IsInGroup() == true,
+            realm = canSend and (dir.count or 0) > 0,
+        },
+        stats = {
+            ok = stats.ok or 0, fail = stats.fail or 0, recv = stats.recv or 0, refused = stats.refused or 0,
+            dirSent = stats.dirSent or 0, realmQueued = stats.realmQueued or 0, realmSent = stats.realmSent or 0,
+            realmDropped = stats.realmDropped or 0,
+        },
+        meshVersion = mesh.version or 0,
+    }
 end
 
 _G[ADDON_NAME .. "_Net"] = Net

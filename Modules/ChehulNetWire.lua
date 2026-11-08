@@ -1,61 +1,74 @@
--- Wires PartyLens into the shared ChehulNet presence mesh (see ChehulNet.lua).
--- PartyLens works fully standalone; this only adds cross-addon recognition.
+local ADDON_NAME = ...
+-- Wires PartyLens into the shared ChehulNet presence (Modules/ChehulNet.lua): the "pl" tag in every HELLO, the
+-- operator's alerts in PartyLens's identity, its layer for every HELLO, and its health for the backoffice's DIAG.
+-- Everything resolves at call time, so module and SavedVariables load order do not matter.
 local CN = _G.ChehulNet
 if not CN then
     return
 end
 
--- Feed PartyLens's real (NWB-aware, converged) layer into the shared presence, so our
--- CHN1 HELLO carries the SAME zoneUID our layer mesh uses — not the built-in detector's
--- naive parse. Resolved at call time (BuildHello), so module load order doesn't matter.
+local function PL()
+    return _G.PartyLens
+end
+
+local function Mod(name)
+    return _G[ADDON_NAME .. "_" .. name]
+end
+
 CN.layerProvider = function()
-    local pl = _G.PartyLens
-    local Layer = _G.PartyLens_Layer
-    if pl and Layer and Layer.Current then
-        local c = Layer.Current(pl)
-        return c.mapID or 0, c.zoneUID or 0
+    local pl = PL()
+    if pl and pl.db then
+        local cur = Mod("Layer").Current(pl)
+        return cur.mapID or 0, cur.zoneUID or 0
     end
     return 0, 0
 end
 
--- Show network alerts in PartyLens's identity (teal). Highest priority in the family, so
--- when PartyLens is installed it owns the alert popup. Forever-dismissed ids live in our
--- SavedVariables (db.alertDismissed), resolved at call time (after SV load).
-if CN.EnableAlerts then
-    CN:EnableAlerts({
-        accent = { 0.150, 0.860, 0.720 },
-        title = "PartyLens",
-        priority = 3,
-        store = function()
-            local pl = _G.PartyLens
-            if pl and pl.db then
-                pl.db.alertDismissed = pl.db.alertDismissed or {}
-                return pl.db.alertDismissed
-            end
-        end,
-    })
-end
+CN:EnableAlerts({
+    accent = { 1.0, 0.71, 0.28 },
+    title = "PartyLens",
+    priority = 3,
+    store = function()
+        local pl = PL()
+        return pl and pl.db and pl.db.alertDismissed
+    end,
+})
 
+-- Caps ride every HELLO: no '|' ever, and nothing personal.
 CN:Register("pl", function()
-    -- Advertise "looking for group" while the autopilot is armed, so crafter /
-    -- guild peers know this PartyLens user is actively LFG.
-    local pl = _G.PartyLens
-    local ap = pl and pl.autopilot
-    if ap and ap.armed then
-        return "lfg"
+    local pl = PL()
+    local parts = { "plv=" .. tostring(pl and pl.VERSION or "?") }
+    if pl and pl.db and Mod("Listing").IsActive(pl) then
+        parts[#parts + 1] = "lst=" .. pl.db.listing.type
     end
-    return ""
-end, function(shortName, peer)
-    -- A cross-addon peer announced presence. If they are NOT a PartyLens user (PL users
-    -- already ride our own layer mesh via S) but DID share a layer, fold them into the
-    -- layer node table so GuildOS/ProfessionHelper users show up on the occupancy map,
-    -- the node count, and the Circle — the whole mesh becomes visible, not just PL.
-    if peer and not (peer.addons and peer.addons["pl"])
-        and peer.zoneUID and peer.zoneUID > 0 and peer.mapID and peer.mapID > 0 then
-        local pl = _G.PartyLens
-        local LayerNet = _G.PartyLens_LayerNet
-        if pl and LayerNet and LayerNet.RecordCrossAddonNode then
-            LayerNet.RecordCrossAddonNode(pl, shortName, peer.mapID, peer.zoneUID)
+    return table.concat(parts, ",")
+end, function(_, peer)
+    local pl = PL()
+    if not (pl and pl.db) then
+        return
+    end
+    if peer and (peer.zoneUID or 0) > 0 then
+        pl:Fire("LAYER_NODES_CHANGED")
+    end
+    pl:NetworkChanged()
+end)
+
+CN:RegisterDiag("pl", function()
+    local pl = PL()
+    if not (pl and pl.db) then
+        return "v=" .. tostring(pl and pl.VERSION or "?")
+    end
+    local entries = 0
+    for _ in pairs(pl.entries or {}) do
+        entries = entries + 1
+    end
+    local inbound = 0
+    for _, r in ipairs(Mod("LayerNet").Inbound(pl)) do
+        if r.state == "open" then
+            inbound = inbound + 1
         end
     end
+    local listing = Mod("Listing").IsActive(pl) and pl.db.listing.type or "0"
+    return table.concat({ "v=" .. tostring(pl.VERSION), "entries=" .. entries, "listing=" .. listing,
+        "heard=" .. Mod("Comm").HeardCount(pl), "nodes=" .. Mod("LayerNet").NodeCount(pl), "req=" .. inbound }, ";")
 end)

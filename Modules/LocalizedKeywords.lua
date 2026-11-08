@@ -15,42 +15,56 @@ LocalizedKeywords.Keywords = {
         dps = { "dps", "pump", "caster", "melee", "ranged" },
     },
     ptBR = {
-        positive = { "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "need", "needs", "precisa", "precisamos", "need all", "forming", "montando", "recrutando", "vaga", "vagas", "mais" },
+        positive = {
+            "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "need", "needs", "precisa", "precisamos", "need all", "forming",
+            "montando", "recrutando", "vaga", "vagas", "mais"
+        },
         negative = { "lfg", "looking for group", "procuro grupo", "busco grupo", "lf group" },
         tank = { "tank", "tanks", "prot", "bear", "tanque" },
         heal = { "heal", "healer", "heals", "resto", "holy", "disc", "curador", "cura" },
         dps = { "dps", "pump", "caster", "melee", "ranged", "dano" },
     },
     deDE = {
-        positive = { "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "need", "needs", "benötigt", "benötigen", "bildet", "suchen" },
+        positive = {
+            "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "need", "needs", "benötigt", "benötigen", "bildet", "suchen"
+        },
         negative = { "lfg", "looking for group", "suche gruppe", "sucht gruppe" },
         tank = { "tank", "tanks", "prot" },
         heal = { "heal", "healer", "heals", "resto", "holy", "disc", "heiler" },
         dps = { "dps", "schaden", "caster", "melee" },
     },
     frFR = {
-        positive = { "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "cherche", "cherchent", "besoin", "besoins", "forme", "plus" },
+        positive = {
+            "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "cherche", "cherchent", "besoin", "besoins", "forme", "plus"
+        },
         negative = { "lfg", "looking for group", "cherche groupe", "recherche groupe" },
         tank = { "tank", "tanks", "prot", "tanker" },
         heal = { "heal", "healer", "heals", "resto", "holy", "disc", "soigneur" },
         dps = { "dps", "dégat", "caster", "melee" },
     },
     esES = {
-        positive = { "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "busco", "buscamos", "necesita", "necesitamos", "armando", "más" },
+        positive = {
+            "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "busco", "buscamos", "necesita", "necesitamos", "armando", "más"
+        },
         negative = { "lfg", "looking for group", "busco grupo", "buscamos grupo" },
         tank = { "tank", "tanks", "prot", "tanque" },
         heal = { "heal", "healer", "heals", "resto", "holy", "disc", "sanador" },
         dps = { "dps", "daño", "caster", "melee" },
     },
     itIT = {
-        positive = { "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "cerco", "cerchiamo", "serve", "servono", "formando", "più" },
+        positive = {
+            "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "cerco", "cerchiamo", "serve", "servono", "formando", "più"
+        },
         negative = { "lfg", "looking for group", "cerco gruppo", "cerchiamo gruppo" },
         tank = { "tank", "tanks", "prot" },
         heal = { "heal", "healer", "heals", "resto", "holy", "disc", "guaritore" },
         dps = { "dps", "danno", "caster", "melee" },
     },
     ruRU = {
-        positive = { "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "ищу", "ищем", "нужен", "нужны", "собираем", "еще" },
+        positive = {
+            "lfm", "lf1m", "lf2m", "lf3m", "lf4m", "ищу", "ищем", "нужен", "нужны",
+            "собираем", "еще"
+        },
         negative = { "lfg", "looking for group", "ищу группу", "ищем группу" },
         tank = { "tank", "tanks", "prot", "танк" },
         heal = { "heal", "healer", "heals", "resto", "holy", "disc", "целитель" },
@@ -81,40 +95,42 @@ LocalizedKeywords.Keywords = {
     },
 }
 
--- Obtém palavras-chave do idioma atual
+-- English posts reach every client, so each locale's words are read together with the English ones.
+local merged = {}
 function LocalizedKeywords.GetKeywords(locale)
     locale = locale or Localization.CurrentLocale
-    return LocalizedKeywords.Keywords[locale] or LocalizedKeywords.Keywords.enUS
-end
-
--- Obtém palavras-chave positivas
-function LocalizedKeywords.GetPositiveKeywords()
-    local keywords = LocalizedKeywords.GetKeywords()
-    return keywords.positive
-end
-
--- Obtém palavras-chave negativas
-function LocalizedKeywords.GetNegativeKeywords()
-    local keywords = LocalizedKeywords.GetKeywords()
-    return keywords.negative
+    if merged[locale] then
+        return merged[locale]
+    end
+    local own, en = LocalizedKeywords.Keywords[locale], LocalizedKeywords.Keywords.enUS
+    local out = {}
+    for kind, words in pairs(en) do
+        local list, seen = {}, {}
+        for _, source in ipairs({ words, own and own[kind] or {} }) do
+            for _, w in ipairs(source) do
+                if not seen[w] then
+                    seen[w] = true
+                    list[#list + 1] = w
+                end
+            end
+        end
+        out[kind] = list
+    end
+    merged[locale] = out
+    return out
 end
 
 function LocalizedKeywords.GetLFMKeywords()
-    return LocalizedKeywords.GetPositiveKeywords()
+    return LocalizedKeywords.GetKeywords().positive
 end
 
 function LocalizedKeywords.GetLFGKeywords()
-    return LocalizedKeywords.GetNegativeKeywords()
+    return LocalizedKeywords.GetKeywords().negative
 end
 
--- Obtém palavras-chave de roles
 function LocalizedKeywords.GetRoleKeywords()
     local keywords = LocalizedKeywords.GetKeywords()
-    return {
-        tank = keywords.tank,
-        heal = keywords.heal,
-        dps = keywords.dps,
-    }
+    return { tank = keywords.tank, heal = keywords.heal, dps = keywords.dps }
 end
 
 _G[ADDON_NAME .. "_LocalizedKeywords"] = LocalizedKeywords
