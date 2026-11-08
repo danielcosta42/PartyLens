@@ -18,7 +18,8 @@ PartyLens agora é do **WoW: Forever** (interface 16001). A linha 0.33 continua 
 - **Atividades do Forever**, incluindo City of Dalaran, Ruins of Lordaeron, Excavation Site: Wetlands,
   The Hall of Thanes e Manor Mistmantle.
 - **Camadas e beacons:** a página Camada mostra as camadas da zona em que você está como uma pilha de
-  placas (pontos = jogadores ouvidos, luzes = beacons de plantão, a sua em âmbar com um "você"). Clicar
+  placas (pontos = jogadores ouvidos, luzes = beacons de plantão, a sua em âmbar com um "você"). Cada camada
+  leva o número que o próprio jogo dá àquela cópia da zona, igual para todos. Clicar
   numa placa mostra a população, os beacons, os grupos se formando e as novidades (camada nova, beacon entrou ou
   saiu, beacon trouxe alguém, população subiu ou caiu, grupo começou). "Ir para cá" pede a um beacon da
   camada, e o próximo é pedido sozinho se ele não puder. No grupo do beacon, a página lembra de clicar no

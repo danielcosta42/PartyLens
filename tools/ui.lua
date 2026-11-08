@@ -633,23 +633,23 @@ local function shownCount(list)
 end
 local mine, ana, gil = plateOf(101), plateOf(202), plateOf(303)
 check(mine and ana and gil and not plateOf(404), "the stack has my zone's three layers; another zone's layer is left out")
-check(mine.y > ana.y and mine.y > gil.y, "my layer (number 1) at the bottom, the unvisited ones above it")
-check(mine.label.__text == "Layer 1" and near(mine.label.__color[1], UI.T.amber[1]) and mine.edge.__alpha > 0.9,
-	"my plate: Layer 1, amber, outlined")
+check(mine.y > ana.y and ana.y > gil.y, "the plates go up by layer number: 101, 202, 303")
+check(mine.label.__text == "Layer 101" and near(mine.label.__color[1], UI.T.amber[1]) and mine.edge.__alpha > 0.9,
+	"my plate goes by the game's own number for it, amber, outlined")
 check(lp.you.__shown and lp.you.__points[1][2] == mine and plays(lp.you.ring.motion and lp.you.ring.motion.ping) >= 1,
 	"the you-are-here ping sits on my plate")
-check(ana.label.__text == "Unvisited layer" and shownCount(ana.dots) == 1 and shownCount(ana.lights) == 1,
-	"layer 202: unvisited, one player dot, one beacon light")
+check(ana.label.__text == "Layer 202" and shownCount(ana.dots) == 1 and shownCount(ana.lights) == 1,
+	"a layer I never stood on has its number too: one player dot, one beacon light")
 check(shownCount(gil.lights) == 0 and shownCount(gil.dots) == 1, "layer 303: one player, no beacon light")
 local d = lp.detail
-check(d.status.__text ~= "" and d.statusSub.__text == "You are on layer 1; 3 layers heard here", "where I am, in words")
-check(d.body.title.__text == "Unvisited layer" and d.body.tag.__text == "You never stood here"
+check(d.status.__text ~= "" and d.statusSub.__text == "You are on layer 101; 3 layers heard here", "where I am, in words")
+check(d.body.title.__text == "Layer 202" and d.body.tag.__text == ""
 	and d.body.players.value.__text == "1" and d.body.beacons.value.__text == "1" and d.body.groups.value.__text == "1",
 	"the layer with a beacon is picked first: one player, one beacon, her group forming")
-check(d.body.go.__shown and d.body.go.__enabled ~= false and d.body.go.label.__text == "Go to this layer", "and it can be asked")
+check(d.body.go.__shown and d.body.go.__enabled ~= false and d.body.go.label.__text == "Go to layer 202", "and it can be asked")
 click(gil)
 S.advance(0.3)
-check(d.body.title.__text == "Unvisited layer" and d.body.beacons.value.__text == "0" and d.body.go.__enabled == false
+check(d.body.title.__text == "Layer 303" and d.body.beacons.value.__text == "0" and d.body.go.__enabled == false
 	and d.body.why.__text == "No beacon on duty here right now.", "a click picks layer 303: no beacon, no way there")
 check(gil.edge.__alpha > 0.8 and plays(d.body.motion and d.body.motion.fade) >= 1, "its plate is outlined and the panel fades in")
 click(mine)

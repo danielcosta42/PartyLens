@@ -63,9 +63,10 @@ local function KeyOf(item)
 	return item.mapID .. ":" .. item.zoneUID
 end
 
+-- A layer goes by the game's own number for that copy of the zone (the zoneUID in every creature's GUID): the
+-- same for every player, seen or not, so "layer 6" in chat means the same layer to everyone.
 local function LayerName(item)
-	if item.ordinal then return string.format(L["Layer %d"], item.ordinal) end
-	return L["Unvisited layer"] -- on my map, one I have not seen myself: no number yet
+	return string.format(L["Layer %d"], item.zoneUID)
 end
 
 -- One piece of news, in words.
@@ -253,7 +254,7 @@ local function CreatePlate(page, i)
 	return plate
 end
 
--- The plates to draw, bottom to top: numbered by layer, the ones I never visited on top. Past MAX_PLATES the
+-- The plates to draw, bottom to top by layer number. Past MAX_PLATES the
 -- busiest stay, with mine and the selected one always among them.
 local function StackItems(page, items)
 	local keep = {}
@@ -269,11 +270,7 @@ local function StackItems(page, items)
 		more = #keep - MAX_PLATES
 		for i = #keep, MAX_PLATES + 1, -1 do keep[i] = nil end
 	end
-	table.sort(keep, function(a, b)
-		if (a.ordinal ~= nil) ~= (b.ordinal ~= nil) then return a.ordinal ~= nil end
-		if a.ordinal and b.ordinal and a.ordinal ~= b.ordinal then return a.ordinal < b.ordinal end
-		return a.zoneUID < b.zoneUID
-	end)
+	table.sort(keep, function(a, b) return a.zoneUID < b.zoneUID end)
 	return keep, more
 end
 
@@ -496,8 +493,7 @@ local function RefreshStatus(page, me, count)
 		if me.inInstance then
 			d.statusSub:SetText(L["No layers inside an instance."])
 		elseif me.zoneUID then
-			d.statusSub:SetText(string.format(L["You are on layer %s; %d layers heard here"], tostring(me.ordinal or "?"),
-				count))
+			d.statusSub:SetText(string.format(L["You are on layer %d; %d layers heard here"], me.zoneUID, count))
 		else
 			d.statusSub:SetText(L["Target any creature to find your layer."])
 		end
@@ -522,8 +518,7 @@ local function RefreshDetail(page, item)
 	b:SetShown(item ~= nil)
 	if not item then return end
 	b.title:SetText(LayerName(item))
-	b.tag:SetText(item.mine and L["You are here"] or (item.ordinal == nil and L["You never stood here"] or ""))
-	UI.TextColor(b.tag, item.mine and T.amber or T.muted)
+	b.tag:SetText(item.mine and L["You are here"] or "")
 	b.players.value:SetText(tostring(item.population))
 	b.beacons.value:SetText(tostring(item.beacons))
 	UI.TextColor(b.beacons.value, item.beacons > 0 and T.amber or T.text)
@@ -544,7 +539,7 @@ local function RefreshDetail(page, item)
 		b.go.boundKey = KeyOf(item)
 		b.go:Unmorph()
 	end
-	b.go:Settle(item.ordinal and string.format(L["Go to layer %d"], item.ordinal) or L["Go to this layer"])
+	b.go:Settle(string.format(L["Go to layer %d"], item.zoneUID))
 	b.go:SetShown(not item.mine)
 	b.go:SetEnabled(item.canRequest == true and not Pending(req))
 	if item.mine then

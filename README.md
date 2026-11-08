@@ -33,7 +33,8 @@ invite and whisper; it never sends anything on its own.
 
 PartyLens reads your layer from nearby creatures and draws the layers of the zone you are in as a stack of
 plates: dots on each plate are the players heard there, lights on its edge the beacons on duty, and yours
-glows amber. Pick a plate to see its numbers and what changed lately (a beacon went on duty, someone was
+glows amber. Each layer goes by the game's own number for that copy of the zone, the same for every
+player, so "layer 6" in chat means the same layer to everyone. Pick a plate to see its numbers and what changed lately (a beacon went on duty, someone was
 brought over, the layer filled up). It shows layers, never names.
 
 **Go here** asks a beacon on that layer to invite you; if it can't, the next one is asked by itself.

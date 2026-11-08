@@ -50,7 +50,8 @@ morre e várias APIs mudam. Fatos medidos no jogo (backoffice CehulNet, build 70
 - R7 Autopilot (sugestão): com uma listagem ativa, sugere jogadores do radar que fecham os papéis que faltam, com
   botões Convidar/Whisper; nada sai sozinho.
 - R8 Camadas (revisto no teste do dono, 2026-11-08): a página mostra **camadas, não pessoas**, e só as da zona em
-  que o jogador está, como uma pilha de placas isométricas. Cada camada traz a população (nós ChehulNet ouvidos nela), quantos beacons estão de plantão, grupos se formando e as
+  que o jogador está, como uma pilha de placas isométricas. Cada camada leva o número que o próprio jogo dá àquela
+  cópia da zona (o zoneUID do GUID das criaturas), igual para todos, visitada ou não. Cada camada traz a população (nós ChehulNet ouvidos nela), quantos beacons estão de plantão, grupos se formando e as
   **novidades** dela (camada nova, beacon entrou/saiu, beacon trouxe alguém, população subiu/caiu, grupo começou a se
   formar). "Ir para esta camada" pede a um beacon dela, escolhido pelo addon (mais hops servidos primeiro); se ele
   recusa ou não responde em 40 s, o próximo é pedido sozinho. Nomes só aparecem para o beacon (quem ele convida).
