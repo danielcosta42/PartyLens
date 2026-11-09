@@ -337,7 +337,8 @@ check(not caio and PL.entries["caio nunes"], "nor one not refreshed in the last 
 check(peers and peers:find("Pia Lens", 1, true) and not peers:find("Rui Novo", 1, true),
   "and the PartyLens users I know, the asker left out")
 -- From here the board alone: the realm's own whispers (LibChehulMesh v7 sends them to peers it heard too) are off.
-_G.ChehulMesh.YELL_PERCENT = 0
+-- v8 no longer draws YELL's share for whispers, so the realm's fan-out is what turns them off.
+_G.ChehulMesh.REALM_FANOUT = 0
 W.sent = {}
 W.deliver("PartyLens", "2|q", "WHISPER", "Rui Novo")
 W.advance(3)
@@ -388,7 +389,7 @@ for _, m in ipairs(W.sentWhere({ prefix = "PartyLens", dist = "WHISPER" })) do
   if m.msg:find("^2|off|") and pushed[m.target] then offs = offs + 1 end
 end
 check(offs >= 1, "stopping tells the ones it was pushed to")
-_G.ChehulMesh.YELL_PERCENT = 100
+_G.ChehulMesh.REALM_FANOUT = 3
 
 PL = W.boot({})
 W.directory(DIR)
