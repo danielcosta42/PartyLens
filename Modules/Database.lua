@@ -35,6 +35,7 @@ local function Defaults()
         minimap = { hide = false, angle = 225 },
         ui = {},
         alertDismissed = {},
+        meshPeers = {}, -- LibChehulMesh v7's saved peers, name -> time()
         -- Beacon: on by default (opt-out). hops = people brought over, one per person per day (todayKeys).
         beacon = { on = true, hops = 0, day = "", today = 0, todayKeys = {} },
     }

@@ -34,6 +34,15 @@ CN:EnableAlerts({
     end,
 })
 
+-- LibChehulMesh v7: the Chehul clients the mesh heard outlive a /reload and start the next login's peer exchange.
+local Mesh = _G.ChehulMesh
+if Mesh and Mesh.PeerStore then
+    Mesh:PeerStore(function()
+        local pl = PL()
+        return pl and pl.db and pl.db.meshPeers
+    end)
+end
+
 -- Caps ride every HELLO: no '|' ever, and nothing personal.
 CN:Register("pl", function()
     local pl = PL()

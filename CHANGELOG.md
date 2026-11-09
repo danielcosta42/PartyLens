@@ -5,6 +5,14 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [1.0.1]
+
+- **Rede de volta fora da guilda.** O servidor do Forever passou a recusar o canal que a rede usava como lista de
+  membros, e o alcance entre guildas caiu. A lib ChehulNet v1.1.0 percebe a recusa e passa a alcançar os outros
+  usuários pelos pares que já ouviu, trocando nomes por sussurro; a lista fica salva para o próximo login. Nada
+  aparece no chat.
+- O quadro do PartyLens, sem ninguém conhecido, sonda esses pares.
+
 ## [1.0.0]
 
 PartyLens agora é do **WoW: Forever** (interface 16001). A linha 0.33 continua sendo a do TBC Anniversary.
