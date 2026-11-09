@@ -336,6 +336,8 @@ check(not bia, "not one already at the hop limit")
 check(not caio and PL.entries["caio nunes"], "nor one not refreshed in the last minutes (it stays on my own radar)")
 check(peers and peers:find("Pia Lens", 1, true) and not peers:find("Rui Novo", 1, true),
   "and the PartyLens users I know, the asker left out")
+-- From here the board alone: the realm's own whispers (LibChehulMesh v7 sends them to peers it heard too) are off.
+_G.ChehulMesh.YELL_PERCENT = 0
 W.sent = {}
 W.deliver("PartyLens", "2|q", "WHISPER", "Rui Novo")
 W.advance(3)
@@ -386,6 +388,7 @@ for _, m in ipairs(W.sentWhere({ prefix = "PartyLens", dist = "WHISPER" })) do
   if m.msg:find("^2|off|") and pushed[m.target] then offs = offs + 1 end
 end
 check(offs >= 1, "stopping tells the ones it was pushed to")
+_G.ChehulMesh.YELL_PERCENT = 100
 
 PL = W.boot({})
 W.directory(DIR)
@@ -393,5 +396,15 @@ W.instance = true
 W.advance(200)
 check(#board({}) == 0, "nothing of the board leaves an instance")
 W.instance = false
+
+-- LibChehulMesh v7: the server refused the directory; alone, the board probes the mesh's peers instead.
+PL = W.boot({})
+W.deliver("ChehulNet", "CHN1|H|gos|DRUID|30|v=1|1453:202", "WHISPER", "Wes Fora")
+W.sent = {}
+W.advance(16)
+local probes = board({ dist = "WHISPER", target = "Wes Fora" })
+check(_G.ChehulMesh.version >= 7 and #probes == 1 and probes[1].msg == "2|q",
+  "with no directory, the first sync asks a Chehul client the mesh heard outside the guild")
+check(_G.ChehulMesh.dir.tried["Wes Fora"] ~= nil, "quietly, as the directory probe")
 
 W.done("net")

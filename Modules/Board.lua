@@ -133,9 +133,15 @@ function Board.Sync(partyLens)
     if asked > 0 then
         return
     end
-    -- Nobody known yet: a few directory members, at random. The PartyLens users among them answer.
+    -- Nobody known yet: a few Chehul clients, at random: the mesh's fresh peers outside the guild (LibChehulMesh v7)
+    -- and directory members where the directory still works. The PartyLens users among them answer.
     local mesh = _G.ChehulMesh
-    local names = mesh and mesh.dir and mesh.dir.names or {}
+    local names = {}
+    for _, list in ipairs({ mesh and mesh.Peers and mesh:Peers() or {}, mesh and mesh.dir and mesh.dir.names or {} }) do
+        for _, name in ipairs(list) do
+            names[#names + 1] = name
+        end
+    end
     local tries = 0
     while asked < Board.PROBE and tries < Board.PROBE * 4 and #names > 0 do
         tries = tries + 1

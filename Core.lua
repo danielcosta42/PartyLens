@@ -112,7 +112,8 @@ function PartyLens:AddStrings(locale, strings)
 end
 
 -- Keys with their own calls (SetListing, Block, ...), never written through Set.
-local OWN_API = { listing = true, blacklist = true, alertDismissed = true, schemaVersion = true, beacon = true }
+local OWN_API = { listing = true, blacklist = true, alertDismissed = true, schemaVersion = true, beacon = true,
+    meshPeers = true }
 
 -- A dotted path into db for a key that exists, with a value of the same type.
 function PartyLens:Set(path, value)

@@ -320,7 +320,11 @@ end
 check(PL:GetBeacon().why == "combat", "in combat: not taking requests")
 check(#W.sentWhere({ prefix = "PLLnet", dist = "GUILD" }) - before <= 3,
   "ten fights in two minutes send no extra presence: combat is not broadcast")
-check(#PL:GetLayerRequests() == 0 and #W.sentWhere({ prefix = "PLLnet", target = "Uli Wait" }) == 1,
+local noes = 0 -- his "no"; my presence reaches him too now (LibChehulMesh v7: realm whispers go to peers heard)
+for _, m in ipairs(W.sentWhere({ prefix = "PLLnet", target = "Uli Wait" })) do
+  if m.msg:find("^PLL2|N|") then noes = noes + 1 end
+end
+check(#PL:GetLayerRequests() == 0 and noes == 1,
   "the open request got a no when the fight started, so he moved on")
 W.combat = false
 W.fire("PLAYER_REGEN_ENABLED")
