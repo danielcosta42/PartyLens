@@ -5,6 +5,13 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [1.1.0]
+
+- **Rede mais estável fora da guilda.** A lib ChehulNet v1.2.0 repassa itens de cliente em cliente sem repetir,
+  leva à guilda inteira o que um membro recebeu de fora, envia por sussurro sem esperar sorteio, prefere quem já
+  respondeu e troca nomes na hora com quem acabou de aparecer. Nada aparece no chat.
+- Diagnóstico da rede para o operador: links, pares na versão nova, contadores do repasse e um rastreio de alcance.
+
 ## [1.0.1]
 
 - **Rede de volta fora da guilda.** O servidor do Forever passou a recusar o canal que a rede usava como lista de
