@@ -36,13 +36,18 @@ read_globals = {
     "Ambiguate", "UnitName", "UnitFullName", "UnitClass", "UnitLevel", "UnitExists", "UnitGUID", "UnitIsUnit",
     "UnitIsPlayer", "UnitPlayerControlled", "UnitGroupRolesAssigned", "UnitIsGroupLeader", "UnitIsGroupAssistant",
     "UnitDistanceSquared", "UnitIsVisible", "GetPlayerInfoByGUID", "UnitIsAFK", "UnitAffectingCombat",
+    "UnitClassification", "UnitIsDead",
+    -- zone
+    "GetRealZoneText",
     -- group, guild, instance
     "GetNumGroupMembers", "IsInGroup", "IsInRaid", "IsInGuild", "IsInInstance",
     -- channels
     "GetChannelName", "JoinPermanentChannel", "EnumerateServerChannels",
     -- namespaces
     "C_AddOns", "C_ChatInfo", "C_FriendList", "C_Map", "C_NameUtil", "C_PartyInfo", "C_PlayerInfo", "C_QuestLog",
-    "C_Timer",
+    "C_SuperTrack", "C_Timer",
+    -- FrameXML objects (Blizzard_ObjectAPI)
+    "UiMapPoint",
 }
 
 -- The UI: the widget side of the client on top of the core's list, each name checked the same way (frames and

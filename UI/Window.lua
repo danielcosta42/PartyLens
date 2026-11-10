@@ -393,6 +393,31 @@ function UI:Toast(title, body, opts)
 	self.toast:Pop(title, body, opts)
 end
 
+-- The prompts from the top of the screen share one spot. The beacon's (a layer request) goes first and sends the
+-- others away; a rare or a summon waits until the spot is free (a minute at most, then it is dropped).
+local PROMPTS = { "prompt", "rarePrompt", "summonAskPrompt", "summonOfferPrompt" }
+function UI:PromptBusy()
+	for _, key in ipairs(PROMPTS) do
+		local p = self[key]
+		if p and p:IsShown() then return true end
+	end
+	return false
+end
+
+function UI:ClearPrompts(keep)
+	for _, key in ipairs(PROMPTS) do
+		local p = self[key]
+		if p and p ~= keep and p:IsShown() then p:Leave() end
+	end
+end
+
+function UI:WhenPromptFree(fn, waited)
+	waited = waited or 0
+	if not self:PromptBusy() then return fn() end
+	if waited >= 60 then return end
+	C_Timer.After(1, function() UI:WhenPromptFree(fn, waited + 1) end)
+end
+
 --------------------------------------------------------------------------------
 -- Boot: after the saved variables are in, set up the minimap button (UI/Data.lua subscribes to the core).
 --------------------------------------------------------------------------------

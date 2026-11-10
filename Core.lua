@@ -12,12 +12,14 @@ local Entry = Mod("Entry")
 local Chat = Mod("Chat")
 local Messaging = Mod("Messaging")
 local Summon = Mod("Summon")
+local SummonNet = Mod("SummonNet")
 local Net = Mod("Net")
 local Comm = Mod("Comm")
 local Who = Mod("Who")
 local Layer = Mod("Layer")
 local LayerNet = Mod("LayerNet")
 local LayerWatch = Mod("LayerWatch")
+local Rares = Mod("Rares")
 local Listing = Mod("Listing")
 local Board = Mod("Board")
 local Autopilot = Mod("Autopilot")
@@ -337,6 +339,19 @@ function PartyLens:UndoLayerGroup()
     return LayerNet.Undo(self)
 end
 
+-- Rare sightings (contract section 6).
+function PartyLens:GetRares(mapID)
+    return Rares.List(self, mapID)
+end
+
+function PartyLens:GoToRare(sighting)
+    return Rares.GoTo(self, sighting)
+end
+
+function PartyLens:MarkRare(sighting)
+    return Rares.Mark(self, sighting)
+end
+
 function PartyLens:GetSummon()
     return Summon.Snapshot(self)
 end
@@ -347,6 +362,39 @@ end
 
 function PartyLens:AnnounceSummon(mode)
     return Summon.Announce(self, mode)
+end
+
+-- Summons across the realm (contract section 7).
+function PartyLens:AskSummon(dest)
+    return SummonNet.Ask(self, dest)
+end
+
+function PartyLens:CancelSummonAsk()
+    SummonNet.CancelAsk(self)
+end
+
+function PartyLens:GetSummonAsk()
+    return SummonNet.MyAsk(self)
+end
+
+function PartyLens:AcceptSummonOffer(offer)
+    return SummonNet.AcceptOffer(self, offer)
+end
+
+function PartyLens:IsSummoner()
+    return SummonNet.IsSummoner(self)
+end
+
+function PartyLens:GetSummonRequests()
+    return SummonNet.Inbound(self)
+end
+
+function PartyLens:OfferSummon(req)
+    return SummonNet.Offer(self, req)
+end
+
+function PartyLens:IgnoreSummonRequest(req)
+    SummonNet.Ignore(self, req)
 end
 
 local function Peers()
@@ -399,6 +447,14 @@ function PartyLens:OnLoad()
     Net.Register(LayerNet.PREFIX, function(payload, sender, dist)
         LayerNet.OnMessage(self, payload, sender, dist)
     end)
+    Net.Register(Rares.PREFIX, function(payload, sender, dist, via)
+        Rares.OnMessage(self, payload, sender, dist, via)
+    end)
+    Net.Relayable(Rares.PREFIX)
+    Net.Register(SummonNet.PREFIX, function(payload, sender, dist, via)
+        SummonNet.OnMessage(self, payload, sender, dist, via)
+    end)
+    Net.Relayable(SummonNet.PREFIX)
     self:On("LISTING_CHANGED", function(state) Autopilot.OnListing(self, state) end)
     self:On("ENTRY_ADDED", function() Autopilot.Check(self) end)
     self:On("LAYER_CHANGED", function(cur) LayerNet.OnLayerChanged(self, cur) end)
@@ -411,6 +467,8 @@ function PartyLens:OnLoad()
         Layer.Prune(self)
         LayerWatch.Watch(self)
         Board.Prune(self)
+        Rares.Prune(self)
+        SummonNet.Tick(self)
     end)
     C_Timer.After(Board.SYNC_FIRST, function() Board.Sync(self) end)
     C_Timer.NewTicker(Board.SYNC_INTERVAL, function() Board.Sync(self) end)
@@ -459,12 +517,15 @@ local EVENTS = {
     end,
     PLAYER_TARGET_CHANGED = function(self)
         Layer.Observe(self, "target")
+        Rares.Observe(self, "target")
     end,
     UPDATE_MOUSEOVER_UNIT = function(self)
         Layer.Observe(self, "mouseover")
+        Rares.Observe(self, "mouseover")
     end,
     NAME_PLATE_UNIT_ADDED = function(self, unit)
         Layer.Observe(self, unit)
+        Rares.Observe(self, unit)
     end,
     GROUP_ROSTER_UPDATE = function(self)
         if not IsInGroup() then

@@ -1,6 +1,7 @@
 --=============================================================================
 -- Summon: who in the group is far (or out of sight), the warlocks close by, marks for who already came, and the
--- announce in group chat (a click: visible chat needs one).
+-- announce in group chat (a click: visible chat needs one). Above the group, a summon from the realm: a place,
+-- the network's warlocks offer, and the offer is invited with a click.
 --=============================================================================
 local _, ns = ...
 local UI = ns.UI
@@ -58,16 +59,79 @@ local function Build(page)
 		if ok then b:Done(L["Posted"]) else b:Fail(D.Reason(why)) end
 	end, { h = 30, tip = L["Next one"], tipBody = L["Posts the next name to summon, or that everyone is here."] })
 	page.next:SetPoint("RIGHT", page.announce, "LEFT", -8, 0)
+	-- A summon from the realm's warlocks: a place, then each offer is a prompt with Invite.
+	page.dest = Kit.Edit(page, { w = 260, placeholder = L["Where to? For example: Blackrock Depths"], maxLetters = 40,
+		onSubmit = function(text)
+			local ask = D.SummonAsk()
+			if ask and ask.state == "open" then return end -- Enter asks; it never takes an open ask back
+			local ok, why = D.AskSummon(text or "")
+			if ok then page.ask:Done(L["Asked"]) else page.ask:Fail(D.Reason(why)) end
+		end })
+	page.dest:SetPoint("TOPLEFT", 0, -50)
+	page.ask = Kit.Button(page, L["Ask the realm's warlocks"], "secondary", function(b)
+		if D.SummonAsk() and D.SummonAsk().state == "open" then
+			D.CancelSummonAsk()
+			return
+		end
+		local ok, why = D.AskSummon(page.dest:GetText() or "")
+		if ok then b:Done(L["Asked"]) else b:Fail(D.Reason(why)) end
+	end, { h = 26, tip = L["Ask the realm's warlocks"],
+		tipBody = L["Warlocks with PartyLens anywhere on the realm see it and can offer; you invite the one you want."] })
+	page.ask:SetPoint("LEFT", page.dest, "RIGHT", 8, 0)
+	page.askState = UI.Text(page, "data", 12, T.muted)
+	page.askState:SetPoint("LEFT", page.ask, "RIGHT", 12, 0)
+	page.askState:SetPoint("RIGHT", page, "RIGHT", 0, 0)
+	-- The offers to my ask, each with Invite (a toast can time out or give way to a beacon's prompt).
+	page.offers = {}
+	for i = 1, 3 do
+		local b = Kit.Button(page, "", "secondary", function(btn)
+			local ok, why = D.AcceptSummonOffer(btn.offer)
+			if ok then btn:Done(L["Invited"]) else btn:Fail(D.Reason(why)) end
+		end, { h = 24, w = 220 })
+		if i == 1 then b:SetPoint("TOPLEFT", 0, -84) else b:SetPoint("LEFT", page.offers[i - 1], "RIGHT", 8, 0) end
+		b:Hide()
+		page.offers[i] = b
+	end
 	page.warlocks = UI.Text(page, "data", 12, T.muted)
-	page.warlocks:SetPoint("TOPLEFT", 0, -46)
+	page.warlocks:SetPoint("TOPLEFT", 0, -118)
 	page.warlocks:SetPoint("RIGHT", page, "RIGHT", 0, 0)
 	page.list = Kit.List(page, { rowHeight = 40, gap = 4, create = CreateMember, bind = BindMember, width = UI.PAGE_W - 12,
-		viewHeight = 380 })
-	page.list:SetPoint("TOPLEFT", 0, -70)
+		viewHeight = 320 })
+	page.list:SetPoint("TOPLEFT", 0, -142)
 	page.list:SetPoint("BOTTOMRIGHT", 0, 0)
 end
 
+local function RefreshAsk(page)
+	local ask = UI.data.SummonAsk()
+	local open = ask ~= nil and ask.state == "open"
+	page.ask:Settle(open and L["Cancel the ask"] or L["Ask the realm's warlocks"])
+	if not ask then
+		page.askState:SetText("")
+	elseif open then
+		local n = #ask.offers
+		page.askState:SetText(n == 0 and string.format(L["Asking for %s"], UI.Esc(ask.dest))
+			or string.format(n == 1 and L["%s: 1 warlock offered"] or L["%s: %d warlocks offered"], UI.Esc(ask.dest), n))
+	elseif ask.state == "expired" then
+		page.askState:SetText(L["No warlock answered in time"])
+	else
+		page.askState:SetText("")
+	end
+	for i, b in ipairs(page.offers) do
+		local o = open and ask.offers[i]
+		b:SetShown(o ~= nil and o ~= false)
+		if o then
+			b.offer = o
+			if b.boundKey ~= o.key then
+				b.boundKey = o.key
+				b:Unmorph()
+			end
+			b:Settle(string.format(L["Invite %s"], UI.Esc(o.name)))
+		end
+	end
+end
+
 local function Refresh(page)
+	RefreshAsk(page)
 	local s = UI.data.Summon()
 	page.announce:SetEnabled(s.inGroup and #s.needed > 0)
 	page.next:SetEnabled(s.inGroup)
@@ -85,6 +149,60 @@ local function Refresh(page)
 	end
 	page.list:SetItems(s.inGroup and s.members or {})
 end
+
+--------------------------------------------------------------------------------
+-- Prompts from the top of the screen, window open or not, one at a time each: a warlock sees an ask (Offer),
+-- the asker sees an offer (Invite). Every action is its own click.
+--------------------------------------------------------------------------------
+local askPrompt, offerPrompt
+
+local function ShowAsk(r)
+	if not askPrompt then
+		askPrompt = Kit.Toast(UIParent)
+		askPrompt:SetFrameStrata("DIALOG")
+		UI.summonAskPrompt = askPrompt
+	end
+	local who = UI.ClassName(r.name, r.classFile)
+	askPrompt:Pop(string.format(L["%s needs a summon"], who),
+		string.format(L["To %s, level %d"], UI.Esc(r.dest), r.level or 0), {
+			hold = 30,
+			actions = {
+				{ label = L["Offer"], fn = function()
+					local ok, why = UI.data.OfferSummon(r)
+					UI:Notify("notice", ok and string.format(L["Offered to %s"], UI.Esc(r.name)) or UI.data.Reason(why))
+				end },
+				{ label = L["Ignore"], kind = "ghost", fn = function() UI.data.IgnoreSummonRequest(r) end },
+			},
+		})
+end
+
+UI:Listen("summonRequest", function(r)
+	if type(r) ~= "table" then return end
+	UI:WhenPromptFree(function() ShowAsk(r) end)
+end)
+
+local function ShowOffer(o)
+	if not offerPrompt then
+		offerPrompt = Kit.Toast(UIParent)
+		offerPrompt:SetFrameStrata("DIALOG")
+		UI.summonOfferPrompt = offerPrompt
+	end
+	offerPrompt:Pop(string.format(L["%s can summon you"], UI.Esc(o.name)), string.format(L["Now in %s"], UI.Esc(o.zone)), {
+		hold = 60,
+		color = T.ok,
+		actions = {
+			{ label = L["Invite"], fn = function()
+				local ok, why = UI.data.AcceptSummonOffer(o)
+				if not ok then UI:Notify("notice", UI.data.Reason(why)) end
+			end },
+		},
+	})
+end
+
+UI:Listen("summonOffer", function(o)
+	if type(o) ~= "table" then return end
+	UI:WhenPromptFree(function() ShowOffer(o) end)
+end)
 
 UI:RegisterPage("summon", {
 	label = L["Summon"],

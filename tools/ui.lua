@@ -511,6 +511,20 @@ local stray = 0
 for k, p in pairs(UI.pageFrames) do if k ~= "settings" and p.__shown then stray = stray + 1 end end
 check(stray == 0 and UI.pageFrames.settings.__alpha == 1, "only the current page is on screen")
 
+-- Every control of a page placed from its top-left stays inside the page's height (a column that runs past the
+-- bottom draws below the window). Wrapped lines count: a sub-line's height is its measured string height.
+for key, page in pairs(UI.pageFrames) do
+	local over = {}
+	for _, child in ipairs(page.__children or {}) do
+		local pt = child.__points and child.__points[1]
+		if pt and pt[1] == "TOPLEFT" and pt[2] == page and type(pt[5]) == "number" and child.GetHeight then
+			local bottom = -pt[5] + (child:GetHeight() or 0)
+			if bottom > UI.PAGE_H then over[#over + 1] = string.format("%.0f", bottom) end
+		end
+	end
+	check(#over == 0, "nothing on the '" .. key .. "' page runs past its height (" .. table.concat(over, ",") .. ")")
+end
+
 -- Sidebar indicator slides
 UI:Open("groups")
 S.advance(0.3)
@@ -731,6 +745,33 @@ check(PL:GetBeacon().queue == 0 and (not prompt.__shown or prompt.__alpha == 0),
   "a fight drops the open request (the asker hears no) and the prompt goes with it")
 W.combat = false
 W.fire("PLAYER_REGEN_ENABLED")
+S.advance(1)
+-- A rare in my zone heard from the network: its own prompt in the same spot, after anything showing there.
+local function rare(npcID, name, zoneUID)
+	return table.concat({ "PLR1", "S", 1453, zoneUID or 202, npcID, 400, 650, 1, "r", time(), name }, "|")
+end
+W.deliver("PLRare", rare(71, "Fenros"), "GUILD", "Ana Lima")
+S.advance(0.3)
+local rp = UI.rarePrompt
+check(rp and rp.__shown and rp:GetParent() == UIParent and rp.title.__text == "Rare: Fenros"
+	and rp.body.__text:find("Just now", 1, true) and rp.body.__text:find("near 40.0, 65.0", 1, true),
+	"a rare in my zone: a prompt with the layer, 'just now' and where")
+local markBtn
+for _, b in ipairs(rp.actions) do if b.__shown and b.label.__text == "Mark on map" then markBtn = b end end
+check(markBtn ~= nil, "with Mark on map")
+W.deliver("PLLnet", "PLL2|R|1453|303|202", "WHISPER", "Zoe Ask-ClassicBetaPvE2")
+S.advance(0.6)
+check(prompt.__shown and prompt.title.__text == "Zoe Ask wants your layer" and (not rp.__shown or rp.__alpha == 0),
+	"a layer request takes the spot: the rare's prompt leaves")
+S.advance(31)
+W.deliver("PLRare", rare(72, "Azuregos", 303), "GUILD", "Bia Rocha")
+S.advance(0.3)
+check(prompt.__shown and prompt.__alpha ~= 0 and prompt.title.__text == "Zoe Ask wants your layer"
+	and not (rp.__shown and rp.__alpha ~= 0), "a rare waits while the request is up: only the request shows")
+click(prompt.actions[2])
+S.advance(2)
+check(rp.__shown and rp.__alpha ~= 0 and rp.title.__text == "Rare: Azuregos", "and shows once the spot is free")
+S.advance(25)
 lp = UI:Open("layer")
 S.advance(0.3)
 W.setGroup({ { name = "Jon", surname = "Mar" } })
@@ -796,6 +837,36 @@ check(W.chat[#W.chat].msg:find("everyone is here", 1, true), "Next one says ever
 W.setGroup({})
 S.advance(0.3)
 check(sp.list.empty.__shown and sp.list.empty.title.__text == "You are not in a group", "alone: the empty state says so")
+-- A summon from the realm: a place, Ask, then the offers with Invite (on the page and in a prompt).
+sp.dest:SetText("Blackrock Depths")
+click(sp.ask)
+S.advance(3) -- the button shows "Asked" a moment, then settles
+local myAsk = PL:GetSummonAsk()
+check(myAsk and myAsk.state == "open" and sp.askState.__text == "Asking for Blackrock Depths"
+	and sp.ask.label.__text == "Cancel the ask", "Ask: the ask is open and the button now takes it back")
+sp.dest:GetScript("OnEnterPressed")(sp.dest)
+check(PL:GetSummonAsk().state == "open", "Enter in the field never takes an open ask back")
+W.deliver("PLSum", "PLS1|O|" .. myAsk.id .. "|Searing Gorge", "WHISPER", "Wally Lock")
+S.advance(1.5)
+local op = UI.summonOfferPrompt
+check(op and op.__shown and op.title.__text == "Wally Lock can summon you" and op.body.__text == "Now in Searing Gorge",
+	"an offer: a prompt with who and where")
+check(sp.offers[1].__shown and sp.offers[1].label.__text == "Invite Wally Lock" and not sp.offers[2].__shown,
+	"and a button on the page, which stays when the prompt goes")
+click(sp.offers[1])
+check(W.invites[#W.invites] == "Wally Lock", "Invite on the page invites, from the click")
+click(sp.ask)
+S.advance(0.3)
+check(PL:GetSummonAsk().state == "cancelled" and not sp.offers[1].__shown, "taking it back hides the offers")
+S.advance(70)
+PL:Fire("SUMMON_REQUEST", { rkey = "x", id = "ab", name = "Ana Lima", level = 28, classFile = "MAGE",
+	dest = "Zul'Farrak", seen = time(), state = "open" })
+S.advance(0.3)
+local ap = UI.summonAskPrompt
+check(ap and ap.__shown and ap.title.__text:find("Ana Lima", 1, true) and ap.body.__text == "To Zul'Farrak, level 28"
+	and ap.actions[1].label.__text == "Offer", "a warlock's prompt: who, where to, the level, and Offer")
+click(ap.actions[1])
+S.advance(0.3)
 
 local np = UI:Open("network")
 S.advance(0.3)

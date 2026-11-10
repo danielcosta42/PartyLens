@@ -18,7 +18,8 @@ function Net.Register(prefix, handler)
     end
 end
 
-function Net.Broadcast(prefix, payload, realmKey)
+-- `relay`: the realm copy may be passed on by LibChehulMesh v8+ (an older mesh ignores the flag).
+function Net.Broadcast(prefix, payload, realmKey, relay)
     local mesh = Mesh()
     if not mesh or not Utils.CanSendAddon() then
         return false
@@ -26,9 +27,17 @@ function Net.Broadcast(prefix, payload, realmKey)
     mesh:Guild(prefix, payload)
     mesh:Group(prefix, payload)
     if realmKey then
-        mesh:Realm(prefix, payload, realmKey)
+        mesh:Realm(prefix, payload, realmKey, relay and true or nil)
     end
     return true
+end
+
+-- Relayed copies of `prefix` reach this client's handler (dist "RELAY"); a mesh before v8 has no relay.
+function Net.Relayable(prefix)
+    local mesh = Mesh()
+    if mesh and mesh.Relayable then
+        mesh:Relayable(prefix)
+    end
 end
 
 function Net.Realm(prefix, payload, realmKey)

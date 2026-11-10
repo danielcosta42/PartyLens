@@ -148,6 +148,7 @@ function D.Beacon()
 	return pl and pl:GetBeacon() or { on = false, available = false, hops = 0, today = 0, rank = 1, rankAt = 0, queue = 0 }
 end
 function D.SetBeacon(on) local pl = Core() if pl then pl:SetBeacon(on) end end
+function D.Rares(mapID) local pl = Core() return pl and pl:GetRares(mapID) or {} end
 
 function D.OpenRequests()
 	local n = 0
@@ -158,6 +159,8 @@ end
 -- Click only.
 function D.RequestLayer(layer) return Core():RequestLayer(layer) end
 function D.Serve(req) return Core():ServeLayerRequest(req) end
+function D.GoToRare(r) return Core():GoToRare(r) end
+function D.MarkRare(r) return Core():MarkRare(r) end
 function D.ServeNext() return Core():ServeNextLayerRequest() end
 function D.Undo() return Core():UndoLayerGroup() end
 
@@ -174,6 +177,13 @@ function D.Peers() local pl = Core() return pl and pl:GetPeers() or {} end
 
 -- Click only.
 function D.AnnounceSummon(mode) return Core():AnnounceSummon(mode) end
+function D.AskSummon(dest) return Core():AskSummon(dest) end
+function D.AcceptSummonOffer(o) return Core():AcceptSummonOffer(o) end
+function D.OfferSummon(r) return Core():OfferSummon(r) end
+function D.SummonAsk() local pl = Core() return pl and pl:GetSummonAsk() end
+function D.CancelSummonAsk() local pl = Core() if pl then pl:CancelSummonAsk() end end
+function D.IgnoreSummonRequest(r) local pl = Core() if pl then pl:IgnoreSummonRequest(r) end end
+function D.IsSummoner() local pl = Core() return pl and pl:IsSummoner() or false end
 
 --------------------------------------------------------------------------------
 -- The header line and the reasons an action can fail, in words.
@@ -192,7 +202,8 @@ local REASONS = {
 	throttled = L["Wait a moment"], cooldown = L["Wait a moment"], no_channel = L["Joining the channel"],
 	same_layer = L["Same layer"], pending = L["One at a time"], no_beacon = L["No beacon now"],
 	other_map = L["Other zone"], cannot_send = L["Can't send now"], group_full = L["Group full"],
-	off_duty = L["Not on duty"],
+	off_duty = L["Not on duty"], no_position = L["No spot to mark"], cannot_mark = L["Can't mark it"],
+	not_summoner = L["Only warlocks who offer summons"],
 	not_on_layer = L["You moved"], gone = L["Gone"], not_in_group = L["Not in a group"],
 }
 function D.Reason(code)
@@ -209,6 +220,8 @@ local FORWARD = {
 	LAYER_REQUEST_RECEIVED = "layerRequest", LAYER_REQUESTS_CHANGED = "layer", SUMMON_CHANGED = "summon",
 	ROSTER_CHANGED = "roster", NETWORK_CHANGED = "network", SETTINGS_CHANGED = "settings", NOTICE = "notice",
 	LFG_CHANNEL_CHANGED = "channel", BEACON_CHANGED = "layer", BEACON_SERVED = "beaconServed",
+	RARES_CHANGED = "layer", RARE_SPOTTED = "rare",
+	SUMMON_REQUEST = "summonRequest", SUMMON_OFFER = "summonOffer",
 }
 
 local core = rawget(_G, "PartyLens")

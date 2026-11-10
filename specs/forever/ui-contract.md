@@ -83,6 +83,8 @@ The UI may write `db.ui`, `db.minimap`, `db.animations` directly.
 | `minimap.hide` / `minimap.angle` | `false` / `225` | UI-owned |
 | `ui` | `{}` | free table for the UI (window position, last page, ...) |
 | `beacon.on` / `beacon.hops` / `beacon.today` | `true` / `0` / `0` | read only (write with `SetBeacon`): beacon setting (opt-out), people brought over in all, today |
+| `rares.notify` / `rares.share` | `true` / `true` | a prompt for rares alive in my zone; the rares I see told to the network |
+| `summonNet.offer` | `true` | a warlock of level 20+ gets the realm's summon asks and can offer (section 7) |
 | `blacklist` | `{}` | `[key] = name`; use `Block`/`Unblock`, not direct writes |
 
 ## 3. Radar entries
@@ -195,6 +197,14 @@ Rows are layers, never people: the page shows no names except to the beacon, for
 | `PartyLens:DeclineLayerRequest(req)` | | tells them no |
 | `PartyLens:CanUndoLayer()` | | true after a served hop (either side) while still grouped |
 | `PartyLens:UndoLayerGroup()` | **yes** | beacon side: uninvites the hopper (or leaves when not leader); requester side: leaves the group. States follow the roster: the served request goes (beacon) or stays `"hopped"` with `CanUndoLayer()` false (requester) on the next `LAYER_REQUESTS_CHANGED`/`ROSTER_CHANGED` |
+| `PartyLens:GetRares(mapID?)` | | rare sightings still fresh (15 min), alive first then newest; `mapID`'s only when given: `{ key, mapID, zoneUID, npcID, name, kind = "rare"|"rareelite"|"worldboss", alive, x|nil, y|nil (the reporter's spot, thousandths), seen (server time), ago, mine (I saw it), onMyMap, here (my layer), ordinal|nil, canGo, canMark }`. `canGo` = my map, another layer, a beacon on duty there |
+| `PartyLens:GoToRare(sighting)` | yes | `RequestLayer` for the rare's layer; its reasons, plus `"gone"` |
+| `PartyLens:MarkRare(sighting)` | yes | the game's map pin (`C_Map.SetUserWaypoint`, tracked) at the reporter's spot. `false, reason`: `"gone"`, `"no_position"`, `"cannot_mark"` |
+
+Rows of `GetLayers()` also carry `rares` = the rares alive on that layer (`GetRares` entries). A layer of my map known
+only by a rare alive on it is a row too. Events: `RARES_CHANGED` (any sighting in or out), `RARE_SPOTTED(view)` (a
+rare alive on my map heard from the network: once per rare and layer per 10 min, never one I saw myself, only with
+`rares.notify`).
 
 ## 7. Summon (warlock)
 
@@ -205,6 +215,24 @@ by squared distance, or, where the client cannot measure it (instances), whether
 `PartyLens:MarkSummoned(name, bool)` (fires `SUMMON_CHANGED`).
 `PartyLens:AnnounceSummon("all"|"next")` — **click**: posts the list (or the next name, or "everyone is here") to
 party/raid chat; `false, "not_in_group"` alone.
+
+Summons across the realm (`summonNet.offer`, default `true`, matters only to warlocks of level 20 and up):
+
+| Call | Click? | Returns / does |
+|---|---|---|
+| `PartyLens:AskSummon(dest)` | yes | asks the realm's warlocks for a summon to `dest` (free text, 40 chars, no `|`), again every 2 min while open, 10 min at most. `false, reason`: `"empty"`, `"pending"` (one at a time), `"cannot_send"` |
+| `PartyLens:CancelSummonAsk()` | | takes it back (tells the network) |
+| `PartyLens:GetSummonAsk()` | | nil or `{ id, dest, t, state = "open"|"cancelled"|"expired", offers = { { name, key, zone, t, state = "offered"|"invited" } } }` (offers newest first, 5 min each) |
+| `PartyLens:AcceptSummonOffer(offer)` | **yes** | invites that warlock. `false, reason`: `"gone"`, `"cannot_invite"`, `"group_full"`, `"in_group"` |
+| `PartyLens:IsSummoner()` | | a warlock of level 20+ with `summonNet.offer` |
+| `PartyLens:GetSummonRequests()` | | a summoner's asks heard, newest first, open or offered: `{ rkey, id, name, key, level, classFile|nil, dest, seen, t, state }`; empty for anyone else |
+| `PartyLens:OfferSummon(req)` | yes | whispers the offer (with my zone) to the asker. `false, reason`: `"gone"` (one offer per ask), `"not_summoner"`, `"cannot_send"` |
+| `PartyLens:IgnoreSummonRequest(req)` | | off my list |
+
+Events: `SUMMON_REQUEST(req)` (a summoner, an ask heard: 3 prompts a minute at most, none inside an instance),
+`SUMMON_OFFER(offer)` (the asker, a warlock's first offer for my open ask), and `SUMMON_CHANGED` on any change.
+The UI's prompts from the top of the screen share one spot (`UI:WhenPromptFree`): a beacon's layer request goes
+first, a rare or a summon waits until the spot is free.
 
 ## 8. Network
 

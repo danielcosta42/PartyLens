@@ -27,11 +27,13 @@ Modules/Roster.lua
 Modules/Messaging.lua
 Modules/Summon.lua
 Modules/Net.lua
+Modules/SummonNet.lua
 Modules/Comm.lua
 Modules/Who.lua
 Modules/Layer.lua
 Modules/LayerNet.lua
 Modules/LayerWatch.lua
+Modules/Rares.lua
 Modules/Listing.lua
 Modules/Board.lua
 Modules/Autopilot.lua
