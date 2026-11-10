@@ -299,8 +299,11 @@ function Rares.OnMessage(partyLens, payload, sender, dist, via)
     local alive, key = f[8] == "1", Key(mapID, zoneUID, npcID)
     rt.heard[key] = { alive = alive, at = wall }
     local old = rt.list[key]
-    if old and old.alive == alive then
-        -- Not news: a copy of what I know (another bus, a repeat). It refreshes the record and costs no budget.
+    local moves = x ~= nil and old ~= nil and old.x ~= nil
+        and (math.abs(old.x - x) >= Rares.MOVE_STEP or math.abs(old.y - y) >= Rares.MOVE_STEP)
+    if old and old.alive == alive and not moves then
+        -- Not news: a copy of what I know (another bus, a repeat). It refreshes the record and costs no budget; a
+        -- word that moves it pays like news.
         Upsert(partyLens, { mapID = mapID, zoneUID = zoneUID, npcID = npcID, name = name, kind = kind,
             alive = alive, x = x, y = y, seen = seen })
         return

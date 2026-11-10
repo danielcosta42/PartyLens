@@ -199,6 +199,19 @@ W.deliver("PLSum", ask("72", 30, "ROGUE", time(), "Rep 2"), "GUILD", "RepB Asker
 local reopened = false
 for _, r in ipairs(PL:GetSummonRequests()) do reopened = reopened or r.id == "72" end
 check(reopened, "a newer copy of an ask taken back reopens it")
+W.deliver("PLSum", "PLS1|X|73|" .. time(), "GUILD", "RepC Asker")
+W.advance(5)
+W.deliver("ChehulRelay", "RL1|f1|2|RepC Asker|PLSum|" .. ask("73", 30, "ROGUE", time(), "Rep 3"), "WHISPER",
+  "Griefer Guy")
+local undone = false
+for _, r in ipairs(PL:GetSummonRequests()) do undone = undone or r.id == "73" end
+check(not undone, "a relayed copy (asker only a claim) never undoes a take-back")
+local r74
+for _, r in pairs(PL.summonNet.inbound) do if r.id == "74" then r74 = r end end
+local seen74 = r74.seen
+W.deliver("ChehulRelay", "RL1|f2|2|RepD Asker|PLSum|" .. ask("74", 30, "ROGUE", time() + 60, "Rep 4"), "WHISPER",
+  "Griefer Guy")
+check(r74.seen == seen74, "nor keeps anyone's ask fresh")
 W.advance(61) -- a fresh prompt budget: only the per-asker rule can hold it back
 local n0 = #asks
 W.deliver("PLSum", ask("79", 30, "ROGUE", time(), "Again"), "GUILD", "RepA Asker")

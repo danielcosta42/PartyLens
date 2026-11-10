@@ -264,6 +264,15 @@ end
 W.deliver("PLRare", wire(1454, 404, 501, 1, 1, 1, "r", time(), "Fresh News"), "GUILD", "News Er")
 check(#PL:GetRares() == copyNews + 2, "25 copies of one sighting cost one budget slot: the next news is taken")
 
+-- A copy that moves a known rare pays like news: one sender cannot drag it around.
+W.advance(61)
+local redraws = 0
+PL:On("RARES_CHANGED", function() redraws = redraws + 1 end)
+for i = 1, 30 do
+  W.deliver("PLRare", wire(1454, 404, 500, 20 * i, 20 * i, 1, "r", time(), "Copied"), "GUILD", "Drag Ger")
+end
+check(redraws <= 6, "30 moves from one sender: SENDER_BUDGET of them, the rest dropped (" .. redraws .. ")")
+
 -- One prompt per PROMPT_GAP; a made-up layer is no layer.
 W.advance(61)
 local p0 = #prompts

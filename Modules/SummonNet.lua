@@ -231,12 +231,14 @@ local function OnAsk(partyLens, f, sender, dist, via)
     if partyLens.db.blacklist[key] then
         return
     end
-    -- A repeat of an ask I know costs nothing: it refreshes it, and a newer one reopens it after a cancel.
+    -- A repeat of an ask I know costs nothing. Straight from the asker it refreshes it, and one sent after their
+    -- take-back reopens it; a relayed copy (its asker only a claim) changes nothing, so nobody can keep anyone's ask
+    -- alive or undo their take-back.
     local known = rt.inbound[key .. ":" .. id]
     if known then
-        if seen > known.seen then
+        if dist ~= "RELAY" and seen > known.seen then
             known.seen = seen
-            if known.state == "cancelled" then
+            if known.state == "cancelled" and seen > (known.cancelSeen or math.huge) then
                 known.state = "open"
                 Changed(partyLens)
             end
@@ -304,8 +306,10 @@ local function OnCancel(partyLens, f, sender, dist)
     end
     local key = Utils.NameKey(sender)
     local r = key and #f == 4 and RT(partyLens).inbound[key .. ":" .. f[3]]
-    if r then
-        r.state = "cancelled"
+    local now = GetServerTime()
+    local at = Whole(f[4], now - SummonNet.ASK_TTL, now + SummonNet.FUTURE)
+    if r and at then
+        r.state, r.cancelSeen = "cancelled", math.min(at, now)
         Changed(partyLens)
     end
 end
