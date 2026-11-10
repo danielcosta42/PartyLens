@@ -38,6 +38,8 @@ local function Defaults()
         meshPeers = {}, -- LibChehulMesh v7's saved peers, name -> time()
         -- Beacon: on by default (opt-out). hops = people brought over, one per person per day (todayKeys).
         beacon = { on = true, hops = 0, day = "", today = 0, todayKeys = {} },
+        -- Rare sightings: a prompt for rares alive in my zone, and the ones I see told to the network.
+        rares = { notify = true, share = true },
     }
 end
 

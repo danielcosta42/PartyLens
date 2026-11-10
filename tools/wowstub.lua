@@ -186,6 +186,7 @@ local function install(o)
   W.timers, W.frames, W.listeners = {}, {}, {}
   W.sent, W.chat, W.violations, W.invites, W.uninvites, W.left, W.whos, W.errors, W.printed = {}, {}, {}, {}, {}, {}, {}, {}, {}
   W.tells, W.joined = {}, {}
+  W.pos, W.waypoints, W.superTracked = { x = 0.523, y = 0.301 }, {}, false
   W.hw, W.lockdown, W.instance = false, false, false
   W.realm = o.realm or "ClassicBetaPvE2"
   W.mapID = o.mapID or 1453
@@ -265,6 +266,12 @@ local function install(o)
     return d.dist * d.dist, true
   end
   UnitIsVisible = function(u) local d = unit(u) return d ~= nil and d.visible ~= false end
+  UnitClassification = function(u) local d = unit(u) return d and d.classification or "normal" end
+  UnitIsDead = function(u)
+    local d = unit(u)
+    if d and isSecret(d.dead) then return d.dead end
+    return d ~= nil and d.dead == true
+  end
   UnitFactionGroup = function() return "Horde", "Horde" end
   UnitIsGhost = function() return false end
   GetPlayerInfoByGUID = function(guid)
@@ -312,7 +319,16 @@ local function install(o)
   C_AddOns = { GetAddOnMetadata = function(_, field) return field == "Version" and "test" or nil end }
   C_PlayerInfo = { ShouldDisplaySurname = function() return W.units.player.surname ~= nil end }
   C_NameUtil = { ReplaceSurnameSeparatorWithLinkSeparator = function(n) return (n:gsub(" ", "-")) end }
-  C_Map = { GetBestMapForUnit = function() return W.mapID end, GetMapInfo = noop }
+  C_Map = {
+    GetBestMapForUnit = function() return W.mapID end, GetMapInfo = noop,
+    GetPlayerMapPosition = function()
+      if not W.pos then return nil end
+      return { GetXY = function() return W.pos.x, W.pos.y end }
+    end,
+    SetUserWaypoint = function(point) table.insert(W.waypoints, point) return true end,
+  }
+  UiMapPoint = { CreateFromCoordinates = function(mapID, x, y) return { uiMapID = mapID, x = x, y = y } end }
+  C_SuperTrack = { SetSuperTrackedUserWaypoint = function(on) W.superTracked = on end }
   C_QuestLog = { GetTitleForQuestID = function(id) return W.quests[id] end }
   local R = Enum.SendAddonMessageResult
   local function addon(prefix, message, dist, target)
@@ -419,6 +435,13 @@ end
 function W.npc(unitToken, zoneUID, npcID, pet)
   W.units[unitToken] = { npc = true, pet = pet, guid = string.format("Creature-0-5250-0-%d-%d-0000ABCDEF", zoneUID,
     npcID or 3296) }
+end
+
+--- A rare (classification "rare", "rareelite" or "worldboss") on the given layer under the unit token.
+function W.rare(unitToken, zoneUID, npcID, name, classification, dead)
+  W.npc(unitToken, zoneUID, npcID)
+  local u = W.units[unitToken]
+  u.name, u.classification, u.dead = name, classification or "rare", dead == true
 end
 
 return W

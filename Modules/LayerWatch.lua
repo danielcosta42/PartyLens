@@ -55,6 +55,15 @@ local function Count(partyLens)
             c.groups = c.groups + 1
         end
     end
+    -- A layer of my zone known only by a rare alive on it is still a layer to show (and to go to).
+    local Rares = _G[ADDON_NAME .. "_Rares"]
+    if Rares and cur.mapID then
+        for _, r in ipairs(Rares.List(partyLens, cur.mapID)) do
+            if r.alive then
+                At(r.mapID, r.zoneUID)
+            end
+        end
+    end
     return by
 end
 
@@ -150,6 +159,8 @@ function LayerWatch.Layers(partyLens)
         c.hops = nil
         c.mine = z.mine and c.zoneUID == cur.zoneUID
         c.news = w and w.news or {}
+        local Rares = _G[ADDON_NAME .. "_Rares"] -- loads after this file
+        c.rares = Rares and Rares.OnLayer(partyLens, c.mapID, c.zoneUID) or {}
         z.population = z.population + c.population
         z.layers[#z.layers + 1] = c
     end

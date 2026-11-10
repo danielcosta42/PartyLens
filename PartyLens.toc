@@ -32,6 +32,7 @@ Modules/Who.lua
 Modules/Layer.lua
 Modules/LayerNet.lua
 Modules/LayerWatch.lua
+Modules/Rares.lua
 Modules/Listing.lua
 Modules/Board.lua
 Modules/Autopilot.lua

@@ -83,6 +83,7 @@ The UI may write `db.ui`, `db.minimap`, `db.animations` directly.
 | `minimap.hide` / `minimap.angle` | `false` / `225` | UI-owned |
 | `ui` | `{}` | free table for the UI (window position, last page, ...) |
 | `beacon.on` / `beacon.hops` / `beacon.today` | `true` / `0` / `0` | read only (write with `SetBeacon`): beacon setting (opt-out), people brought over in all, today |
+| `rares.notify` / `rares.share` | `true` / `true` | a prompt for rares alive in my zone; the rares I see told to the network |
 | `blacklist` | `{}` | `[key] = name`; use `Block`/`Unblock`, not direct writes |
 
 ## 3. Radar entries
@@ -195,6 +196,14 @@ Rows are layers, never people: the page shows no names except to the beacon, for
 | `PartyLens:DeclineLayerRequest(req)` | | tells them no |
 | `PartyLens:CanUndoLayer()` | | true after a served hop (either side) while still grouped |
 | `PartyLens:UndoLayerGroup()` | **yes** | beacon side: uninvites the hopper (or leaves when not leader); requester side: leaves the group. States follow the roster: the served request goes (beacon) or stays `"hopped"` with `CanUndoLayer()` false (requester) on the next `LAYER_REQUESTS_CHANGED`/`ROSTER_CHANGED` |
+| `PartyLens:GetRares(mapID?)` | | rare sightings still fresh (15 min), alive first then newest; `mapID`'s only when given: `{ key, mapID, zoneUID, npcID, name, kind = "rare"|"rareelite"|"worldboss", alive, x|nil, y|nil (the reporter's spot, thousandths), seen (server time), ago, mine (I saw it), onMyMap, here (my layer), ordinal|nil, canGo, canMark }`. `canGo` = my map, another layer, a beacon on duty there |
+| `PartyLens:GoToRare(sighting)` | yes | `RequestLayer` for the rare's layer; its reasons, plus `"gone"` |
+| `PartyLens:MarkRare(sighting)` | yes | the game's map pin (`C_Map.SetUserWaypoint`, tracked) at the reporter's spot. `false, reason`: `"gone"`, `"no_position"`, `"cannot_mark"` |
+
+Rows of `GetLayers()` also carry `rares` = the rares alive on that layer (`GetRares` entries). A layer of my map known
+only by a rare alive on it is a row too. Events: `RARES_CHANGED` (any sighting in or out), `RARE_SPOTTED(view)` (a
+rare alive on my map heard from the network: once per rare and layer per 10 min, never one I saw myself, only with
+`rares.notify`).
 
 ## 7. Summon (warlock)
 

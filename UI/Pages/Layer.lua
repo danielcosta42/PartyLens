@@ -523,12 +523,20 @@ local function RefreshDetail(page, item)
 	b.beacons.value:SetText(tostring(item.beacons))
 	UI.TextColor(b.beacons.value, item.beacons > 0 and T.amber or T.text)
 	b.groups.value:SetText(tostring(item.groups))
-	local now, any = time(), false
+	-- Rares alive on this layer come first, then the layer's own news.
+	local now, any, lines = time(), false, {}
+	for _, r in ipairs(item.rares or {}) do
+		lines[#lines + 1] = { text = string.format(L["Rare: %s"], UI.Esc(r.name)), ago = r.ago, rare = true }
+	end
+	for _, n in ipairs(item.news or {}) do
+		lines[#lines + 1] = { text = NewsText(n), ago = now - n.t }
+	end
 	for i, line in ipairs(b.news) do
-		local n = item.news and item.news[i]
+		local n = lines[i]
 		line.dot:SetShown(n ~= nil)
-		line.text:SetText(n and NewsText(n) or "")
-		line.ago:SetText(n and UI.Ago(now - n.t) or "")
+		UI.Paint(line.dot, n and n.rare and T.bad or T.amber)
+		line.text:SetText(n and n.text or "")
+		line.ago:SetText(n and UI.Ago(n.ago) or "")
 		any = any or n ~= nil
 	end
 	b.quiet:SetShown(not any)
@@ -793,6 +801,43 @@ UI:Listen("layer", function()
 		prompt.req = nil
 		ShowNext()
 	end
+end)
+
+--------------------------------------------------------------------------------
+-- A rare alive in my zone, told by the network: a prompt from the top of the screen, window open or not. Go
+-- (a beacon of that layer brings me over) or Mark (the game's map pin at the reporter's spot), each from its own
+-- click; otherwise it leaves by itself.
+--------------------------------------------------------------------------------
+local rarePrompt
+
+local function RareBody(r)
+	local where = r.here and L["On your layer"] or string.format(L["On layer %d of this zone"], r.zoneUID)
+	local pos = r.x and string.format(" · %.1f, %.1f", r.x / 10, r.y / 10) or ""
+	return where .. " · " .. string.format(L["%s ago"], UI.Ago(r.ago)) .. pos
+end
+
+UI:Listen("rare", function(r)
+	if type(r) ~= "table" or not r.alive then return end
+	if not rarePrompt then
+		rarePrompt = Kit.Toast(UIParent)
+		rarePrompt:SetFrameStrata("DIALOG")
+		UI.rarePrompt = rarePrompt
+	end
+	local actions = {}
+	if r.canGo then
+		actions[#actions + 1] = { label = L["Go to that layer"], fn = function()
+			local ok, why = UI.data.GoToRare(r)
+			if not ok then UI:Notify("notice", UI.data.Reason(why)) end
+		end }
+	end
+	if r.canMark then
+		actions[#actions + 1] = { label = L["Mark on map"], kind = #actions == 0 and "primary" or "ghost", fn = function()
+			local ok, why = UI.data.MarkRare(r)
+			if not ok then UI:Notify("notice", UI.data.Reason(why)) end
+		end }
+	end
+	rarePrompt:Pop(string.format(L["Rare: %s"], UI.Esc(r.name)), RareBody(r),
+		{ hold = 20, color = T.bad, actions = actions })
 end)
 
 UI:RegisterPage("layer", {

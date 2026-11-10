@@ -18,6 +18,7 @@ local Who = Mod("Who")
 local Layer = Mod("Layer")
 local LayerNet = Mod("LayerNet")
 local LayerWatch = Mod("LayerWatch")
+local Rares = Mod("Rares")
 local Listing = Mod("Listing")
 local Board = Mod("Board")
 local Autopilot = Mod("Autopilot")
@@ -337,6 +338,19 @@ function PartyLens:UndoLayerGroup()
     return LayerNet.Undo(self)
 end
 
+-- Rare sightings (contract section 6).
+function PartyLens:GetRares(mapID)
+    return Rares.List(self, mapID)
+end
+
+function PartyLens:GoToRare(sighting)
+    return Rares.GoTo(self, sighting)
+end
+
+function PartyLens:MarkRare(sighting)
+    return Rares.Mark(self, sighting)
+end
+
 function PartyLens:GetSummon()
     return Summon.Snapshot(self)
 end
@@ -399,6 +413,8 @@ function PartyLens:OnLoad()
     Net.Register(LayerNet.PREFIX, function(payload, sender, dist)
         LayerNet.OnMessage(self, payload, sender, dist)
     end)
+    Net.Register(Rares.PREFIX, function(payload, sender, dist) Rares.OnMessage(self, payload, sender, dist) end)
+    Net.Relayable(Rares.PREFIX)
     self:On("LISTING_CHANGED", function(state) Autopilot.OnListing(self, state) end)
     self:On("ENTRY_ADDED", function() Autopilot.Check(self) end)
     self:On("LAYER_CHANGED", function(cur) LayerNet.OnLayerChanged(self, cur) end)
@@ -411,6 +427,7 @@ function PartyLens:OnLoad()
         Layer.Prune(self)
         LayerWatch.Watch(self)
         Board.Prune(self)
+        Rares.Prune(self)
     end)
     C_Timer.After(Board.SYNC_FIRST, function() Board.Sync(self) end)
     C_Timer.NewTicker(Board.SYNC_INTERVAL, function() Board.Sync(self) end)
@@ -459,12 +476,15 @@ local EVENTS = {
     end,
     PLAYER_TARGET_CHANGED = function(self)
         Layer.Observe(self, "target")
+        Rares.Observe(self, "target")
     end,
     UPDATE_MOUSEOVER_UNIT = function(self)
         Layer.Observe(self, "mouseover")
+        Rares.Observe(self, "mouseover")
     end,
     NAME_PLATE_UNIT_ADDED = function(self, unit)
         Layer.Observe(self, unit)
+        Rares.Observe(self, unit)
     end,
     GROUP_ROSTER_UPDATE = function(self)
         if not IsInGroup() then

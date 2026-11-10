@@ -63,6 +63,12 @@ local function Build(page)
 	page.beacon = check(L["Be a beacon"],
 		L["Players on other layers of your zone can ask to come to yours; you invite each one with a click."],
 		function() return D.Beacon().on end, function(on) D.SetBeacon(on) end)
+	page.rareNotify = check(L["Tell me about rares in my zone"],
+		L["When someone sees a rare on any layer of your zone, a prompt offers to take you there."],
+		function() return D.Get("rares.notify") end, function(on) D.Set("rares.notify", on) end)
+	page.rareShare = check(L["Share the rares I see"],
+		L["Rares you target, mouse over or see nearby are told to players in the same zone."],
+		function() return D.Get("rares.share") end, function(on) D.Set("rares.share", on) end)
 
 	-- Right column
 	local rx = COL + 40
@@ -126,6 +132,8 @@ local function Refresh(page)
 	page.join:SetChecked(D.Get("joinLFGChannel"))
 	page.alert:SetChecked(D.Get("alertOnMatch"))
 	page.beacon:SetChecked(D.Beacon().on)
+	page.rareNotify:SetChecked(D.Get("rares.notify"))
+	page.rareShare:SetChecked(D.Get("rares.share"))
 	local mine = D.MyRoles()
 	for role, chip in pairs(page.roles) do chip:SetSelected(mine[role], true) end
 	page.comment:SetValue(D.Get("comment") or "")
