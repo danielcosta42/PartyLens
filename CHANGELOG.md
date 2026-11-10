@@ -5,6 +5,12 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [1.2.0]
+
+- **Rede mais leve para o servidor.** A lib ChehulNet v1.3.0 usa um canal por tipo de reino no Forever (PvE, PvP,
+  RP…), já que sussurro não atravessa reinos de tipos diferentes; lê a lista de membros a cada ~10 min em vez de a
+  cada 2; e reduz os sussurros para quem já saiu. Nada aparece no chat.
+
 ## [1.1.0]
 
 - **Rede mais estável fora da guilda.** A lib ChehulNet v1.2.0 repassa itens de cliente em cliente sem repetir,

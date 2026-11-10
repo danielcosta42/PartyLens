@@ -393,10 +393,11 @@ function W.boot(opts)
   return _G.PartyLens
 end
 
---- Fills the mesh's directory (the realm bus's whisper targets).
+--- Fills the mesh's directory (the realm bus's whisper targets), as a list just read: LibChehulMesh v9 whispers only
+--- members of a list read within DIR_FRESH.
 function W.directory(names)
   local mesh = _G.ChehulMesh
-  mesh.dir.names, mesh.dir.count = names, #names
+  mesh.dir.names, mesh.dir.count, mesh.dir.at = names, #names, time()
 end
 
 --- Puts people in my group: { { name, surname, class, role, dist (yards; nil = unmeasured), visible } }.
