@@ -12,6 +12,7 @@ local Entry = Mod("Entry")
 local Chat = Mod("Chat")
 local Messaging = Mod("Messaging")
 local Summon = Mod("Summon")
+local SummonNet = Mod("SummonNet")
 local Net = Mod("Net")
 local Comm = Mod("Comm")
 local Who = Mod("Who")
@@ -363,6 +364,39 @@ function PartyLens:AnnounceSummon(mode)
     return Summon.Announce(self, mode)
 end
 
+-- Summons across the realm (contract section 7).
+function PartyLens:AskSummon(dest)
+    return SummonNet.Ask(self, dest)
+end
+
+function PartyLens:CancelSummonAsk()
+    SummonNet.CancelAsk(self)
+end
+
+function PartyLens:GetSummonAsk()
+    return SummonNet.MyAsk(self)
+end
+
+function PartyLens:AcceptSummonOffer(offer)
+    return SummonNet.AcceptOffer(self, offer)
+end
+
+function PartyLens:IsSummoner()
+    return SummonNet.IsSummoner(self)
+end
+
+function PartyLens:GetSummonRequests()
+    return SummonNet.Inbound(self)
+end
+
+function PartyLens:OfferSummon(req)
+    return SummonNet.Offer(self, req)
+end
+
+function PartyLens:IgnoreSummonRequest(req)
+    SummonNet.Ignore(self, req)
+end
+
 local function Peers()
     local CN = _G.ChehulNet
     local out, now = {}, time()
@@ -413,8 +447,14 @@ function PartyLens:OnLoad()
     Net.Register(LayerNet.PREFIX, function(payload, sender, dist)
         LayerNet.OnMessage(self, payload, sender, dist)
     end)
-    Net.Register(Rares.PREFIX, function(payload, sender, dist) Rares.OnMessage(self, payload, sender, dist) end)
+    Net.Register(Rares.PREFIX, function(payload, sender, dist, via)
+        Rares.OnMessage(self, payload, sender, dist, via)
+    end)
     Net.Relayable(Rares.PREFIX)
+    Net.Register(SummonNet.PREFIX, function(payload, sender, dist, via)
+        SummonNet.OnMessage(self, payload, sender, dist, via)
+    end)
+    Net.Relayable(SummonNet.PREFIX)
     self:On("LISTING_CHANGED", function(state) Autopilot.OnListing(self, state) end)
     self:On("ENTRY_ADDED", function() Autopilot.Check(self) end)
     self:On("LAYER_CHANGED", function(cur) LayerNet.OnLayerChanged(self, cur) end)
@@ -428,6 +468,7 @@ function PartyLens:OnLoad()
         LayerWatch.Watch(self)
         Board.Prune(self)
         Rares.Prune(self)
+        SummonNet.Tick(self)
     end)
     C_Timer.After(Board.SYNC_FIRST, function() Board.Sync(self) end)
     C_Timer.NewTicker(Board.SYNC_INTERVAL, function() Board.Sync(self) end)

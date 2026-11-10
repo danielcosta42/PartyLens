@@ -215,6 +215,24 @@ by squared distance, or, where the client cannot measure it (instances), whether
 `PartyLens:AnnounceSummon("all"|"next")` — **click**: posts the list (or the next name, or "everyone is here") to
 party/raid chat; `false, "not_in_group"` alone.
 
+Summons across the realm (`summonNet.offer`, default `true`, matters only to warlocks of level 20 and up):
+
+| Call | Click? | Returns / does |
+|---|---|---|
+| `PartyLens:AskSummon(dest)` | yes | asks the realm's warlocks for a summon to `dest` (free text, 40 chars, no `|`), again every 2 min while open, 10 min at most. `false, reason`: `"empty"`, `"pending"` (one at a time), `"cannot_send"` |
+| `PartyLens:CancelSummonAsk()` | | takes it back (tells the network) |
+| `PartyLens:GetSummonAsk()` | | nil or `{ id, dest, t, state = "open"|"cancelled"|"expired", offers = { { name, key, zone, t, state = "offered"|"invited" } } }` (offers newest first, 5 min each) |
+| `PartyLens:AcceptSummonOffer(offer)` | **yes** | invites that warlock. `false, reason`: `"gone"`, `"cannot_invite"`, `"group_full"`, `"in_group"` |
+| `PartyLens:IsSummoner()` | | a warlock of level 20+ with `summonNet.offer` |
+| `PartyLens:GetSummonRequests()` | | a summoner's asks heard, newest first, open or offered: `{ rkey, id, name, key, level, classFile|nil, dest, seen, t, state }`; empty for anyone else |
+| `PartyLens:OfferSummon(req)` | yes | whispers the offer (with my zone) to the asker. `false, reason`: `"gone"` (one offer per ask), `"not_summoner"`, `"cannot_send"` |
+| `PartyLens:IgnoreSummonRequest(req)` | | off my list |
+
+Events: `SUMMON_REQUEST(req)` (a summoner, an ask heard: 3 prompts a minute at most, none inside an instance),
+`SUMMON_OFFER(offer)` (the asker, a warlock's first offer for my open ask), and `SUMMON_CHANGED` on any change.
+The UI's prompts from the top of the screen share one spot (`UI:WhenPromptFree`): a beacon's layer request goes
+first, a rare or a summon waits until the spot is free.
+
 ## 8. Network
 
 `PartyLens:GetNetworkStatus()` →

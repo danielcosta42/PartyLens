@@ -511,6 +511,20 @@ local stray = 0
 for k, p in pairs(UI.pageFrames) do if k ~= "settings" and p.__shown then stray = stray + 1 end end
 check(stray == 0 and UI.pageFrames.settings.__alpha == 1, "only the current page is on screen")
 
+-- Every control of a page placed from its top-left stays inside the page's height (a column that runs past the
+-- bottom draws below the window). Wrapped lines count: a sub-line's height is its measured string height.
+for key, page in pairs(UI.pageFrames) do
+	local over = {}
+	for _, child in ipairs(page.__children or {}) do
+		local pt = child.__points and child.__points[1]
+		if pt and pt[1] == "TOPLEFT" and pt[2] == page and type(pt[5]) == "number" and child.GetHeight then
+			local bottom = -pt[5] + (child:GetHeight() or 0)
+			if bottom > UI.PAGE_H then over[#over + 1] = string.format("%.0f", bottom) end
+		end
+	end
+	check(#over == 0, "nothing on the '" .. key .. "' page runs past its height (" .. table.concat(over, ",") .. ")")
+end
+
 -- Sidebar indicator slides
 UI:Open("groups")
 S.advance(0.3)
@@ -731,6 +745,32 @@ check(PL:GetBeacon().queue == 0 and (not prompt.__shown or prompt.__alpha == 0),
   "a fight drops the open request (the asker hears no) and the prompt goes with it")
 W.combat = false
 W.fire("PLAYER_REGEN_ENABLED")
+S.advance(1)
+-- A rare in my zone heard from the network: its own prompt in the same spot, after anything showing there.
+local function rare(npcID, name, zoneUID)
+	return table.concat({ "PLR1", "S", 1453, zoneUID or 202, npcID, 400, 650, 1, "r", time(), name }, "|")
+end
+W.deliver("PLRare", rare(71, "Fenros"), "GUILD", "Ana Lima")
+S.advance(0.3)
+local rp = UI.rarePrompt
+check(rp and rp.__shown and rp:GetParent() == UIParent and rp.title.__text == "Rare: Fenros"
+	and rp.body.__text:find("Just now", 1, true) and rp.body.__text:find("near 40.0, 65.0", 1, true),
+	"a rare in my zone: a prompt with the layer, 'just now' and where")
+local markBtn
+for _, b in ipairs(rp.actions) do if b.__shown and b.label.__text == "Mark on map" then markBtn = b end end
+check(markBtn ~= nil, "with Mark on map")
+W.deliver("PLLnet", "PLL2|R|1453|303|202", "WHISPER", "Zoe Ask-ClassicBetaPvE2")
+S.advance(0.6)
+check(prompt.__shown and prompt.title.__text == "Zoe Ask wants your layer" and (not rp.__shown or rp.__alpha == 0),
+	"a layer request takes the spot: the rare's prompt leaves")
+S.advance(31)
+W.deliver("PLRare", rare(72, "Azuregos", 303), "GUILD", "Bia Rocha")
+S.advance(0.3)
+check(not rp.__shown or rp.__alpha == 0 or rp.title.__text ~= "Rare: Azuregos", "a rare waits while the request is up")
+click(prompt.actions[2])
+S.advance(2)
+check(rp.__shown and rp.__alpha ~= 0 and rp.title.__text == "Rare: Azuregos", "and shows once the spot is free")
+S.advance(25)
 lp = UI:Open("layer")
 S.advance(0.3)
 W.setGroup({ { name = "Jon", surname = "Mar" } })

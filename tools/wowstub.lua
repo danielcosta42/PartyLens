@@ -187,6 +187,7 @@ local function install(o)
   W.sent, W.chat, W.violations, W.invites, W.uninvites, W.left, W.whos, W.errors, W.printed = {}, {}, {}, {}, {}, {}, {}, {}, {}
   W.tells, W.joined = {}, {}
   W.pos, W.waypoints, W.superTracked = { x = 0.523, y = 0.301 }, {}, false
+  W.zoneText = o.zoneText or "Searing Gorge"
   W.hw, W.lockdown, W.instance = false, false, false
   W.realm = o.realm or "ClassicBetaPvE2"
   W.mapID = o.mapID or 1453
@@ -266,6 +267,7 @@ local function install(o)
     return d.dist * d.dist, true
   end
   UnitIsVisible = function(u) local d = unit(u) return d ~= nil and d.visible ~= false end
+  GetRealZoneText = function() return W.zoneText end
   UnitClassification = function(u) local d = unit(u) return d and d.classification or "normal" end
   UnitIsDead = function(u)
     local d = unit(u)

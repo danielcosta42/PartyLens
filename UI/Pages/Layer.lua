@@ -770,6 +770,7 @@ local function ShowNext()
 		return
 	end
 	prompt.req = req
+	UI:ClearPrompts(prompt)
 	prompt:Pop(string.format(L["%s wants your layer"], UI.Esc(req.name)), body, {
 		hold = 90,
 		actions = {
@@ -812,12 +813,13 @@ local rarePrompt
 
 local function RareBody(r)
 	local where = r.here and L["On your layer"] or string.format(L["On layer %d of this zone"], r.zoneUID)
-	local pos = r.x and string.format(" · %.1f, %.1f", r.x / 10, r.y / 10) or ""
-	return where .. " · " .. string.format(L["%s ago"], UI.Ago(r.ago)) .. pos
+	local pos = r.x and string.format(L["near %.1f, %.1f"], r.x / 10, r.y / 10) or nil
+	local parts = { where, r.ago < 10 and L["Just now"] or string.format(L["%s ago"], UI.Ago(r.ago)) }
+	if pos then parts[#parts + 1] = pos end
+	return table.concat(parts, ". ")
 end
 
-UI:Listen("rare", function(r)
-	if type(r) ~= "table" or not r.alive then return end
+local function ShowRare(r)
 	if not rarePrompt then
 		rarePrompt = Kit.Toast(UIParent)
 		rarePrompt:SetFrameStrata("DIALOG")
@@ -838,6 +840,11 @@ UI:Listen("rare", function(r)
 	end
 	rarePrompt:Pop(string.format(L["Rare: %s"], UI.Esc(r.name)), RareBody(r),
 		{ hold = 20, color = T.bad, actions = actions })
+end
+
+UI:Listen("rare", function(r)
+	if type(r) ~= "table" or not r.alive then return end
+	UI:WhenPromptFree(function() ShowRare(r) end)
 end)
 
 UI:RegisterPage("layer", {

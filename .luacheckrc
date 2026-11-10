@@ -37,6 +37,8 @@ read_globals = {
     "UnitIsPlayer", "UnitPlayerControlled", "UnitGroupRolesAssigned", "UnitIsGroupLeader", "UnitIsGroupAssistant",
     "UnitDistanceSquared", "UnitIsVisible", "GetPlayerInfoByGUID", "UnitIsAFK", "UnitAffectingCombat",
     "UnitClassification", "UnitIsDead",
+    -- zone
+    "GetRealZoneText",
     -- group, guild, instance
     "GetNumGroupMembers", "IsInGroup", "IsInRaid", "IsInGuild", "IsInInstance",
     -- channels

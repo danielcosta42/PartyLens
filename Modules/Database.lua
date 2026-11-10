@@ -40,6 +40,8 @@ local function Defaults()
         beacon = { on = true, hops = 0, day = "", today = 0, todayKeys = {} },
         -- Rare sightings: a prompt for rares alive in my zone, and the ones I see told to the network.
         rares = { notify = true, share = true },
+        -- Summons across the realm: a warlock (level 20+) gets the network's asks while this is on.
+        summonNet = { offer = true },
     }
 end
 

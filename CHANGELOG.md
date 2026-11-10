@@ -5,6 +5,16 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [1.3.0]
+
+- **Raros por camada.** Quem mira, passa o mouse ou vê a placa de um rare, rare elite ou chefe de mundo avisa a zona
+  pela rede. Quem está na mesma zona recebe um aviso com **Ir para a camada** (pelos beacons) ou **Marcar no mapa**,
+  e a página de Camadas mostra os raros vivos de cada camada. Só um punhado de jogadores avisa cada rare: quem já
+  ouviu fica quieto.
+- **Summon do reino.** Na página de Summon, diga para onde precisa ir: os bruxos com PartyLens no reino veem o
+  pedido e oferecem; você convida quem quiser com um clique.
+- Os avisos do topo da tela não se sobrepõem: um espera o outro.
+
 ## [1.2.0]
 
 - **Rede mais leve para o servidor.** A lib ChehulNet v1.3.0 usa um canal por tipo de reino no Forever (PvE, PvP,

@@ -27,6 +27,7 @@ Modules/Roster.lua
 Modules/Messaging.lua
 Modules/Summon.lua
 Modules/Net.lua
+Modules/SummonNet.lua
 Modules/Comm.lua
 Modules/Who.lua
 Modules/Layer.lua

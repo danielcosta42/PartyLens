@@ -63,12 +63,6 @@ local function Build(page)
 	page.beacon = check(L["Be a beacon"],
 		L["Players on other layers of your zone can ask to come to yours; you invite each one with a click."],
 		function() return D.Beacon().on end, function(on) D.SetBeacon(on) end)
-	page.rareNotify = check(L["Tell me about rares in my zone"],
-		L["When someone sees a rare on any layer of your zone, a prompt offers to take you there."],
-		function() return D.Get("rares.notify") end, function(on) D.Set("rares.notify", on) end)
-	page.rareShare = check(L["Share the rares I see"],
-		L["Rares you target, mouse over or see nearby are told to players in the same zone."],
-		function() return D.Get("rares.share") end, function(on) D.Set("rares.share", on) end)
 
 	-- Right column
 	local rx = COL + 40
@@ -111,15 +105,30 @@ local function Build(page)
 
 	rsection(L["Blocked players"], y - 204)
 	page.blocked = Kit.List(page, { rowHeight = 30, gap = 3, create = CreateBlocked, bind = BindBlocked, width = w - 12,
-		viewHeight = 120, emptyTop = 4 })
+		viewHeight = 72, emptyTop = 4 })
 	page.blocked:SetPoint("TOPLEFT", rx, y - 230)
 	page.blocked:SetPoint("RIGHT", page, "RIGHT", 0, 0)
-	page.blocked:SetHeight(120)
+	page.blocked:SetHeight(72)
 	page.blocked:SetEmpty(L["Nobody blocked"], L["Block a player from the menu on their card."])
 	page.clear = Kit.Button(page, L["Unblock everyone"], "danger", function(b)
 		b:Confirm(L["Click again to unblock"], function() D.ClearBlocked() end)
 	end, { h = 26 })
-	page.clear:SetPoint("TOPLEFT", rx, y - 360)
+	page.clear:SetPoint("TOPLEFT", rx, y - 312)
+
+	-- What the network does for me: rares in my zone, and summons for warlocks. Short labels, no sub-line: the
+	-- column has room for three rows.
+	rsection(L["Network"], y - 352)
+	local function rcheck(label, at, get, set)
+		local c = Kit.Check(page, label, get(), function(on) set(on) end, nil, w)
+		c:SetPoint("TOPLEFT", rx, at)
+		return c
+	end
+	page.rareNotify = rcheck(L["Tell me about rares in my zone"], y - 380,
+		function() return D.Get("rares.notify") end, function(on) D.Set("rares.notify", on) end)
+	page.rareShare = rcheck(L["Share the rares I see"], y - 406,
+		function() return D.Get("rares.share") end, function(on) D.Set("rares.share", on) end)
+	page.summonOffer = rcheck(L["Offer summons (warlocks)"], y - 432,
+		function() return D.Get("summonNet.offer") end, function(on) D.Set("summonNet.offer", on) end)
 
 	UI:OnSetting("animations", function(on) page.animations:SetChecked(on) end)
 end
@@ -134,6 +143,7 @@ local function Refresh(page)
 	page.beacon:SetChecked(D.Beacon().on)
 	page.rareNotify:SetChecked(D.Get("rares.notify"))
 	page.rareShare:SetChecked(D.Get("rares.share"))
+	page.summonOffer:SetChecked(D.Get("summonNet.offer"))
 	local mine = D.MyRoles()
 	for role, chip in pairs(page.roles) do chip:SetSelected(mine[role], true) end
 	page.comment:SetValue(D.Get("comment") or "")

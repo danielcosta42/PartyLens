@@ -55,11 +55,12 @@ local function Count(partyLens)
             c.groups = c.groups + 1
         end
     end
-    -- A layer of my zone known only by a rare alive on it is still a layer to show (and to go to).
+    -- A layer of my zone known only by a rare alive on it is still a layer to show (and to go to), when I saw that
+    -- layer myself: a sighting alone (anyone can make one up) never adds a layer.
     local Rares = _G[ADDON_NAME .. "_Rares"]
     if Rares and cur.mapID then
         for _, r in ipairs(Rares.List(partyLens, cur.mapID)) do
-            if r.alive then
+            if r.alive and Layer.OrdinalOf(partyLens, r.mapID, r.zoneUID) then
                 At(r.mapID, r.zoneUID)
             end
         end
@@ -148,6 +149,15 @@ end
 function LayerWatch.Layers(partyLens)
     local cur, rt = Layer.Current(partyLens), RT(partyLens)
     local zones, order = {}, {}
+    -- the rares alive per layer, from one list (the layer page's news)
+    local Rares, rares = _G[ADDON_NAME .. "_Rares"], {} -- loads after this file
+    for _, r in ipairs(Rares and Rares.List(partyLens) or {}) do
+        if r.alive then
+            local k = r.mapID .. ":" .. r.zoneUID
+            rares[k] = rares[k] or {}
+            table.insert(rares[k], r)
+        end
+    end
     for key, c in pairs(Count(partyLens)) do
         local z = zones[c.mapID]
         if not z then
@@ -159,8 +169,7 @@ function LayerWatch.Layers(partyLens)
         c.hops = nil
         c.mine = z.mine and c.zoneUID == cur.zoneUID
         c.news = w and w.news or {}
-        local Rares = _G[ADDON_NAME .. "_Rares"] -- loads after this file
-        c.rares = Rares and Rares.OnLayer(partyLens, c.mapID, c.zoneUID) or {}
+        c.rares = rares[key] or {}
         z.population = z.population + c.population
         z.layers[#z.layers + 1] = c
     end

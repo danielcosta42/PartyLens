@@ -12,9 +12,13 @@ local Net = _G[ADDON_NAME .. "_Net"]
 -- x, y: the reporter's own position on that map, in thousandths (empty when the game gives none); alive 1|0;
 -- kind r (rare), e (rare elite), w (world boss); seen: the reporter's GetServerTime() (every client shares that
 -- clock). It goes on GUILD, to the group and to the realm (relayed by LibChehulMesh v8+), at most once per
--- SEND_GAP per rare and layer unless the rare died meanwhile. Nothing in a message is trusted beyond its shape:
--- a field out of range, a sighting older than FRESH or ahead of the clock, or a sender past its budget is
--- dropped. A sighting is data, never a reason to whisper or invite: going there is the player's click.
+-- SEND_GAP per rare and layer unless the rare died meanwhile, and only when nobody told it already: a client that
+-- sees a rare waits SEND_DELAY (plus up to SEND_JITTER) and stays quiet when the same rare and state arrives from
+-- the network meanwhile, or arrived within SEND_GAP. A hundred players at a world boss send a handful of words,
+-- not a hundred. Nothing in a message is trusted beyond its shape: a field out of range, a sighting older than
+-- FRESH or ahead of the clock, or a sender past its budget is dropped; a relayed sighting is budgeted on the peer
+-- that whispered it (its origin is only a claim), and all senders together on GLOBAL_BUDGET. A sighting is data,
+-- never a reason to whisper or invite: going there is the player's click.
 local Rares = {}
 
 Rares.PREFIX = "PLRare"
@@ -29,9 +33,14 @@ Rares.LIST_MAX = 60
 Rares.SENDER_BUDGET = 6      -- sightings taken from one sender per minute
 Rares.NAME_MAX = 48
 Rares.RELAY_SLOTS = 3        -- realm queue keys shared by all sightings (the mesh queue holds 40 for the family)
+Rares.SEND_DELAY = 2         -- a sighting of mine waits this long, plus up to SEND_JITTER, for someone else's word
+Rares.SEND_JITTER = 13
+Rares.GLOBAL_BUDGET = 20     -- sightings taken from everyone together per minute
+Rares.PROMPT_GAP = 30        -- one prompt at most per this, whatever the rare
 
 local function RT(partyLens)
-    partyLens.rares = partyLens.rares or { list = {}, sent = {}, notified = {}, senders = {} }
+    partyLens.rares = partyLens.rares or { list = {}, sent = {}, notified = {}, senders = {}, heard = {},
+        pending = {}, all = { window = 0, n = 0 }, lastPrompt = -math.huge }
     return partyLens.rares
 end
 
@@ -89,7 +98,12 @@ local function Prune(partyLens)
         end
     end
     local wall = time()
-    for _, stamps in ipairs({ rt.sent, rt.notified }) do
+    for key, b in pairs(rt.senders) do
+        if wall - b.window > 120 then
+            rt.senders[key] = nil
+        end
+    end
+    for _, stamps in ipairs({ rt.sent, rt.notified, rt.heard }) do
         for key, v in pairs(stamps) do
             local at = type(v) == "table" and v.at or v
             if wall - at > Rares.FRESH * 2 then
@@ -101,31 +115,35 @@ end
 Rares.Prune = Prune
 
 -- Takes a sighting in. Returns the record and whether it is news (a rare not known on that layer, or one whose
--- state changed). An older word about a known rare changes nothing.
+-- state changed). An older word from the network about a known rare changes nothing; what I see myself always
+-- replaces it. The list keeps LIST_MAX, the least recently heard going first.
 local function Upsert(partyLens, s)
     local rt = RT(partyLens)
     local key = Key(s.mapID, s.zoneUID, s.npcID)
     local old = rt.list[key]
-    if old and old.seen > s.seen then
+    if old and not s.mine and old.seen > s.seen then
         return old, false
     end
     local news = old == nil or old.alive ~= s.alive
-    s.key = key
+    s.key, s.at = key, time()
     if old and not s.x then
         s.x, s.y = old.x, old.y -- a later word without a position keeps the last one heard
     end
+    local moved = old ~= nil and (old.x ~= s.x or old.y ~= s.y)
     rt.list[key] = s
-    local count, oldestKey, oldestSeen = 0, nil, nil
+    local count, oldestKey, oldestAt = 0, nil, nil
     for k, r in pairs(rt.list) do
         count = count + 1
-        if not oldestSeen or r.seen < oldestSeen then
-            oldestKey, oldestSeen = k, r.seen
+        if not oldestAt or r.at < oldestAt then
+            oldestKey, oldestAt = k, r.at
         end
     end
     if count > Rares.LIST_MAX and oldestKey then
         rt.list[oldestKey] = nil
     end
-    partyLens:Fire("RARES_CHANGED")
+    if news or moved then
+        partyLens:Fire("RARES_CHANGED")
+    end
     return s, news
 end
 
@@ -172,7 +190,8 @@ function Rares.View(partyLens, s)
     }
 end
 
--- A prompt for a rare alive in my zone, once per rare and layer per NOTIFY_GAP; never one I am looking at.
+-- A prompt for a rare alive in my zone, once per rare and layer per NOTIFY_GAP and one at most per PROMPT_GAP;
+-- never one I am looking at.
 local function Notify(partyLens, s)
     if not Settings(partyLens).notify or not s.alive or s.mine or Utils.InInstance() then
         return
@@ -181,10 +200,10 @@ local function Notify(partyLens, s)
         return
     end
     local rt, now = RT(partyLens), time()
-    if now - (rt.notified[s.key] or -math.huge) < Rares.NOTIFY_GAP then
+    if now - (rt.notified[s.key] or -math.huge) < Rares.NOTIFY_GAP or now - rt.lastPrompt < Rares.PROMPT_GAP then
         return
     end
-    rt.notified[s.key] = now
+    rt.notified[s.key], rt.lastPrompt = now, now
     partyLens:Fire("RARE_SPOTTED", Rares.View(partyLens, s))
 end
 
@@ -217,16 +236,38 @@ function Rares.Observe(partyLens, unit)
         return
     end
     local x, y = MyPosition(mapID)
-    local s = Upsert(partyLens, { mapID = mapID, zoneUID = zoneUID, npcID = npcID, name = name, kind = kind,
-        alive = dead ~= true, x = x, y = y, seen = GetServerTime(), mine = true })
-    if s.mine then
-        Send(partyLens, s)
+    local alive, rt = dead ~= true, RT(partyLens)
+    local key = Key(mapID, zoneUID, npcID)
+    local prior = rt.list[key]
+    local told = prior ~= nil and not prior.mine and prior.alive == alive
+        and GetServerTime() - prior.seen < Rares.SEND_GAP
+    Upsert(partyLens, { mapID = mapID, zoneUID = zoneUID, npcID = npcID, name = name, kind = kind,
+        alive = alive, x = x, y = y, seen = GetServerTime(), mine = true })
+    if told or not Settings(partyLens).share then
+        return -- the network has it already
     end
+    local p = rt.pending[key]
+    if p and p.alive == alive then
+        return
+    end
+    p = { alive = alive, at = time() }
+    rt.pending[key] = p
+    C_Timer.After(Rares.SEND_DELAY + math.random() * Rares.SEND_JITTER, function()
+        if rt.pending[key] ~= p then
+            return
+        end
+        rt.pending[key] = nil
+        local h, s = rt.heard[key], rt.list[key]
+        if (h and h.alive == alive and h.at >= p.at) or not s or s.alive ~= alive then
+            return -- someone told it meanwhile, or it changed again (that change has its own wait)
+        end
+        Send(partyLens, s)
+    end)
 end
 
--- Mesh handler for the prefix: (payload, sender, dist). A relayed sighting (dist "RELAY") names its reporter
--- only as a claim; nothing here rests on who it is beyond the per-sender budget.
-function Rares.OnMessage(partyLens, payload, sender, dist)
+-- Mesh handler for the prefix: (payload, sender, dist, via). A relayed sighting (dist "RELAY") names its reporter
+-- only as a claim; it is budgeted on `via`, the peer that whispered it.
+function Rares.OnMessage(partyLens, payload, sender, dist, via)
     if Utils.IsSecret(payload, sender, dist) or type(payload) ~= "string" or type(sender) ~= "string" then
         return
     end
@@ -243,6 +284,7 @@ function Rares.OnMessage(partyLens, payload, sender, dist)
     local x, y = Whole(f[6], 1, 1000), Whole(f[7], 1, 1000)
     local kind, name = Rares.FROM_WIRE[f[9]], CleanName(f[11])
     local seen = Whole(f[10], now - Rares.FRESH, now + Rares.FUTURE)
+    seen = seen and math.min(seen, now) -- a clock ahead never outranks a later word
     if not (mapID and zoneUID and npcID and kind and seen and name) or (f[8] ~= "0" and f[8] ~= "1") then
         return
     end
@@ -250,18 +292,24 @@ function Rares.OnMessage(partyLens, payload, sender, dist)
         return
     end
     local rt, wall = RT(partyLens), time()
-    local who = Utils.NameKey(sender) or sender
+    local from = dist == "RELAY" and type(via) == "string" and not Utils.IsSecret(via) and via or sender
+    local who = Utils.NameKey(from) or from
     local b = rt.senders[who]
     if not b or wall - b.window >= 60 then
         b = { window = wall, n = 0 }
         rt.senders[who] = b
     end
-    if b.n >= Rares.SENDER_BUDGET then
+    if wall - rt.all.window >= 60 then
+        rt.all.window, rt.all.n = wall, 0
+    end
+    if b.n >= Rares.SENDER_BUDGET or rt.all.n >= Rares.GLOBAL_BUDGET then
         return
     end
-    b.n = b.n + 1
+    b.n, rt.all.n = b.n + 1, rt.all.n + 1
+    local alive = f[8] == "1"
+    rt.heard[Key(mapID, zoneUID, npcID)] = { alive = alive, at = wall }
     local s, news = Upsert(partyLens, { mapID = mapID, zoneUID = zoneUID, npcID = npcID, name = name, kind = kind,
-        alive = f[8] == "1", x = x, y = y, seen = seen })
+        alive = alive, x = x, y = y, seen = seen })
     if news then
         Notify(partyLens, s)
     end
@@ -282,17 +330,6 @@ function Rares.List(partyLens, mapID)
         end
         return a.seen > b.seen
     end)
-    return out
-end
-
--- The rares alive on one layer (the layer page's news).
-function Rares.OnLayer(partyLens, mapID, zoneUID)
-    local out = {}
-    for _, v in ipairs(Rares.List(partyLens, mapID)) do
-        if v.zoneUID == zoneUID and v.alive then
-            out[#out + 1] = v
-        end
-    end
     return out
 end
 
