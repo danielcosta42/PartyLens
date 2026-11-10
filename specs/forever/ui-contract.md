@@ -84,6 +84,7 @@ The UI may write `db.ui`, `db.minimap`, `db.animations` directly.
 | `ui` | `{}` | free table for the UI (window position, last page, ...) |
 | `beacon.on` / `beacon.hops` / `beacon.today` | `true` / `0` / `0` | read only (write with `SetBeacon`): beacon setting (opt-out), people brought over in all, today |
 | `rares.notify` / `rares.share` | `true` / `true` | a prompt for rares alive in my zone; the rares I see told to the network |
+| `summonNet.offer` | `true` | a warlock of level 20+ gets the realm's summon asks and can offer (section 7) |
 | `blacklist` | `{}` | `[key] = name`; use `Block`/`Unblock`, not direct writes |
 
 ## 3. Radar entries

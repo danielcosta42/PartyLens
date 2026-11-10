@@ -766,7 +766,8 @@ check(prompt.__shown and prompt.title.__text == "Zoe Ask wants your layer" and (
 S.advance(31)
 W.deliver("PLRare", rare(72, "Azuregos", 303), "GUILD", "Bia Rocha")
 S.advance(0.3)
-check(not rp.__shown or rp.__alpha == 0 or rp.title.__text ~= "Rare: Azuregos", "a rare waits while the request is up")
+check(prompt.__shown and prompt.__alpha ~= 0 and prompt.title.__text == "Zoe Ask wants your layer"
+	and not (rp.__shown and rp.__alpha ~= 0), "a rare waits while the request is up: only the request shows")
 click(prompt.actions[2])
 S.advance(2)
 check(rp.__shown and rp.__alpha ~= 0 and rp.title.__text == "Rare: Azuregos", "and shows once the spot is free")
@@ -836,6 +837,36 @@ check(W.chat[#W.chat].msg:find("everyone is here", 1, true), "Next one says ever
 W.setGroup({})
 S.advance(0.3)
 check(sp.list.empty.__shown and sp.list.empty.title.__text == "You are not in a group", "alone: the empty state says so")
+-- A summon from the realm: a place, Ask, then the offers with Invite (on the page and in a prompt).
+sp.dest:SetText("Blackrock Depths")
+click(sp.ask)
+S.advance(3) -- the button shows "Asked" a moment, then settles
+local myAsk = PL:GetSummonAsk()
+check(myAsk and myAsk.state == "open" and sp.askState.__text == "Asking for Blackrock Depths"
+	and sp.ask.label.__text == "Cancel the ask", "Ask: the ask is open and the button now takes it back")
+sp.dest:GetScript("OnEnterPressed")(sp.dest)
+check(PL:GetSummonAsk().state == "open", "Enter in the field never takes an open ask back")
+W.deliver("PLSum", "PLS1|O|" .. myAsk.id .. "|Searing Gorge", "WHISPER", "Wally Lock")
+S.advance(1.5)
+local op = UI.summonOfferPrompt
+check(op and op.__shown and op.title.__text == "Wally Lock can summon you" and op.body.__text == "Now in Searing Gorge",
+	"an offer: a prompt with who and where")
+check(sp.offers[1].__shown and sp.offers[1].label.__text == "Invite Wally Lock" and not sp.offers[2].__shown,
+	"and a button on the page, which stays when the prompt goes")
+click(sp.offers[1])
+check(W.invites[#W.invites] == "Wally Lock", "Invite on the page invites, from the click")
+click(sp.ask)
+S.advance(0.3)
+check(PL:GetSummonAsk().state == "cancelled" and not sp.offers[1].__shown, "taking it back hides the offers")
+S.advance(70)
+PL:Fire("SUMMON_REQUEST", { rkey = "x", id = "ab", name = "Ana Lima", level = 28, classFile = "MAGE",
+	dest = "Zul'Farrak", seen = time(), state = "open" })
+S.advance(0.3)
+local ap = UI.summonAskPrompt
+check(ap and ap.__shown and ap.title.__text:find("Ana Lima", 1, true) and ap.body.__text == "To Zul'Farrak, level 28"
+	and ap.actions[1].label.__text == "Offer", "a warlock's prompt: who, where to, the level, and Offer")
+click(ap.actions[1])
+S.advance(0.3)
 
 local np = UI:Open("network")
 S.advance(0.3)

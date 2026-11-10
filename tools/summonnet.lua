@@ -175,4 +175,47 @@ end
 for _, r in pairs(PL.summonNet.inbound) do if r.dest:find("^All ") then taken[#taken + 1] = r end end
 check(#taken == 12, "and everyone together gets GLOBAL_BUDGET asks a minute")
 
+-- Repeats are free; a relayed take-back counts for nothing; one prompt per asker; relayed asks prompt rarely;
+-- blocked players are skipped; a newer ask reopens a take-back.
+PL = W.boot({ class = "WARLOCK", level = 40 })
+asks = {}
+PL:On("SUMMON_REQUEST", function(r) asks[#asks + 1] = r end)
+W.advance(61)
+for i = 1, 6 do
+  W.deliver("PLSum", ask("7" .. i, 30, "ROGUE", time(), "Rep " .. i), "GUILD", "Rep" .. string.char(64 + i) .. " Asker")
+  W.deliver("PLSum", ask("7" .. i, 30, "ROGUE", time(), "Rep " .. i), "GUILD", "Rep" .. string.char(64 + i) .. " Asker")
+end
+W.deliver("PLSum", ask("78", 30, "ROGUE", time(), "Seventh"), "GUILD", "Seventh Asker")
+local seventh = false
+for _, r in pairs(PL.summonNet.inbound) do seventh = seventh or r.dest == "Seventh" end
+check(seventh, "a repeated ask costs no budget: a new one still gets through")
+W.deliver("ChehulRelay", "RL1|d1|2|RepA Asker|PLSum|PLS1|X|71|" .. time(), "WHISPER", "Griefer Guy")
+local still = false
+for _, r in ipairs(PL:GetSummonRequests()) do still = still or r.id == "71" end
+check(still, "a take-back that came relayed (its asker only a claim) counts for nothing")
+W.deliver("PLSum", "PLS1|X|72|" .. time(), "GUILD", "RepB Asker")
+W.advance(5)
+W.deliver("PLSum", ask("72", 30, "ROGUE", time(), "Rep 2"), "GUILD", "RepB Asker")
+local reopened = false
+for _, r in ipairs(PL:GetSummonRequests()) do reopened = reopened or r.id == "72" end
+check(reopened, "a newer copy of an ask taken back reopens it")
+W.advance(61) -- a fresh prompt budget: only the per-asker rule can hold it back
+local n0 = #asks
+W.deliver("PLSum", ask("79", 30, "ROGUE", time(), "Again"), "GUILD", "RepA Asker")
+check(#asks == n0, "one prompt per asker per ASK_TTL, whatever new ids they send")
+W.advance(61)
+n0 = #asks
+W.deliver("ChehulRelay", "RL1|e1|2|RelayOne Asker|PLSum|" .. ask("81", 30, "ROGUE", time(), "R1"), "WHISPER", "Ivo Near")
+W.deliver("ChehulRelay", "RL1|e2|2|RelayTwo Asker|PLSum|" .. ask("82", 30, "ROGUE", time(), "R2"), "WHISPER", "Uma Near")
+check(#asks == n0 + 1, "relayed asks prompt once per RELAY_PROMPT_GAP")
+PL.db.blacklist["blocked asker"] = "Blocked Asker"
+W.deliver("PLSum", ask("83", 30, "ROGUE", time(), "Blocked"), "GUILD", "Blocked Asker")
+local blocked = false
+for _, r in pairs(PL.summonNet.inbound) do blocked = blocked or r.dest == "Blocked" end
+check(not blocked, "a blocked player's ask is dropped")
+W.deliver("PLSum", ask("84", 30, "ROGUE", time() + 100, "Ahead"), "GUILD", "Clock Asker")
+local ahead
+for _, r in pairs(PL.summonNet.inbound) do if r.dest == "Ahead" then ahead = r end end
+check(ahead and ahead.seen <= time(), "an ask dated ahead counts as now")
+
 W.done("summonnet")

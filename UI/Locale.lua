@@ -9,6 +9,7 @@ local _, ns = ...
 local UI = ns.UI
 
 local ptBR = {
+	["Invite %s"] = "Convidar %s",
 	["Just now"] = "Agora mesmo",
 	["near %.1f, %.1f"] = "perto de %.1f, %.1f",
 	["%s can summon you"] = "%s pode te invocar",

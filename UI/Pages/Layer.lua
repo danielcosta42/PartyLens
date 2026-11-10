@@ -820,6 +820,7 @@ local function RareBody(r)
 end
 
 local function ShowRare(r)
+	r.ago = math.max(0, GetServerTime() - (r.seen or GetServerTime())) -- it may have waited for the spot
 	if not rarePrompt then
 		rarePrompt = Kit.Toast(UIParent)
 		rarePrompt:SetFrameStrata("DIALOG")

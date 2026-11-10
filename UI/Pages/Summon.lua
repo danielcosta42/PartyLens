@@ -61,7 +61,12 @@ local function Build(page)
 	page.next:SetPoint("RIGHT", page.announce, "LEFT", -8, 0)
 	-- A summon from the realm's warlocks: a place, then each offer is a prompt with Invite.
 	page.dest = Kit.Edit(page, { w = 260, placeholder = L["Where to? For example: Blackrock Depths"], maxLetters = 40,
-		onSubmit = function() page.ask:Click() end })
+		onSubmit = function(text)
+			local ask = D.SummonAsk()
+			if ask and ask.state == "open" then return end -- Enter asks; it never takes an open ask back
+			local ok, why = D.AskSummon(text or "")
+			if ok then page.ask:Done(L["Asked"]) else page.ask:Fail(D.Reason(why)) end
+		end })
 	page.dest:SetPoint("TOPLEFT", 0, -50)
 	page.ask = Kit.Button(page, L["Ask the realm's warlocks"], "secondary", function(b)
 		if D.SummonAsk() and D.SummonAsk().state == "open" then
@@ -76,12 +81,23 @@ local function Build(page)
 	page.askState = UI.Text(page, "data", 12, T.muted)
 	page.askState:SetPoint("LEFT", page.ask, "RIGHT", 12, 0)
 	page.askState:SetPoint("RIGHT", page, "RIGHT", 0, 0)
+	-- The offers to my ask, each with Invite (a toast can time out or give way to a beacon's prompt).
+	page.offers = {}
+	for i = 1, 3 do
+		local b = Kit.Button(page, "", "secondary", function(btn)
+			local ok, why = D.AcceptSummonOffer(btn.offer)
+			if ok then btn:Done(L["Invited"]) else btn:Fail(D.Reason(why)) end
+		end, { h = 24, w = 220 })
+		if i == 1 then b:SetPoint("TOPLEFT", 0, -84) else b:SetPoint("LEFT", page.offers[i - 1], "RIGHT", 8, 0) end
+		b:Hide()
+		page.offers[i] = b
+	end
 	page.warlocks = UI.Text(page, "data", 12, T.muted)
-	page.warlocks:SetPoint("TOPLEFT", 0, -88)
+	page.warlocks:SetPoint("TOPLEFT", 0, -118)
 	page.warlocks:SetPoint("RIGHT", page, "RIGHT", 0, 0)
 	page.list = Kit.List(page, { rowHeight = 40, gap = 4, create = CreateMember, bind = BindMember, width = UI.PAGE_W - 12,
-		viewHeight = 340 })
-	page.list:SetPoint("TOPLEFT", 0, -112)
+		viewHeight = 320 })
+	page.list:SetPoint("TOPLEFT", 0, -142)
 	page.list:SetPoint("BOTTOMRIGHT", 0, 0)
 end
 
@@ -99,6 +115,18 @@ local function RefreshAsk(page)
 		page.askState:SetText(L["No warlock answered in time"])
 	else
 		page.askState:SetText("")
+	end
+	for i, b in ipairs(page.offers) do
+		local o = open and ask.offers[i]
+		b:SetShown(o ~= nil and o ~= false)
+		if o then
+			b.offer = o
+			if b.boundKey ~= o.key then
+				b.boundKey = o.key
+				b:Unmorph()
+			end
+			b:Settle(string.format(L["Invite %s"], UI.Esc(o.name)))
+		end
 	end
 end
 

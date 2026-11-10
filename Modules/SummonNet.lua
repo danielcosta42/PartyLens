@@ -29,6 +29,7 @@ SummonNet.FUTURE = 120
 SummonNet.MIN_LEVEL = 20         -- Ritual of Summoning
 SummonNet.SENDER_BUDGET = 4
 SummonNet.GLOBAL_BUDGET = 12
+SummonNet.RELAY_PROMPT_GAP = 120 -- a relayed ask (its asker only a claim) prompts at most once per this
 SummonNet.PROMPT_BUDGET = 3
 SummonNet.INBOUND_MAX = 20
 SummonNet.OFFERS_MAX = 10
@@ -36,7 +37,7 @@ SummonNet.TEXT_MAX = 40
 
 local function RT(partyLens)
     partyLens.summonNet = partyLens.summonNet or { inbound = {}, senders = {}, prompts = { window = 0, n = 0 },
-        all = { window = 0, n = 0 } }
+        all = { window = 0, n = 0 }, prompted = {}, relayPromptAt = -math.huge }
     return partyLens.summonNet
 end
 
@@ -219,6 +220,7 @@ local function OnAsk(partyLens, f, sender, dist, via)
     local now = GetServerTime()
     local id = f[3]
     local level, seen = Whole(f[4], 1, 255), Whole(f[6], now - SummonNet.ASK_TTL, now + SummonNet.FUTURE)
+    seen = seen and math.min(seen, now)
     local classFile, dest = f[5], Clean(f[7])
     local name = Utils.FullName(sender)
     local key = name and Utils.NameKey(name)
@@ -226,6 +228,21 @@ local function OnAsk(partyLens, f, sender, dist, via)
         return
     end
     local rt = RT(partyLens)
+    if partyLens.db.blacklist[key] then
+        return
+    end
+    -- A repeat of an ask I know costs nothing: it refreshes it, and a newer one reopens it after a cancel.
+    local known = rt.inbound[key .. ":" .. id]
+    if known then
+        if seen > known.seen then
+            known.seen = seen
+            if known.state == "cancelled" then
+                known.state = "open"
+                Changed(partyLens)
+            end
+        end
+        return
+    end
     local from = key
     if dist == "RELAY" and type(via) == "string" and not Utils.IsSecret(via) then
         from = Utils.NameKey(via) or via
@@ -244,11 +261,6 @@ local function OnAsk(partyLens, f, sender, dist, via)
     end
     all.n = all.n + 1
     local rkey = key .. ":" .. id
-    local r = rt.inbound[rkey]
-    if r then
-        r.seen = math.max(r.seen, seen) -- the asker repeats it while open
-        return
-    end
     local count, oldestKey, oldestT = 0, nil, nil
     for k, x in pairs(rt.inbound) do
         count = count + 1
@@ -259,16 +271,37 @@ local function OnAsk(partyLens, f, sender, dist, via)
     if count >= SummonNet.INBOUND_MAX and oldestKey then
         rt.inbound[oldestKey] = nil
     end
-    r = { rkey = rkey, id = id, name = name, key = key, level = level, classFile = classFile ~= "" and classFile or nil,
+    local r = { rkey = rkey, id = id, name = name, key = key, level = level,
+        classFile = classFile ~= "" and classFile or nil,
         dest = dest, seen = seen, t = time(), state = "open" }
     rt.inbound[rkey] = r
     Changed(partyLens)
-    if SummonNet.IsSummoner(partyLens) and not Utils.InInstance() and Budget(rt.prompts, SummonNet.PROMPT_BUDGET) then
+    -- A prompt: once per asker per ASK_TTL; a relayed ask (asker only claimed) once per RELAY_PROMPT_GAP at most.
+    local wall = time()
+    if not SummonNet.IsSummoner(partyLens) or Utils.InInstance() then
+        return
+    end
+    if wall - (rt.prompted[key] or -math.huge) < SummonNet.ASK_TTL then
+        return
+    end
+    if dist == "RELAY" and wall - rt.relayPromptAt < SummonNet.RELAY_PROMPT_GAP then
+        return
+    end
+    if Budget(rt.prompts, SummonNet.PROMPT_BUDGET) then
+        rt.prompted[key] = wall
+        if dist == "RELAY" then
+            rt.relayPromptAt = wall
+        end
         partyLens:Fire("SUMMON_REQUEST", r)
     end
 end
 
-local function OnCancel(partyLens, f, sender)
+-- A take-back counts only straight from the asker (GUILD, group, whisper): a relayed one names its asker only as a
+-- claim, and anyone could end anyone's ask with it. A relayed ask simply ages out.
+local function OnCancel(partyLens, f, sender, dist)
+    if dist == "RELAY" then
+        return
+    end
     local key = Utils.NameKey(sender)
     local r = key and #f == 4 and RT(partyLens).inbound[key .. ":" .. f[3]]
     if r then
@@ -335,7 +368,7 @@ function SummonNet.OnMessage(partyLens, payload, sender, dist, via)
     if f[2] == "Q" then
         OnAsk(partyLens, f, sender, dist, via)
     elseif f[2] == "X" then
-        OnCancel(partyLens, f, sender)
+        OnCancel(partyLens, f, sender, dist)
     elseif f[2] == "O" then
         OnOffer(partyLens, f, sender, dist)
     end
@@ -368,6 +401,11 @@ function SummonNet.Tick(partyLens)
     for key, b in pairs(rt.senders) do
         if now - b.window > 120 then
             rt.senders[key] = nil
+        end
+    end
+    for key, at in pairs(rt.prompted) do
+        if now - at > SummonNet.ASK_TTL then
+            rt.prompted[key] = nil
         end
     end
 end

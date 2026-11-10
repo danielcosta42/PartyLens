@@ -37,6 +37,7 @@ Rares.SEND_DELAY = 2         -- a sighting of mine waits this long, plus up to S
 Rares.SEND_JITTER = 13
 Rares.GLOBAL_BUDGET = 20     -- sightings taken from everyone together per minute
 Rares.PROMPT_GAP = 30        -- one prompt at most per this, whatever the rare
+Rares.MOVE_STEP = 10         -- a position that moved less than this (thousandths) is no change to redraw
 
 local function RT(partyLens)
     partyLens.rares = partyLens.rares or { list = {}, sent = {}, notified = {}, senders = {}, heard = {},
@@ -129,7 +130,8 @@ local function Upsert(partyLens, s)
     if old and not s.x then
         s.x, s.y = old.x, old.y -- a later word without a position keeps the last one heard
     end
-    local moved = old ~= nil and (old.x ~= s.x or old.y ~= s.y)
+    local moved = old ~= nil and (math.abs((old.x or 0) - (s.x or 0)) >= Rares.MOVE_STEP
+        or math.abs((old.y or 0) - (s.y or 0)) >= Rares.MOVE_STEP)
     rt.list[key] = s
     local count, oldestKey, oldestAt = 0, nil, nil
     for k, r in pairs(rt.list) do
@@ -238,12 +240,14 @@ function Rares.Observe(partyLens, unit)
     local x, y = MyPosition(mapID)
     local alive, rt = dead ~= true, RT(partyLens)
     local key = Key(mapID, zoneUID, npcID)
-    local prior = rt.list[key]
-    local told = prior ~= nil and not prior.mine and prior.alive == alive
-        and GetServerTime() - prior.seen < Rares.SEND_GAP
+    -- Told: the network said this rare and state within SEND_GAP (whatever my list holds since).
+    local function Told()
+        local h = rt.heard[key]
+        return h ~= nil and h.alive == alive and time() - h.at < Rares.SEND_GAP
+    end
     Upsert(partyLens, { mapID = mapID, zoneUID = zoneUID, npcID = npcID, name = name, kind = kind,
         alive = alive, x = x, y = y, seen = GetServerTime(), mine = true })
-    if told or not Settings(partyLens).share then
+    if Told() or not Settings(partyLens).share then
         return -- the network has it already
     end
     local p = rt.pending[key]
@@ -257,8 +261,8 @@ function Rares.Observe(partyLens, unit)
             return
         end
         rt.pending[key] = nil
-        local h, s = rt.heard[key], rt.list[key]
-        if (h and h.alive == alive and h.at >= p.at) or not s or s.alive ~= alive then
+        local s = rt.list[key]
+        if Told() or not s or s.alive ~= alive then
             return -- someone told it meanwhile, or it changed again (that change has its own wait)
         end
         Send(partyLens, s)
@@ -292,6 +296,15 @@ function Rares.OnMessage(partyLens, payload, sender, dist, via)
         return
     end
     local rt, wall = RT(partyLens), time()
+    local alive, key = f[8] == "1", Key(mapID, zoneUID, npcID)
+    rt.heard[key] = { alive = alive, at = wall }
+    local old = rt.list[key]
+    if old and old.alive == alive then
+        -- Not news: a copy of what I know (another bus, a repeat). It refreshes the record and costs no budget.
+        Upsert(partyLens, { mapID = mapID, zoneUID = zoneUID, npcID = npcID, name = name, kind = kind,
+            alive = alive, x = x, y = y, seen = seen })
+        return
+    end
     local from = dist == "RELAY" and type(via) == "string" and not Utils.IsSecret(via) and via or sender
     local who = Utils.NameKey(from) or from
     local b = rt.senders[who]
@@ -306,8 +319,6 @@ function Rares.OnMessage(partyLens, payload, sender, dist, via)
         return
     end
     b.n, rt.all.n = b.n + 1, rt.all.n + 1
-    local alive = f[8] == "1"
-    rt.heard[Key(mapID, zoneUID, npcID)] = { alive = alive, at = wall }
     local s, news = Upsert(partyLens, { mapID = mapID, zoneUID = zoneUID, npcID = npcID, name = name, kind = kind,
         alive = alive, x = x, y = y, seen = seen })
     if news then

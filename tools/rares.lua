@@ -202,6 +202,10 @@ W.rare("target", 101, 91, "Already Told", "rare")
 W.fire("PLAYER_TARGET_CHANGED")
 W.advance(16)
 check(#sentFor(91) == 0, "a rare the network told within SEND_GAP: I stay quiet")
+W.advance(20)
+W.fire("PLAYER_TARGET_CHANGED")
+W.advance(16)
+check(#sentFor(91) == 0, "and on a second look, later: still quiet (what the network said, not my list, decides)")
 W.rare("target", 101, 92, "Told Meanwhile", "rare")
 W.fire("PLAYER_TARGET_CHANGED")
 W.advance(1)
@@ -251,6 +255,15 @@ for i = 1, 25 do
 end
 check(#PL:GetRares() == beforeAll + 20, "and everyone together gets GLOBAL_BUDGET a minute")
 
+-- Copies of what I know (another bus, a repeat) cost no budget: news still gets through.
+W.advance(61)
+local copyNews = #PL:GetRares()
+for i = 1, 25 do
+  W.deliver("PLRare", wire(1454, 404, 500, 1, 1, 1, "r", time(), "Copied"), "GUILD", "Copy" .. string.char(64 + i) .. " Er")
+end
+W.deliver("PLRare", wire(1454, 404, 501, 1, 1, 1, "r", time(), "Fresh News"), "GUILD", "News Er")
+check(#PL:GetRares() == copyNews + 2, "25 copies of one sighting cost one budget slot: the next news is taken")
+
 -- One prompt per PROMPT_GAP; a made-up layer is no layer.
 W.advance(61)
 local p0 = #prompts
@@ -269,6 +282,13 @@ W.fire("PLAYER_TARGET_CHANGED")
 local c1 = changes
 W.fire("PLAYER_TARGET_CHANGED")
 check(changes == c1, "looking at the same rare again changes nothing (no redraw)")
+W.pos = { x = 0.525, y = 0.302 }
+W.fire("PLAYER_TARGET_CHANGED")
+check(changes == c1, "nor a step or two: a position moving less than MOVE_STEP is no redraw")
+W.pos = { x = 0.6, y = 0.302 }
+W.fire("PLAYER_TARGET_CHANGED")
+check(changes == c1 + 1, "a real move is")
+W.pos = { x = 0.523, y = 0.301 }
 
 W.advance(16 * 60)
 check(#PL:GetRares() == 0, "sightings go after FRESH")
