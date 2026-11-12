@@ -5,6 +5,12 @@ Todas as mudanças relevantes do PartyLens. Formato baseado em
 
 ## [Unreleased]
 
+## [1.3.1]
+
+- **Acampamentos do Warmth pela rede.** Com a lib ChehulNet v1.4.0, o PartyLens passa adiante os anúncios de
+  fogueira do Warmth, o addon de acampamentos da família, mesmo para quem não tem o Warmth instalado. Nada muda
+  no PartyLens em si.
+
 ## [1.3.0]
 
 - **Raros por camada.** Quem mira, passa o mouse ou vê a placa de um rare, rare elite ou chefe de mundo avisa a zona
